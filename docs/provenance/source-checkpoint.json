@@ -1,0 +1,1883 @@
+{
+  "complete_vm": false,
+  "files": [
+    {
+      "bytes": 2413,
+      "path": ".github/workflows/ci.yml",
+      "sha256": "f4e3d6302d46e58a3087ecd8ade11f7711b738e01e456c0567cb1ccbff342faa",
+      "source": null
+    },
+    {
+      "bytes": 3240,
+      "path": "Cargo.lock",
+      "sha256": "b18a0ce8d773ed8e5d3649e8095f44f9c0a60a3904f1d9c1d7dba97568c13662",
+      "source": null
+    },
+    {
+      "bytes": 255,
+      "path": "Cargo.toml",
+      "sha256": "eb327fa5ba02495c6f7a51e43544bc1e26a73df961078908a0020bf9a07f307a",
+      "source": null
+    },
+    {
+      "bytes": 1065,
+      "path": "LICENSE",
+      "sha256": "2b8d458c11298b97994297056d41b07644b5a17644c42387e9bea1d083e3360e",
+      "source": "LICENSE"
+    },
+    {
+      "bytes": 35561,
+      "path": "README.md",
+      "sha256": "7a083d9d39d9f1c6db13b4b95f7553d2dcb8575cfc083121502d8f261f9f7e73",
+      "source": null
+    },
+    {
+      "bytes": 3372,
+      "path": "consumer/Cargo.lock",
+      "sha256": "0eca368577d4f5d087aeaedbe3f711ae6b6c68c93e23560ae5698757a7b1e774",
+      "source": null
+    },
+    {
+      "bytes": 3464,
+      "path": "consumer/Cargo.toml",
+      "sha256": "aebecc622567c40d62f2459cf6bb7f139db94725c9d980b36f8a882374b4796e",
+      "source": null
+    },
+    {
+      "bytes": 34011,
+      "path": "consumer/examples/native_counter.rs",
+      "sha256": "7cd3426dc70c686577550a88084ae756c4d1fd1bc4d2d9bd31ba52c1d069b949",
+      "source": "crates/leselang-vm/examples/native_counter.rs"
+    },
+    {
+      "bytes": 12566,
+      "path": "consumer/tests/argument_binding.rs",
+      "sha256": "bb373a83eb666be18e9697af902237847c57e538ebeade8694ab801ef6aad8f7",
+      "source": "crates/leselang-hir/tests/argument_binding.rs"
+    },
+    {
+      "bytes": 10596,
+      "path": "consumer/tests/capture_correspondence.rs",
+      "sha256": "5d1e88fc27b1432c450f151917690e92e121d9e1a401a0b469cde6cc14455e9a",
+      "source": "crates/leselang-runtime-core/tests/capture_correspondence.rs"
+    },
+    {
+      "bytes": 10566,
+      "path": "consumer/tests/capture_extension.rs",
+      "sha256": "d770edd88be411b4e6808169a3db84df9e629547b0cac085099e4a7f4c362171",
+      "source": "crates/leselang-runtime-core/tests/capture_extension.rs"
+    },
+    {
+      "bytes": 14281,
+      "path": "consumer/tests/captured_reentry.rs",
+      "sha256": "4b65dc56a483925bc70d58eff8d6284f65ec792247bc165c0aaccd0ba4c17dee",
+      "source": "crates/leselang-hir/tests/captured_reentry.rs"
+    },
+    {
+      "bytes": 38368,
+      "path": "consumer/tests/checkpoint_recovery.rs",
+      "sha256": "70919297d1a831a43496cad7dec0c50199039eb7e6e55c503bf1d2471ce09bfd",
+      "source": "crates/leselang-runtime-core/tests/checkpoint.rs"
+    },
+    {
+      "bytes": 8678,
+      "path": "consumer/tests/computation_profile.rs",
+      "sha256": "7c0f0f225066b0b5411afc68a7059623eca134402d4923d3dc92e0d7cd2d493a",
+      "source": "crates/leselang-hir/tests/computation_profile.rs"
+    },
+    {
+      "bytes": 9547,
+      "path": "consumer/tests/continuation_context.rs",
+      "sha256": "338626aa2078a1e4ea134d6a7faf3104fd4fcee6bd1cae5e3edeef6866ddfff7",
+      "source": "crates/leselang-runtime-core/tests/continuation_context.rs"
+    },
+    {
+      "bytes": 7776,
+      "path": "consumer/tests/continuation_frame.rs",
+      "sha256": "ca31fd8015de615958b031e90f94fbaa1b9b4ee73ce6dfb4da0d5bd10718b143",
+      "source": "crates/leselang-runtime-core/tests/continuation.rs"
+    },
+    {
+      "bytes": 151832,
+      "path": "consumer/tests/control_session.rs",
+      "sha256": "04e69d18f629da3170735b6240dd01ef2d391391642b570c17e42fbcb16acce9",
+      "source": "crates/leselang-hir/tests/effect_session.rs"
+    },
+    {
+      "bytes": 2782,
+      "path": "consumer/tests/core_identity.rs",
+      "sha256": "9b5acb1424a871ce45122aa8b15fb4722b3c6c6e179866545be97da723581283",
+      "source": "crates/leselang-hir/tests/core_identity.rs"
+    },
+    {
+      "bytes": 18498,
+      "path": "consumer/tests/declaration_source.rs",
+      "sha256": "a7bd0d2876e702d4c0cc9f0451ef130c9c237927f477a7a91046ba7a8afbc5b9",
+      "source": "crates/leselang-hir/tests/declaration_source.rs"
+    },
+    {
+      "bytes": 6249,
+      "path": "consumer/tests/dispatch_capacity.rs",
+      "sha256": "38ed96d10b64e164b10540ab6cd4bddedf1dedd457bd54435155c56c089ab0fe",
+      "source": "crates/leselang-runtime-core/tests/dispatch_capacity.rs"
+    },
+    {
+      "bytes": 8919,
+      "path": "consumer/tests/dispatch_data.rs",
+      "sha256": "d17c78c562e2af38e51f303c3b2cc396b08ffeb3a7cc1d6b9edf8f8b48e05a34",
+      "source": "crates/leselang-runtime-core/tests/dispatch_data.rs"
+    },
+    {
+      "bytes": 5446,
+      "path": "consumer/tests/dispatch_lease.rs",
+      "sha256": "182d3bf91996bc362503599528c988957fa9965d5d2496b13b0ded063278d7cf",
+      "source": "crates/leselang-runtime-core/tests/dispatch_lease.rs"
+    },
+    {
+      "bytes": 18861,
+      "path": "consumer/tests/dispatch_plan.rs",
+      "sha256": "b625ea48e78d45697229fdcad8231d8c7014e176ea5cf3265ddcb3c5b213c5be",
+      "source": "crates/leselang-runtime-core/tests/dispatch_plan.rs"
+    },
+    {
+      "bytes": 48039,
+      "path": "consumer/tests/durable_control.rs",
+      "sha256": "d496454415ec1e7f60a82e08a6db9327b4a23b328f19310b2789c1563a2b1553",
+      "source": "crates/leselang-hir/tests/durable_control.rs"
+    },
+    {
+      "bytes": 19938,
+      "path": "consumer/tests/fold_preparation.rs",
+      "sha256": "bb285631621b481f2c6d307fcb3840ccf03f3c8fc2e614e6ff3de3c2b886d152",
+      "source": "crates/leselang-hir/tests/fold_preparation.rs"
+    },
+    {
+      "bytes": 12071,
+      "path": "consumer/tests/group_graph.rs",
+      "sha256": "7f8bc2130df429539d72aa7d130c48f52fb00182477ab75df0f32ec26de637ef",
+      "source": "crates/leselang-runtime-core/tests/group_graph.rs"
+    },
+    {
+      "bytes": 6528,
+      "path": "consumer/tests/local_execution.rs",
+      "sha256": "c8ce25d82fe0a86e3a02f62cdccfce85af416da668a485d0c68799434a296d3a",
+      "source": "crates/leselang-runtime-core/tests/local_execution.rs"
+    },
+    {
+      "bytes": 3729,
+      "path": "consumer/tests/local_names.rs",
+      "sha256": "b20de022e62107709fd53a988dcd300d3c4714dedb9c44dcd8e4f959c140acd1",
+      "source": "crates/leselang-hir/tests/local_names.rs"
+    },
+    {
+      "bytes": 15458,
+      "path": "consumer/tests/loop_preparation.rs",
+      "sha256": "7e46aee2a6010ac6cadb479ad6bf07debafa1f39c6003c9452ce10640d9769f7",
+      "source": "crates/leselang-hir/tests/loop_preparation.rs"
+    },
+    {
+      "bytes": 369006,
+      "path": "consumer/tests/native_host_pipeline.rs",
+      "sha256": "a2d2fe421293cb215766c9d06e3b6c9a1e00df4d9e05f434f5eb836760d88506",
+      "source": "crates/leselang-vm/tests/native_host_pipeline.rs"
+    },
+    {
+      "bytes": 45317,
+      "path": "consumer/tests/native_vm_embedding.rs",
+      "sha256": "077fa4a82ddbdc649ada2b8a867049068f9bf0a98f6ba8e1da2917b3065a6c0c",
+      "source": "crates/leselang-vm/tests/native_embedding.rs"
+    },
+    {
+      "bytes": 8560,
+      "path": "consumer/tests/outcome_summary.rs",
+      "sha256": "d9a258bdcaa877336753fc2172b6404b2036dd52745182455cb0d1daad66f0ae",
+      "source": "crates/leselang-runtime-core/tests/outcome_summary.rs"
+    },
+    {
+      "bytes": 7757,
+      "path": "consumer/tests/owned_scope.rs",
+      "sha256": "0427292f4af39c5e7f65793e53f200c8f85d7973a63cc033b6533e8519527eb3",
+      "source": "crates/leselang-runtime-core/tests/owned_scope.rs"
+    },
+    {
+      "bytes": 157411,
+      "path": "consumer/tests/prepared_counter_host.rs",
+      "sha256": "93103c72dcd9c3a562d15cfd5a7d504bc1d8ad26b14192d91dac2bc1bbfe9dc5",
+      "source": "crates/leselang-hir/tests/catalog_group_source.rs"
+    },
+    {
+      "bytes": 141315,
+      "path": "consumer/tests/prepared_gui_host.rs",
+      "sha256": "262384ce702d8b6a72e94926e1bd93320b32663b563ec8c52b190d25d31a8842",
+      "source": "crates/leselang-hir/tests/prepared_gui_host.rs"
+    },
+    {
+      "bytes": 38785,
+      "path": "consumer/tests/recovery_fences.rs",
+      "sha256": "f3e4e8f7fc1f917704a7582098498a192caefe742973600f0c7dd98252a98c6b",
+      "source": "crates/leselang-runtime-core/tests/recovery_fence.rs"
+    },
+    {
+      "bytes": 6525,
+      "path": "consumer/tests/retry_schedule.rs",
+      "sha256": "144d7dad89ee0f50228c85c6cffadd4f1fc4cec9bff953c809fef91aa036a412",
+      "source": "crates/leselang-runtime-core/tests/retry_schedule.rs"
+    },
+    {
+      "bytes": 34840,
+      "path": "consumer/tests/return_stack.rs",
+      "sha256": "ea74276c63db952d54ac39b3ea81ca4ba226dc89274e3ce015860b6909326328",
+      "source": "crates/leselang-hir/tests/effect_stack.rs"
+    },
+    {
+      "bytes": 29223,
+      "path": "consumer/tests/saved_call.rs",
+      "sha256": "2ea493dfa28d52c5e7ee8197f5fc0f69934c3076f59956c5fab896e7f0baeeeb",
+      "source": "crates/leselang-hir/tests/saved_call.rs"
+    },
+    {
+      "bytes": 288403,
+      "path": "consumer/tests/saved_group.rs",
+      "sha256": "e8e6430ac1535e815ab370e2e7db2ee5507c5d156e0f16106fc451cce283eba3",
+      "source": "crates/leselang-hir/tests/saved_group.rs"
+    },
+    {
+      "bytes": 48995,
+      "path": "consumer/tests/saved_parallel.rs",
+      "sha256": "177959c11fc246dce34d6c4c0c06bb7881d20463c73b1c753a3369aa09628d6e",
+      "source": "crates/leselang-hir/tests/saved_parallel.rs"
+    },
+    {
+      "bytes": 60184,
+      "path": "consumer/tests/saved_sequence.rs",
+      "sha256": "2aeb7ec1e37444fa7a4cf7f4c29d4d1db12e502eef98c3e51048fd53646985be",
+      "source": "crates/leselang-hir/tests/saved_sequence.rs"
+    },
+    {
+      "bytes": 18698,
+      "path": "consumer/tests/scalar_form.rs",
+      "sha256": "eb65e85a49a239d9748c4224f3ec2101c122dd502e27fbefcdb8cc198c72c4e7",
+      "source": "crates/leselang-hir/tests/scalar_form.rs"
+    },
+    {
+      "bytes": 14008,
+      "path": "consumer/tests/sequence_frontier.rs",
+      "sha256": "db9a1c35ab041c6b177728f74be0a98ddc54cda2cd0cff3431ed784a1751e99e",
+      "source": "crates/leselang-runtime-core/tests/sequence_frontier.rs"
+    },
+    {
+      "bytes": 7133,
+      "path": "consumer/tests/sequence_watermark.rs",
+      "sha256": "342dd85d50e00555e1e1d9d5f29e808a0c2eadd50199b13872f23dd496e5cedc",
+      "source": "crates/leselang-runtime-core/tests/sequence_watermark.rs"
+    },
+    {
+      "bytes": 13450,
+      "path": "consumer/tests/source_preparation.rs",
+      "sha256": "86a292242487c349c2a41ccf7534368644faa1c7db237879708aa604d564f48f",
+      "source": "crates/leselang-hir/tests/source_preparation.rs"
+    },
+    {
+      "bytes": 9466,
+      "path": "consumer/tests/successor_chain.rs",
+      "sha256": "ee6802c4e13758ba736a3c50599ab32357b2962f85ff8889b0e6281dba0b0e0b",
+      "source": "crates/leselang-runtime-core/tests/successor_chain.rs"
+    },
+    {
+      "bytes": 26136,
+      "path": "consumer/tests/support/native_checkpoint.rs",
+      "sha256": "2bc59a5254558159172ede9fead81e262dc09cdf13a2135362926416e4c3d236",
+      "source": "crates/leselang-vm/tests/support/native_checkpoint.rs"
+    },
+    {
+      "bytes": 134473,
+      "path": "consumer/tests/support/native_group_checkpoint.rs",
+      "sha256": "cd44bd40cde9350fb8ed321c5b0514e82da4ba530b289d3d05be4391396a7312",
+      "source": "crates/leselang-vm/tests/support/native_group_checkpoint.rs"
+    },
+    {
+      "bytes": 558,
+      "path": "crates/leselang-hir/Cargo.toml",
+      "sha256": "4da528e4b39900a8193be6be36efa13be09a249352c80592a1cc2992377673ef",
+      "source": null
+    },
+    {
+      "bytes": 856,
+      "path": "crates/leselang-hir/src/lib.rs",
+      "sha256": "74c2f9588bf09b1081e63ac3043a204c94cc873e91fd3104fb6150e6263376ed",
+      "source": "crates/leselang-hir/src/lib.rs"
+    },
+    {
+      "bytes": 12566,
+      "path": "crates/leselang-hir/tests/argument_binding.rs",
+      "sha256": "bb373a83eb666be18e9697af902237847c57e538ebeade8694ab801ef6aad8f7",
+      "source": "crates/leselang-hir/tests/argument_binding.rs"
+    },
+    {
+      "bytes": 69272,
+      "path": "crates/leselang-hir/tests/binding_source.rs",
+      "sha256": "adabcfcd5b2f8f5421522420cd531c5be72766517b5b953d8dcb11194f1932b4",
+      "source": "crates/leselang-hir/tests/binding_source.rs"
+    },
+    {
+      "bytes": 27759,
+      "path": "crates/leselang-hir/tests/bound_projection_session.rs",
+      "sha256": "2828e0d9eb37adfb3ce9a51212a73016c2c029d071b47a4fd18f02fa17c31001",
+      "source": "crates/leselang-hir/tests/bound_projection_session.rs"
+    },
+    {
+      "bytes": 15353,
+      "path": "crates/leselang-hir/tests/bound_projection_source.rs",
+      "sha256": "6448c23199d64c58c198951d43cb193c4fcdc6d224822b2ffa4b414dd8eb5859",
+      "source": "crates/leselang-hir/tests/bound_projection_source.rs"
+    },
+    {
+      "bytes": 32398,
+      "path": "crates/leselang-hir/tests/call_evaluation.rs",
+      "sha256": "a0ae028b80d586bfa2a9b5113c959bc85b61ec65d63c173b1caf2a9962361546",
+      "source": "crates/leselang-hir/tests/call_evaluation.rs"
+    },
+    {
+      "bytes": 30857,
+      "path": "crates/leselang-hir/tests/call_typing.rs",
+      "sha256": "815622aa7529a6cddfd54a09b22e5e9634153b273de882d74a32d7b94fd4807b",
+      "source": "crates/leselang-hir/tests/call_typing.rs"
+    },
+    {
+      "bytes": 14281,
+      "path": "crates/leselang-hir/tests/captured_reentry.rs",
+      "sha256": "4b65dc56a483925bc70d58eff8d6284f65ec792247bc165c0aaccd0ba4c17dee",
+      "source": "crates/leselang-hir/tests/captured_reentry.rs"
+    },
+    {
+      "bytes": 157411,
+      "path": "crates/leselang-hir/tests/catalog_group_source.rs",
+      "sha256": "93103c72dcd9c3a562d15cfd5a7d504bc1d8ad26b14192d91dac2bc1bbfe9dc5",
+      "source": "crates/leselang-hir/tests/catalog_group_source.rs"
+    },
+    {
+      "bytes": 43741,
+      "path": "crates/leselang-hir/tests/catalog_source.rs",
+      "sha256": "790bcaab0c8e0f7ac767b85284373b76e746a2dd60e708d28a34f6c6c52d05e2",
+      "source": "crates/leselang-hir/tests/catalog_source.rs"
+    },
+    {
+      "bytes": 38718,
+      "path": "crates/leselang-hir/tests/choice_source.rs",
+      "sha256": "6cd63daf7c4b01aee2f4e679693f1b7203a18cd34b2fd6b1e2d5077a81a98697",
+      "source": "crates/leselang-hir/tests/choice_source.rs"
+    },
+    {
+      "bytes": 8678,
+      "path": "crates/leselang-hir/tests/computation_profile.rs",
+      "sha256": "7c0f0f225066b0b5411afc68a7059623eca134402d4923d3dc92e0d7cd2d493a",
+      "source": "crates/leselang-hir/tests/computation_profile.rs"
+    },
+    {
+      "bytes": 19482,
+      "path": "crates/leselang-hir/tests/control_source.rs",
+      "sha256": "0ab13590492b9e420c0be6ef08f4c0a99befcecb635f9c334d47832c61c18dfa",
+      "source": "crates/leselang-hir/tests/control_source.rs"
+    },
+    {
+      "bytes": 2782,
+      "path": "crates/leselang-hir/tests/core_identity.rs",
+      "sha256": "9b5acb1424a871ce45122aa8b15fb4722b3c6c6e179866545be97da723581283",
+      "source": "crates/leselang-hir/tests/core_identity.rs"
+    },
+    {
+      "bytes": 18498,
+      "path": "crates/leselang-hir/tests/declaration_source.rs",
+      "sha256": "a7bd0d2876e702d4c0cc9f0451ef130c9c237927f477a7a91046ba7a8afbc5b9",
+      "source": "crates/leselang-hir/tests/declaration_source.rs"
+    },
+    {
+      "bytes": 48039,
+      "path": "crates/leselang-hir/tests/durable_control.rs",
+      "sha256": "d496454415ec1e7f60a82e08a6db9327b4a23b328f19310b2789c1563a2b1553",
+      "source": "crates/leselang-hir/tests/durable_control.rs"
+    },
+    {
+      "bytes": 59590,
+      "path": "crates/leselang-hir/tests/effect_evaluation.rs",
+      "sha256": "2b09924fee3ed10fd299ac3f46ae6c0694ff02345b85a28c6e9934015f0a5f33",
+      "source": "crates/leselang-hir/tests/effect_evaluation.rs"
+    },
+    {
+      "bytes": 151832,
+      "path": "crates/leselang-hir/tests/effect_session.rs",
+      "sha256": "04e69d18f629da3170735b6240dd01ef2d391391642b570c17e42fbcb16acce9",
+      "source": "crates/leselang-hir/tests/effect_session.rs"
+    },
+    {
+      "bytes": 34840,
+      "path": "crates/leselang-hir/tests/effect_stack.rs",
+      "sha256": "ea74276c63db952d54ac39b3ea81ca4ba226dc89274e3ce015860b6909326328",
+      "source": "crates/leselang-hir/tests/effect_stack.rs"
+    },
+    {
+      "bytes": 26232,
+      "path": "crates/leselang-hir/tests/flow_typing.rs",
+      "sha256": "0ab09bce086811c4fd28cdd149038862c5b935b8d33fb65364a298399f1bf9f5",
+      "source": "crates/leselang-hir/tests/flow_typing.rs"
+    },
+    {
+      "bytes": 19938,
+      "path": "crates/leselang-hir/tests/fold_preparation.rs",
+      "sha256": "bb285631621b481f2c6d307fcb3840ccf03f3c8fc2e614e6ff3de3c2b886d152",
+      "source": "crates/leselang-hir/tests/fold_preparation.rs"
+    },
+    {
+      "bytes": 33249,
+      "path": "crates/leselang-hir/tests/generic_ir.rs",
+      "sha256": "bcbb76e592991512cc9935d75f4cab2684d0561de25f1a67d04b402d8ffababa",
+      "source": "crates/leselang-hir/tests/generic_ir.rs"
+    },
+    {
+      "bytes": 41345,
+      "path": "crates/leselang-hir/tests/group_exports.rs",
+      "sha256": "79fdf02a1f6992c75949dc1f5269252d684b77b94f069be688e50c3a07120901",
+      "source": "crates/leselang-hir/tests/group_exports.rs"
+    },
+    {
+      "bytes": 19132,
+      "path": "crates/leselang-hir/tests/group_reply.rs",
+      "sha256": "10607e968437090736b170ed93b133a980f730f6112c3ada8d9ccc44a1bd2895",
+      "source": "crates/leselang-hir/tests/group_reply.rs"
+    },
+    {
+      "bytes": 47261,
+      "path": "crates/leselang-hir/tests/group_reply_reentry.rs",
+      "sha256": "df230dcaefd02e7d2d463f3fa48ca10a823cb3008cc5fcfb8ba3d52673685a83",
+      "source": "crates/leselang-hir/tests/group_reply_reentry.rs"
+    },
+    {
+      "bytes": 85072,
+      "path": "crates/leselang-hir/tests/group_source.rs",
+      "sha256": "edd54700dd7fadb55f04c82f5d6d588406ae5d171e36480f644b5da146effddd",
+      "source": "crates/leselang-hir/tests/group_source.rs"
+    },
+    {
+      "bytes": 33988,
+      "path": "crates/leselang-hir/tests/group_typing.rs",
+      "sha256": "b21fbf8e232bc3d7ef520c95b5baef6e3ad28670fffa3272c5a92c52242a06e7",
+      "source": "crates/leselang-hir/tests/group_typing.rs"
+    },
+    {
+      "bytes": 31427,
+      "path": "crates/leselang-hir/tests/helper_bindings.rs",
+      "sha256": "3d67778e12aff25822f193ee4db4272a41d5a733c09a55422fa9ee6ed506bf9b",
+      "source": "crates/leselang-hir/tests/helper_bindings.rs"
+    },
+    {
+      "bytes": 30151,
+      "path": "crates/leselang-hir/tests/helper_body.rs",
+      "sha256": "d72adc9fa2d0c49d513bc8beae712249cb248323a999e1eb9715c82a4bbf0980",
+      "source": "crates/leselang-hir/tests/helper_body.rs"
+    },
+    {
+      "bytes": 29811,
+      "path": "crates/leselang-hir/tests/helper_body_source.rs",
+      "sha256": "20b6afd47661e502ebba5d949428dd12c97ee7fe954c17d5dfcbc2e901acbb71",
+      "source": "crates/leselang-hir/tests/helper_body_source.rs"
+    },
+    {
+      "bytes": 27912,
+      "path": "crates/leselang-hir/tests/helper_declarations.rs",
+      "sha256": "6fbf09cdd6293bb84fc7a2b51d892da8e7a300aa7b9f8a088c0076222bc64cb0",
+      "source": "crates/leselang-hir/tests/helper_declarations.rs"
+    },
+    {
+      "bytes": 23728,
+      "path": "crates/leselang-hir/tests/helper_dependencies.rs",
+      "sha256": "3f4482e622049f23431b610326d8bcd75916d809f7f728d4f712b619210ca77c",
+      "source": "crates/leselang-hir/tests/helper_dependencies.rs"
+    },
+    {
+      "bytes": 25025,
+      "path": "crates/leselang-hir/tests/helper_expansion.rs",
+      "sha256": "beb79d42ecba869429e9d4ff2dd400998c9daabbc043be06e55d2296e6db240b",
+      "source": "crates/leselang-hir/tests/helper_expansion.rs"
+    },
+    {
+      "bytes": 28827,
+      "path": "crates/leselang-hir/tests/helper_hygiene.rs",
+      "sha256": "6791f045ec2fb53701fb56a034ca9a9b5d872084194fa1933b8b1138c5d63ed1",
+      "source": "crates/leselang-hir/tests/helper_hygiene.rs"
+    },
+    {
+      "bytes": 34341,
+      "path": "crates/leselang-hir/tests/helper_instance.rs",
+      "sha256": "7eac22820b7cee11e7c8c56c1c0f2cf6c4263855ca7e7c24e07f99fb525caa85",
+      "source": "crates/leselang-hir/tests/helper_instance.rs"
+    },
+    {
+      "bytes": 23521,
+      "path": "crates/leselang-hir/tests/helper_instance_finish.rs",
+      "sha256": "06f20a79563a65aa00a5433fb782d16669af25dddd15735dd21d70803542f70c",
+      "source": "crates/leselang-hir/tests/helper_instance_finish.rs"
+    },
+    {
+      "bytes": 30179,
+      "path": "crates/leselang-hir/tests/helper_join.rs",
+      "sha256": "6d4055b42f10b76dc2b4f21163fada1841e3c709450afc8e9f38f07b6e842070",
+      "source": "crates/leselang-hir/tests/helper_join.rs"
+    },
+    {
+      "bytes": 30583,
+      "path": "crates/leselang-hir/tests/helper_registry.rs",
+      "sha256": "86b43d3af11e427b4a1c04a3949c8d8c31872bda593a9f3923a305132c59a3b2",
+      "source": "crates/leselang-hir/tests/helper_registry.rs"
+    },
+    {
+      "bytes": 33410,
+      "path": "crates/leselang-hir/tests/helper_returns.rs",
+      "sha256": "10884efa79739189d50e08726caf94d097b2a92ef206d39d3282800a9b3c35c6",
+      "source": "crates/leselang-hir/tests/helper_returns.rs"
+    },
+    {
+      "bytes": 34391,
+      "path": "crates/leselang-hir/tests/helper_source.rs",
+      "sha256": "00fdae5e35a68e6cd94ebfe38537e8258a83488ac723b0d6babb3e7cbd82e5d3",
+      "source": "crates/leselang-hir/tests/helper_source.rs"
+    },
+    {
+      "bytes": 30533,
+      "path": "crates/leselang-hir/tests/helper_templates.rs",
+      "sha256": "d067ec8cc23d4bb44e670dd26b2017c284cc533cfd178e3449572c6dca35f21e",
+      "source": "crates/leselang-hir/tests/helper_templates.rs"
+    },
+    {
+      "bytes": 28961,
+      "path": "crates/leselang-hir/tests/host_flow_typing.rs",
+      "sha256": "0cd44f79348400e23763ff06263c63674b178456c0302a6e2752c2ba711f020a",
+      "source": "crates/leselang-hir/tests/host_flow_typing.rs"
+    },
+    {
+      "bytes": 31430,
+      "path": "crates/leselang-hir/tests/host_group_typing.rs",
+      "sha256": "21a2b59b8d45f0f2a556b63d73ac5fd0c91a7b0addc39f9384fa89365ee133d0",
+      "source": "crates/leselang-hir/tests/host_group_typing.rs"
+    },
+    {
+      "bytes": 5451,
+      "path": "crates/leselang-hir/tests/host_result.rs",
+      "sha256": "0e87c673040a2ac290e1ea2170a315939a8c8dc4e9cd503715f90a44c9929df4",
+      "source": "crates/leselang-hir/tests/host_result.rs"
+    },
+    {
+      "bytes": 14311,
+      "path": "crates/leselang-hir/tests/host_source.rs",
+      "sha256": "fd076d5105554278e1b470b84315ec20501a497a2b29fdca0330a6716f2166e1",
+      "source": "crates/leselang-hir/tests/host_source.rs"
+    },
+    {
+      "bytes": 3729,
+      "path": "crates/leselang-hir/tests/local_names.rs",
+      "sha256": "b20de022e62107709fd53a988dcd300d3c4714dedb9c44dcd8e4f959c140acd1",
+      "source": "crates/leselang-hir/tests/local_names.rs"
+    },
+    {
+      "bytes": 15458,
+      "path": "crates/leselang-hir/tests/loop_preparation.rs",
+      "sha256": "7e46aee2a6010ac6cadb479ad6bf07debafa1f39c6003c9452ce10640d9769f7",
+      "source": "crates/leselang-hir/tests/loop_preparation.rs"
+    },
+    {
+      "bytes": 15989,
+      "path": "crates/leselang-hir/tests/native_graph.rs",
+      "sha256": "2ed61cebbaa2611d8eb5b65e1008c65f85c3cffe98cb0bb59845978386b2a9aa",
+      "source": "crates/leselang-hir/tests/native_graph.rs"
+    },
+    {
+      "bytes": 16496,
+      "path": "crates/leselang-hir/tests/native_group.rs",
+      "sha256": "0bc0f17feacdffdd2a2b2c5f8b37d8992d5f9d63d05e01db4a73c32f64da473a",
+      "source": "crates/leselang-hir/tests/native_group.rs"
+    },
+    {
+      "bytes": 17642,
+      "path": "crates/leselang-hir/tests/native_group_exports.rs",
+      "sha256": "402a18557d61d6d3b7a4c9c2903a0b9ad870d9e459d6c7b04b8c081c626aa788",
+      "source": "crates/leselang-hir/tests/native_group_exports.rs"
+    },
+    {
+      "bytes": 26229,
+      "path": "crates/leselang-hir/tests/native_group_flow.rs",
+      "sha256": "1c35c63c6870e0fdd96dcba620b7f5ba6e8533b25b6418e3072473c00f875a47",
+      "source": "crates/leselang-hir/tests/native_group_flow.rs"
+    },
+    {
+      "bytes": 14720,
+      "path": "crates/leselang-hir/tests/native_group_lookup.rs",
+      "sha256": "de11d42641596933b6e699b3912a2dd565e669ebc1ea2a52541c54bdd002e4df",
+      "source": "crates/leselang-hir/tests/native_group_lookup.rs"
+    },
+    {
+      "bytes": 10494,
+      "path": "crates/leselang-hir/tests/native_group_preparation.rs",
+      "sha256": "63da45d1f87ede37b3312b337a5697bb28917d5a63116e66780792954ec7406f",
+      "source": "crates/leselang-hir/tests/native_group_preparation.rs"
+    },
+    {
+      "bytes": 16632,
+      "path": "crates/leselang-hir/tests/native_group_signature.rs",
+      "sha256": "ec466374b668cdab400ddcf2db616d2f6a6813d3f697ed10ecb69a4b883dcec6",
+      "source": "crates/leselang-hir/tests/native_group_signature.rs"
+    },
+    {
+      "bytes": 30744,
+      "path": "crates/leselang-hir/tests/parallel_evaluation.rs",
+      "sha256": "7a9bfb12ff6480ae34dcaf49ede26167161a98b106fb65c784d914bfde1ece34",
+      "source": "crates/leselang-hir/tests/parallel_evaluation.rs"
+    },
+    {
+      "bytes": 43538,
+      "path": "crates/leselang-hir/tests/prepared_call_evaluation.rs",
+      "sha256": "c8e732ff247472a99e7e9a9b7d336610be93e2f6f49f58d2390cf0532c4fc91f",
+      "source": "crates/leselang-hir/tests/prepared_call_evaluation.rs"
+    },
+    {
+      "bytes": 141315,
+      "path": "crates/leselang-hir/tests/prepared_gui_host.rs",
+      "sha256": "262384ce702d8b6a72e94926e1bd93320b32663b563ec8c52b190d25d31a8842",
+      "source": "crates/leselang-hir/tests/prepared_gui_host.rs"
+    },
+    {
+      "bytes": 20608,
+      "path": "crates/leselang-hir/tests/prepared_parallel.rs",
+      "sha256": "89e90a7de51c7849ff4183ddd60e0e601da7de1c1b5bc158fa3a81d0a88aead0",
+      "source": "crates/leselang-hir/tests/prepared_parallel.rs"
+    },
+    {
+      "bytes": 23748,
+      "path": "crates/leselang-hir/tests/prepared_sequence.rs",
+      "sha256": "7246636c9fbcd4c28b52ba7991d9cd43f13ebe1f4c327cd2a218553820865600",
+      "source": "crates/leselang-hir/tests/prepared_sequence.rs"
+    },
+    {
+      "bytes": 28129,
+      "path": "crates/leselang-hir/tests/prepared_typing.rs",
+      "sha256": "f77fc6b308eb67916a6f98475343172fe25e452be532d1474f3e8a392299aff5",
+      "source": "crates/leselang-hir/tests/prepared_typing.rs"
+    },
+    {
+      "bytes": 31551,
+      "path": "crates/leselang-hir/tests/program_source.rs",
+      "sha256": "d664afd9dd4f7338918bde640c39e2c7783ca40f5b5dd782544f05c6c6faecfc",
+      "source": "crates/leselang-hir/tests/program_source.rs"
+    },
+    {
+      "bytes": 21021,
+      "path": "crates/leselang-hir/tests/projection_access.rs",
+      "sha256": "c51978d1125b8d223f3a2b0c8e7b1074411f947f00f977a198645f4f08c965ea",
+      "source": "crates/leselang-hir/tests/projection_access.rs"
+    },
+    {
+      "bytes": 35678,
+      "path": "crates/leselang-hir/tests/projection_source.rs",
+      "sha256": "71ce8835c54318382e92cef9638d02e954a70377489138ef68dd088a90fb09f5",
+      "source": "crates/leselang-hir/tests/projection_source.rs"
+    },
+    {
+      "bytes": 20835,
+      "path": "crates/leselang-hir/tests/pure_evaluation.rs",
+      "sha256": "9a16253fd7e6754b90c422572d0f1694be2b211880b98aad3ff8d7f1c60f89cf",
+      "source": "crates/leselang-hir/tests/pure_evaluation.rs"
+    },
+    {
+      "bytes": 29637,
+      "path": "crates/leselang-hir/tests/pure_typing.rs",
+      "sha256": "a1e47f9b1532e1daa66ed026d72c1bb407c74061d04e75d56bfc7c46807dbc85",
+      "source": "crates/leselang-hir/tests/pure_typing.rs"
+    },
+    {
+      "bytes": 35508,
+      "path": "crates/leselang-hir/tests/repeat_sequence_source.rs",
+      "sha256": "78b1ed854a5d7fe95dbec19f8bb9753162b815f9878d2bdc53369493202a6c12",
+      "source": "crates/leselang-hir/tests/repeat_sequence_source.rs"
+    },
+    {
+      "bytes": 48790,
+      "path": "crates/leselang-hir/tests/repeat_source.rs",
+      "sha256": "6f9f3d369d99b4955864964c37a180008b21ab9230918793eb311e23aa8dad7e",
+      "source": "crates/leselang-hir/tests/repeat_source.rs"
+    },
+    {
+      "bytes": 29223,
+      "path": "crates/leselang-hir/tests/saved_call.rs",
+      "sha256": "2ea493dfa28d52c5e7ee8197f5fc0f69934c3076f59956c5fab896e7f0baeeeb",
+      "source": "crates/leselang-hir/tests/saved_call.rs"
+    },
+    {
+      "bytes": 288403,
+      "path": "crates/leselang-hir/tests/saved_group.rs",
+      "sha256": "e8e6430ac1535e815ab370e2e7db2ee5507c5d156e0f16106fc451cce283eba3",
+      "source": "crates/leselang-hir/tests/saved_group.rs"
+    },
+    {
+      "bytes": 48995,
+      "path": "crates/leselang-hir/tests/saved_parallel.rs",
+      "sha256": "177959c11fc246dce34d6c4c0c06bb7881d20463c73b1c753a3369aa09628d6e",
+      "source": "crates/leselang-hir/tests/saved_parallel.rs"
+    },
+    {
+      "bytes": 60184,
+      "path": "crates/leselang-hir/tests/saved_sequence.rs",
+      "sha256": "2aeb7ec1e37444fa7a4cf7f4c29d4d1db12e502eef98c3e51048fd53646985be",
+      "source": "crates/leselang-hir/tests/saved_sequence.rs"
+    },
+    {
+      "bytes": 25678,
+      "path": "crates/leselang-hir/tests/scalar_binding_source.rs",
+      "sha256": "68ba85b750feacf9a71ba04b5dd4d6bb5901952aa16ffe4d115c6f3ba650f6df",
+      "source": "crates/leselang-hir/tests/scalar_binding_source.rs"
+    },
+    {
+      "bytes": 22382,
+      "path": "crates/leselang-hir/tests/scalar_control_source.rs",
+      "sha256": "b50ca9ba4b81ecb5f5413a1aa6bc775bc95583175ba87b8f5b4f303511b06ad8",
+      "source": "crates/leselang-hir/tests/scalar_control_source.rs"
+    },
+    {
+      "bytes": 37858,
+      "path": "crates/leselang-hir/tests/scalar_fold_source.rs",
+      "sha256": "f5b5c67cf8c37270ea966834ce99ca3dc57279b3bf1dfd6d86269b1e348c7e45",
+      "source": "crates/leselang-hir/tests/scalar_fold_source.rs"
+    },
+    {
+      "bytes": 18698,
+      "path": "crates/leselang-hir/tests/scalar_form.rs",
+      "sha256": "eb65e85a49a239d9748c4224f3ec2101c122dd502e27fbefcdb8cc198c72c4e7",
+      "source": "crates/leselang-hir/tests/scalar_form.rs"
+    },
+    {
+      "bytes": 30276,
+      "path": "crates/leselang-hir/tests/scalar_loop_source.rs",
+      "sha256": "6a5a24c645e42c183bce1d62ddfcc6a99808ae27c4fcc114e160b6b089330640",
+      "source": "crates/leselang-hir/tests/scalar_loop_source.rs"
+    },
+    {
+      "bytes": 24850,
+      "path": "crates/leselang-hir/tests/scalar_source.rs",
+      "sha256": "5baeee94390752fa8b5a6b68009dc55c23f4572bb3c3f9d5ad6634d908eb5364",
+      "source": "crates/leselang-hir/tests/scalar_source.rs"
+    },
+    {
+      "bytes": 44250,
+      "path": "crates/leselang-hir/tests/scoped_group_acceptance.rs",
+      "sha256": "e9b93859845ba14e66fd24ec98334f77b0d8c2b564a5dbc816f50b83c843087e",
+      "source": "crates/leselang-hir/tests/scoped_group_acceptance.rs"
+    },
+    {
+      "bytes": 27629,
+      "path": "crates/leselang-hir/tests/sequence_evaluation.rs",
+      "sha256": "f4ea3854c968b03ef7e99967a977bef29a8635eff3f058502236bf95beb8b101",
+      "source": "crates/leselang-hir/tests/sequence_evaluation.rs"
+    },
+    {
+      "bytes": 22900,
+      "path": "crates/leselang-hir/tests/sequence_source.rs",
+      "sha256": "c0ef599d28fc1b41d8e6d7eeb3725e7d19dc4cb148e7fbe79ccca87a834ff0a6",
+      "source": "crates/leselang-hir/tests/sequence_source.rs"
+    },
+    {
+      "bytes": 22299,
+      "path": "crates/leselang-hir/tests/source_call.rs",
+      "sha256": "c618842992138243f53f4125cf505078949c4225e3c217bc09023907fe63b6dd",
+      "source": "crates/leselang-hir/tests/source_call.rs"
+    },
+    {
+      "bytes": 25978,
+      "path": "crates/leselang-hir/tests/source_call_finish.rs",
+      "sha256": "401edbae43b9aa3935bd171b4c9f6eace3cbb57473877bb6c8bacd7546dbbfb9",
+      "source": "crates/leselang-hir/tests/source_call_finish.rs"
+    },
+    {
+      "bytes": 30111,
+      "path": "crates/leselang-hir/tests/source_cost.rs",
+      "sha256": "eb70fab678829e224298f2ea9a65a37e062801e7ffd65f48f066cee152a2815e",
+      "source": "crates/leselang-hir/tests/source_cost.rs"
+    },
+    {
+      "bytes": 13450,
+      "path": "crates/leselang-hir/tests/source_preparation.rs",
+      "sha256": "86a292242487c349c2a41ccf7534368644faa1c7db237879708aa604d564f48f",
+      "source": "crates/leselang-hir/tests/source_preparation.rs"
+    },
+    {
+      "bytes": 409,
+      "path": "crates/leselang-hir-core/Cargo.toml",
+      "sha256": "cf9b1cfd10e2128595f406ec23cefcd6ba4f8704f628c307e56a7ca53fc98697",
+      "source": null
+    },
+    {
+      "bytes": 19366,
+      "path": "crates/leselang-hir-core/src/argument_binding_contract_tests.rs",
+      "sha256": "641bae179a7626bd876c93f9da44a4add1149314c2557b6333e05dcafb1c699d",
+      "source": "crates/leselang-hir-core/src/argument_binding_contract_tests.rs"
+    },
+    {
+      "bytes": 19862,
+      "path": "crates/leselang-hir-core/src/binding_source.rs",
+      "sha256": "fb6825baf390bb1bb38a843901997bd1db077bf6fbf39c9c3bba43f1189fa5c0",
+      "source": "crates/leselang-hir-core/src/binding_source.rs"
+    },
+    {
+      "bytes": 20121,
+      "path": "crates/leselang-hir-core/src/bound_projection_source.rs",
+      "sha256": "47d38128c483a57022b39ee80fc819b0bad314ba96b9cdf4ebdcad78f3adf808",
+      "source": "crates/leselang-hir-core/src/bound_projection_source.rs"
+    },
+    {
+      "bytes": 19518,
+      "path": "crates/leselang-hir-core/src/call_evaluation.rs",
+      "sha256": "255f19be9024e561ad2f0587c9651ff4828be651f0b2b95f748fbe0103c2cbe8",
+      "source": "crates/leselang-hir-core/src/call_evaluation.rs"
+    },
+    {
+      "bytes": 14339,
+      "path": "crates/leselang-hir-core/src/call_typing.rs",
+      "sha256": "a13645c8cfd3c368273415ffba62a0e505972a9019fc68b97bc6c0980b3a9f21",
+      "source": "crates/leselang-hir-core/src/call_typing.rs"
+    },
+    {
+      "bytes": 9271,
+      "path": "crates/leselang-hir-core/src/catalog_atomic_source.rs",
+      "sha256": "89fbf1fa1b36c20b09d58658181228d46eb185c88d3cc9266b7431ce6b8b0a6e",
+      "source": "crates/leselang-hir-core/src/catalog_atomic_source.rs"
+    },
+    {
+      "bytes": 43356,
+      "path": "crates/leselang-hir-core/src/catalog_group_source.rs",
+      "sha256": "a53a761d9f760e7f630c862a91c80a12d5ff42fc18e4d5052d4fa6414c0fbeb6",
+      "source": "crates/leselang-hir-core/src/catalog_group_source.rs"
+    },
+    {
+      "bytes": 26750,
+      "path": "crates/leselang-hir-core/src/catalog_program.rs",
+      "sha256": "a35e9b63f2260c67fa3e7757daaf030d0fe31f4006619b180d221d7953503e1a",
+      "source": "crates/leselang-hir-core/src/catalog_program.rs"
+    },
+    {
+      "bytes": 28545,
+      "path": "crates/leselang-hir-core/src/catalog_source.rs",
+      "sha256": "918c1d586102c5d2f968678bc82a81c09515ec9c231d057a3449bc7b8d2e7dd5",
+      "source": "crates/leselang-hir-core/src/catalog_source.rs"
+    },
+    {
+      "bytes": 9669,
+      "path": "crates/leselang-hir-core/src/choice_source.rs",
+      "sha256": "447f77740e3dacff3dcf9c7513ad6be3b8a3a174f5d8d6b18a4d0b9fa9bc70e5",
+      "source": "crates/leselang-hir-core/src/choice_source.rs"
+    },
+    {
+      "bytes": 5967,
+      "path": "crates/leselang-hir-core/src/computation_profile.rs",
+      "sha256": "4ba4763edbf919422a127de2d15a99c35bb2fdabb61e1d4f06fd4c44f9947308",
+      "source": "crates/leselang-hir-core/src/computation_profile.rs"
+    },
+    {
+      "bytes": 15967,
+      "path": "crates/leselang-hir-core/src/control_source.rs",
+      "sha256": "9322dfa318d6bcad2debc6c261e43ee0d8c7b74bfeec626c75387877c9bb9b08",
+      "source": "crates/leselang-hir-core/src/control_source.rs"
+    },
+    {
+      "bytes": 20863,
+      "path": "crates/leselang-hir-core/src/effect_evaluation.rs",
+      "sha256": "8c7538120e2109a2152bbcc1c9f914da17b4d60d8e73da382375ebf5fd209e1d",
+      "source": "crates/leselang-hir-core/src/effect_evaluation.rs"
+    },
+    {
+      "bytes": 19212,
+      "path": "crates/leselang-hir-core/src/effect_reentry.rs",
+      "sha256": "36533a5eec7ccbc5696f4d31dc1b3dd2ad42d95664a9442273c73c5cd0b6166d",
+      "source": "crates/leselang-hir-core/src/effect_reentry.rs"
+    },
+    {
+      "bytes": 39023,
+      "path": "crates/leselang-hir-core/src/effect_session.rs",
+      "sha256": "1990a23cabe41c4ff39c14491fdfda64af3d6b54cf439749a26bf75cd8f3b472",
+      "source": "crates/leselang-hir-core/src/effect_session.rs"
+    },
+    {
+      "bytes": 23062,
+      "path": "crates/leselang-hir-core/src/effect_stack.rs",
+      "sha256": "7efa5c4fb8a998b68d5c4bd6d313b9bd8dbd94edef9523eb1adce68b801b0011",
+      "source": "crates/leselang-hir-core/src/effect_stack.rs"
+    },
+    {
+      "bytes": 29979,
+      "path": "crates/leselang-hir-core/src/effect_stack_session.rs",
+      "sha256": "8fd169c0d0b4d2cb363667c45963ce3cd677ee7f011ba0ca73cb712eed77bcd2",
+      "source": "crates/leselang-hir-core/src/effect_stack_session.rs"
+    },
+    {
+      "bytes": 50625,
+      "path": "crates/leselang-hir-core/src/flow_typing.rs",
+      "sha256": "9e9a90bb71efa44c52f53b24570be9393344f3a8bd99edf7af78ac1c40004211",
+      "source": "crates/leselang-hir-core/src/flow_typing.rs"
+    },
+    {
+      "bytes": 11655,
+      "path": "crates/leselang-hir-core/src/fold_source.rs",
+      "sha256": "233f7c4c55628127d0a27fe17ffbc11ec99f88b59adec677dfd170af615d1e5d",
+      "source": "crates/leselang-hir-core/src/fold_source.rs"
+    },
+    {
+      "bytes": 17922,
+      "path": "crates/leselang-hir-core/src/group_exports.rs",
+      "sha256": "7cb4c96aa9775aed3172910fadc5c5a32e394c7fd79322f21917853ab7adae22",
+      "source": "crates/leselang-hir-core/src/group_exports.rs"
+    },
+    {
+      "bytes": 12289,
+      "path": "crates/leselang-hir-core/src/group_reply.rs",
+      "sha256": "1339fd31a9e699185de3cd93c3c2dd5a8f1dd53b4602ec1f41063dc1f531a7fa",
+      "source": "crates/leselang-hir-core/src/group_reply.rs"
+    },
+    {
+      "bytes": 10679,
+      "path": "crates/leselang-hir-core/src/group_source.rs",
+      "sha256": "8760c6dbee1569ab26a4c868fde6520f00cadbaa2408937e4b75736034d0f17b",
+      "source": "crates/leselang-hir-core/src/group_source.rs"
+    },
+    {
+      "bytes": 8214,
+      "path": "crates/leselang-hir-core/src/helper_bindings.rs",
+      "sha256": "d387e302821c387ed513f1989949372b6d5b1681fa20cba9bfe66ef7262c9bca",
+      "source": "crates/leselang-hir-core/src/helper_bindings.rs"
+    },
+    {
+      "bytes": 9308,
+      "path": "crates/leselang-hir-core/src/helper_body.rs",
+      "sha256": "536fd2b830e702e7f3139d2845793abba014205006a4c5de466262f1f857ef3d",
+      "source": "crates/leselang-hir-core/src/helper_body.rs"
+    },
+    {
+      "bytes": 11907,
+      "path": "crates/leselang-hir-core/src/helper_body_source.rs",
+      "sha256": "789b365eba16079d15b3b98ef2994af11c77ff9b3d620db152b2d28d60e54587",
+      "source": "crates/leselang-hir-core/src/helper_body_source.rs"
+    },
+    {
+      "bytes": 14420,
+      "path": "crates/leselang-hir-core/src/helper_declarations.rs",
+      "sha256": "b8d8687471657939267e9fa0e8e52a4c597d55796fc4cde452a42259bbea5a35",
+      "source": "crates/leselang-hir-core/src/helper_declarations.rs"
+    },
+    {
+      "bytes": 9886,
+      "path": "crates/leselang-hir-core/src/helper_dependencies.rs",
+      "sha256": "6cd74b07a0fb46a312bcbc69e9ebda6edcde9b7bb4f95779f624365e09678743",
+      "source": "crates/leselang-hir-core/src/helper_dependencies.rs"
+    },
+    {
+      "bytes": 5662,
+      "path": "crates/leselang-hir-core/src/helper_expansion.rs",
+      "sha256": "dd482c5f723e6122f279f20fa557d85409c5ad4cd5b3a15bfdbbf3e22deb1099",
+      "source": "crates/leselang-hir-core/src/helper_expansion.rs"
+    },
+    {
+      "bytes": 15598,
+      "path": "crates/leselang-hir-core/src/helper_hygiene.rs",
+      "sha256": "209c16622697b462f4caf6d94b7a1c299e8515ebd50045fefecf6046f0077d51",
+      "source": "crates/leselang-hir-core/src/helper_hygiene.rs"
+    },
+    {
+      "bytes": 10428,
+      "path": "crates/leselang-hir-core/src/helper_instance.rs",
+      "sha256": "41882cc39be7dca2d37c30c6bedbac20f9d8cf94ffd705a56bc50365a2176ad0",
+      "source": "crates/leselang-hir-core/src/helper_instance.rs"
+    },
+    {
+      "bytes": 10878,
+      "path": "crates/leselang-hir-core/src/helper_instance_finish.rs",
+      "sha256": "fd8237fcd4f4344877875a866bab2fe4bfb699f416f353f83508bea016214477",
+      "source": "crates/leselang-hir-core/src/helper_instance_finish.rs"
+    },
+    {
+      "bytes": 11474,
+      "path": "crates/leselang-hir-core/src/helper_join.rs",
+      "sha256": "35bd7bf8f6860bcaa695d71f711e53067664552a60c15bccdb9c80702bd69cd7",
+      "source": "crates/leselang-hir-core/src/helper_join.rs"
+    },
+    {
+      "bytes": 8835,
+      "path": "crates/leselang-hir-core/src/helper_registry.rs",
+      "sha256": "765fc7aa2af87d0283a00eefd198877ef9d144660495cb663e70bd128ed25ad0",
+      "source": "crates/leselang-hir-core/src/helper_registry.rs"
+    },
+    {
+      "bytes": 18469,
+      "path": "crates/leselang-hir-core/src/helper_returns.rs",
+      "sha256": "89f073f1e526c0e6f3e43a2e8f166b25097190eaca1d50424e562cb2558907f8",
+      "source": "crates/leselang-hir-core/src/helper_returns.rs"
+    },
+    {
+      "bytes": 15073,
+      "path": "crates/leselang-hir-core/src/helper_source.rs",
+      "sha256": "91ab406d9fd76569d145cf0e479b5582085b3c04b80cca1bd6bc7da2039f7280",
+      "source": "crates/leselang-hir-core/src/helper_source.rs"
+    },
+    {
+      "bytes": 9676,
+      "path": "crates/leselang-hir-core/src/helper_templates.rs",
+      "sha256": "864ba17806389773a36c21618a705fdd2644f5b8df30208520d2b6e0d01ffc6d",
+      "source": "crates/leselang-hir-core/src/helper_templates.rs"
+    },
+    {
+      "bytes": 7505,
+      "path": "crates/leselang-hir-core/src/host_source.rs",
+      "sha256": "107dbbdeaa87f11446c20dddda5baa8130bdfe702a430c96e025305e96cf2c28",
+      "source": "crates/leselang-hir-core/src/host_source.rs"
+    },
+    {
+      "bytes": 11814,
+      "path": "crates/leselang-hir-core/src/ir.rs",
+      "sha256": "70850588bf1e611fe9c92a6e8afed8bc32821ed44aaa2a4759979d693afc5349",
+      "source": "crates/leselang-hir-core/src/ir.rs"
+    },
+    {
+      "bytes": 1982,
+      "path": "crates/leselang-hir-core/src/lib.rs",
+      "sha256": "13b6daee3f3d94f7b3f9c0ef0e65f1b8b3ad04c095ccfa058981a293393c6a28",
+      "source": "crates/leselang-hir-core/src/lib.rs"
+    },
+    {
+      "bytes": 14446,
+      "path": "crates/leselang-hir-core/src/local_effect_session.rs",
+      "sha256": "1adbe8dc93ffd47988e021e5c641fe56c808aa1932489f72eae70c0271e71ced",
+      "source": "crates/leselang-hir-core/src/local_effect_session.rs"
+    },
+    {
+      "bytes": 1073,
+      "path": "crates/leselang-hir-core/src/local_scope.rs",
+      "sha256": "ba1167180650079329a1a8b9f62d4428776ca97b430966206e371ffc74932c9b",
+      "source": "crates/leselang-hir-core/src/local_scope.rs"
+    },
+    {
+      "bytes": 8782,
+      "path": "crates/leselang-hir-core/src/loop_source.rs",
+      "sha256": "e16ae44939227fd36790faefbeed16b7c7b2af2fddb2169bf1ab1f88f38f1cea",
+      "source": "crates/leselang-hir-core/src/loop_source.rs"
+    },
+    {
+      "bytes": 8567,
+      "path": "crates/leselang-hir-core/src/native_graph.rs",
+      "sha256": "9badf98241104d0f65f1a6d988396d933c1c6855977e020a82c51f2d486c824d",
+      "source": "crates/leselang-hir-core/src/native_graph.rs"
+    },
+    {
+      "bytes": 6867,
+      "path": "crates/leselang-hir-core/src/native_group.rs",
+      "sha256": "a69305023962bd393cfd27e1c4775eae7531d557788659506458d7304bd2113d",
+      "source": "crates/leselang-hir-core/src/native_group.rs"
+    },
+    {
+      "bytes": 4997,
+      "path": "crates/leselang-hir-core/src/native_group_exports.rs",
+      "sha256": "cd059c4a433843513696f8d195f9708b1fb5609bffded2b88d3ad3eb00272745",
+      "source": "crates/leselang-hir-core/src/native_group_exports.rs"
+    },
+    {
+      "bytes": 5005,
+      "path": "crates/leselang-hir-core/src/native_group_lookup.rs",
+      "sha256": "f850fecf7a271057c79d2b49de9cc5f03c74a589b9f16eb2d7ef953bf286c1ae",
+      "source": "crates/leselang-hir-core/src/native_group_lookup.rs"
+    },
+    {
+      "bytes": 6743,
+      "path": "crates/leselang-hir-core/src/native_group_preparation.rs",
+      "sha256": "2e526acf6bf6b07cb3329e603cbf91317b71b64e122ef417ea374dbaa43dcdd8",
+      "source": "crates/leselang-hir-core/src/native_group_preparation.rs"
+    },
+    {
+      "bytes": 5067,
+      "path": "crates/leselang-hir-core/src/native_group_signature.rs",
+      "sha256": "bf10f69e7fc0fdf18b00412557dee32a4e164d96cc876b220983a0d875f92296",
+      "source": "crates/leselang-hir-core/src/native_group_signature.rs"
+    },
+    {
+      "bytes": 5040,
+      "path": "crates/leselang-hir-core/src/parallel_evaluation/transfer_tests.rs",
+      "sha256": "9af0e18cd6c87851dd2ecba5dafa882bf1e2f4f4bf8b8347068155ead705ec6b",
+      "source": "crates/leselang-hir-core/src/parallel_evaluation/transfer_tests.rs"
+    },
+    {
+      "bytes": 36970,
+      "path": "crates/leselang-hir-core/src/parallel_evaluation.rs",
+      "sha256": "d6b9e6da99e6dd9aa24a14819bea153331e495703a2f68a86708a26fc3aa2427",
+      "source": "crates/leselang-hir-core/src/parallel_evaluation.rs"
+    },
+    {
+      "bytes": 22376,
+      "path": "crates/leselang-hir-core/src/prepared_call_evaluation.rs",
+      "sha256": "fbb347f0c91b5d7b59fafde2ae8cd47c7cdc2904740ab16e4f7c79eeb66dce09",
+      "source": "crates/leselang-hir-core/src/prepared_call_evaluation.rs"
+    },
+    {
+      "bytes": 16187,
+      "path": "crates/leselang-hir-core/src/prepared_parallel.rs",
+      "sha256": "76fc750046ec65f99151aaa145bea3491dc920a6ab2824b1ab52a6c1a37524bd",
+      "source": "crates/leselang-hir-core/src/prepared_parallel.rs"
+    },
+    {
+      "bytes": 22018,
+      "path": "crates/leselang-hir-core/src/prepared_sequence.rs",
+      "sha256": "6f0c4e9acc0d13727d1f5b9eb45ac19db1c976e780e4ad8a28fe50f05ea21cde",
+      "source": "crates/leselang-hir-core/src/prepared_sequence.rs"
+    },
+    {
+      "bytes": 17423,
+      "path": "crates/leselang-hir-core/src/prepared_typing.rs",
+      "sha256": "3dc9438a400f892ecef3c4e1c54b69de55eecfd09d9fe77a28c8dc5c6ed7cda5",
+      "source": "crates/leselang-hir-core/src/prepared_typing.rs"
+    },
+    {
+      "bytes": 10879,
+      "path": "crates/leselang-hir-core/src/program_source.rs",
+      "sha256": "f77821ce6e679107cd96285b1b6dbac87ad1fe48605366ea58c827c04e4e75ef",
+      "source": "crates/leselang-hir-core/src/program_source.rs"
+    },
+    {
+      "bytes": 9429,
+      "path": "crates/leselang-hir-core/src/projection_access.rs",
+      "sha256": "192cae7ee188d7719b0c03be3a3e222ac50c96c2d68ff45993119424c69b4649",
+      "source": "crates/leselang-hir-core/src/projection_access.rs"
+    },
+    {
+      "bytes": 25254,
+      "path": "crates/leselang-hir-core/src/projection_source.rs",
+      "sha256": "57a888e9125a335bbfacf1688234d1bb646ec3e4d012fabd66f7a318789b3799",
+      "source": "crates/leselang-hir-core/src/projection_source.rs"
+    },
+    {
+      "bytes": 18460,
+      "path": "crates/leselang-hir-core/src/pure_evaluation.rs",
+      "sha256": "ef2e13d6feac888a154a1be8fee5b93cf0a204d455efc3e16fd23119be4aa8e1",
+      "source": "crates/leselang-hir-core/src/pure_evaluation.rs"
+    },
+    {
+      "bytes": 21093,
+      "path": "crates/leselang-hir-core/src/pure_typing.rs",
+      "sha256": "b7ac906440526bcc99ddbc09062f662f46ed35048605eedde16d7bc2ab95ecf8",
+      "source": "crates/leselang-hir-core/src/pure_typing.rs"
+    },
+    {
+      "bytes": 14516,
+      "path": "crates/leselang-hir-core/src/repeat_sequence_source.rs",
+      "sha256": "65c5ae99b1d8bffec26a3de69a42a1a613c0d76274b0dca0fcf1570ae39ca6ba",
+      "source": "crates/leselang-hir-core/src/repeat_sequence_source.rs"
+    },
+    {
+      "bytes": 14544,
+      "path": "crates/leselang-hir-core/src/repeat_source.rs",
+      "sha256": "c90da6abecd53e9f3ea6598148552951e2c2431263552d3c9c9978afd5862499",
+      "source": "crates/leselang-hir-core/src/repeat_source.rs"
+    },
+    {
+      "bytes": 3658,
+      "path": "crates/leselang-hir-core/src/scalar_form.rs",
+      "sha256": "6e8146f94099b8229b2624704bffc8a1b9cdfd2f1ba5a6dfc965823dc1c36355",
+      "source": "crates/leselang-hir-core/src/scalar_form.rs"
+    },
+    {
+      "bytes": 5131,
+      "path": "crates/leselang-hir-core/src/scalar_source/fold.rs",
+      "sha256": "59f77543e0eaf356d0bec01b64c744789c045de5244f9933a1656cb7d9859a31",
+      "source": "crates/leselang-hir-core/src/scalar_source/fold.rs"
+    },
+    {
+      "bytes": 44059,
+      "path": "crates/leselang-hir-core/src/scalar_source.rs",
+      "sha256": "5ab9933650ca1b1207d84a54edec0501dc1ba8c36d7e15fb1a6bed0718574533",
+      "source": "crates/leselang-hir-core/src/scalar_source.rs"
+    },
+    {
+      "bytes": 3560,
+      "path": "crates/leselang-hir-core/src/sequence_evaluation/transfer_tests.rs",
+      "sha256": "beeff573700283cf590d2677b28769fc7bc1f824c83ff852acf066111ff9a6b8",
+      "source": "crates/leselang-hir-core/src/sequence_evaluation/transfer_tests.rs"
+    },
+    {
+      "bytes": 36793,
+      "path": "crates/leselang-hir-core/src/sequence_evaluation.rs",
+      "sha256": "646136c2f18b3dd8542c2d696817c26ef8cdc35411bd3345e415e1c6c8c2fbb4",
+      "source": "crates/leselang-hir-core/src/sequence_evaluation.rs"
+    },
+    {
+      "bytes": 11282,
+      "path": "crates/leselang-hir-core/src/sequence_source.rs",
+      "sha256": "dbed6280bc7a8064bc6fe3b975e318fec72bd7981c5913dab35bd232cd403992",
+      "source": "crates/leselang-hir-core/src/sequence_source.rs"
+    },
+    {
+      "bytes": 27953,
+      "path": "crates/leselang-hir-core/src/source_call.rs",
+      "sha256": "cd6d8cfbe164444e879310d668ee859b62c4f0f8a597edc3165992e092c67b0f",
+      "source": "crates/leselang-hir-core/src/source_call.rs"
+    },
+    {
+      "bytes": 6189,
+      "path": "crates/leselang-hir-core/src/source_cost.rs",
+      "sha256": "73c04052e6a35bf176a459261030d87184fe70b0dcbd67efe292ebe712f792ef",
+      "source": "crates/leselang-hir-core/src/source_cost.rs"
+    },
+    {
+      "bytes": 15590,
+      "path": "crates/leselang-hir-core/src/source_preparation_contract_tests.rs",
+      "sha256": "00c40084426b681775316e6996393ca5ae88e0fb2640aa6f26e4b5ba8c6acdc6",
+      "source": "crates/leselang-hir-core/src/source_preparation_contract_tests.rs"
+    },
+    {
+      "bytes": 330,
+      "path": "crates/leselang-runtime-core/Cargo.toml",
+      "sha256": "7e5c0325742ba53a76c5965cbcbc5ea4584cb339a3919b6b366e7c04d0e66fb7",
+      "source": null
+    },
+    {
+      "bytes": 96352,
+      "path": "crates/leselang-runtime-core/README.md",
+      "sha256": "6618f06945eb2169d966c288302ec9788769275f4af9439292b13c30d6d8ca40",
+      "source": "crates/leselang-runtime-core/README.md"
+    },
+    {
+      "bytes": 8500,
+      "path": "crates/leselang-runtime-core/src/argument_typing.rs",
+      "sha256": "58c0506d8ba90338d31859f2f74d55c026c80606430071713ab52258cf979550",
+      "source": "crates/leselang-runtime-core/src/argument_typing.rs"
+    },
+    {
+      "bytes": 1133,
+      "path": "crates/leselang-runtime-core/src/backoff.rs",
+      "sha256": "4abde4654dd021d9c274c86c5d8999ca33cb34bd4e5bf6616bd3703b9f30d56e",
+      "source": "crates/leselang-runtime-core/src/backoff.rs"
+    },
+    {
+      "bytes": 5155,
+      "path": "crates/leselang-runtime-core/src/capture_correspondence.rs",
+      "sha256": "a3f9f4b073ca9c9ffc3984252e49f17f8fe9faead2863db29264cfd52653770d",
+      "source": "crates/leselang-runtime-core/src/capture_correspondence.rs"
+    },
+    {
+      "bytes": 7488,
+      "path": "crates/leselang-runtime-core/src/capture_extension.rs",
+      "sha256": "79c370f8945f555420d9cce44fa74972daaad30360c9d13a47c07a884bec87ec",
+      "source": "crates/leselang-runtime-core/src/capture_extension.rs"
+    },
+    {
+      "bytes": 13085,
+      "path": "crates/leselang-runtime-core/src/capture_scope.rs",
+      "sha256": "b1fefe243b3a4df93f9f20b80b6e4bb626f34b6d74e1c3b3f92e14c11514eea5",
+      "source": "crates/leselang-runtime-core/src/capture_scope.rs"
+    },
+    {
+      "bytes": 8673,
+      "path": "crates/leselang-runtime-core/src/capture_snapshot.rs",
+      "sha256": "685823b2043a625f77f4916762bf0d10efc5c020c0cbe6dd579c395138434841",
+      "source": "crates/leselang-runtime-core/src/capture_snapshot.rs"
+    },
+    {
+      "bytes": 8320,
+      "path": "crates/leselang-runtime-core/src/capture_validation.rs",
+      "sha256": "afcfffc74e7707bf7b779b42ca53df03942b33a9b3caba41acb30f132db01a5f",
+      "source": "crates/leselang-runtime-core/src/capture_validation.rs"
+    },
+    {
+      "bytes": 4213,
+      "path": "crates/leselang-runtime-core/src/captured_bindings.rs",
+      "sha256": "ded986b9774eae728cb17ec39dcaeff9fed7c63d556701314d64f9a1b5b4b517",
+      "source": "crates/leselang-runtime-core/src/captured_bindings.rs"
+    },
+    {
+      "bytes": 11510,
+      "path": "crates/leselang-runtime-core/src/catalog.rs",
+      "sha256": "d85cbc4979b8347f3e94136000302e24b0ee97871d9bb90606fd1e0d058c081b",
+      "source": "crates/leselang-runtime-core/src/catalog.rs"
+    },
+    {
+      "bytes": 11129,
+      "path": "crates/leselang-runtime-core/src/checkpoint.rs",
+      "sha256": "b8dc86af662995e89f9ebf9978946566685d4bac0cb9818d23fcfc3ecc2d7a3f",
+      "source": "crates/leselang-runtime-core/src/checkpoint.rs"
+    },
+    {
+      "bytes": 1785,
+      "path": "crates/leselang-runtime-core/src/clock.rs",
+      "sha256": "c2272a1a89eb6b55fc4ff5412446ac3333000f64e027f7f3fc6e539c6330db33",
+      "source": "crates/leselang-runtime-core/src/clock.rs"
+    },
+    {
+      "bytes": 4618,
+      "path": "crates/leselang-runtime-core/src/collection.rs",
+      "sha256": "0473e94f0cda9c39ca423c1e2fc4c65a2182d44823c6527a551750c25d56c479",
+      "source": "crates/leselang-runtime-core/src/collection.rs"
+    },
+    {
+      "bytes": 4289,
+      "path": "crates/leselang-runtime-core/src/continuation.rs",
+      "sha256": "8994c47d309ad2ae1cbcd5de22cf3fdc760f39b4e76311328d8ab88e4e5ea05a",
+      "source": "crates/leselang-runtime-core/src/continuation.rs"
+    },
+    {
+      "bytes": 3944,
+      "path": "crates/leselang-runtime-core/src/continuation_context.rs",
+      "sha256": "051b72ff9b0d1079e5a4215aa2b64622ca4333aeed9ab4888c4d1360c11a2762",
+      "source": "crates/leselang-runtime-core/src/continuation_context.rs"
+    },
+    {
+      "bytes": 7726,
+      "path": "crates/leselang-runtime-core/src/control.rs",
+      "sha256": "77a7b4f10eba0798d049d450b77e685e1999c9438e4290e13fb50f88a0854c31",
+      "source": "crates/leselang-runtime-core/src/control.rs"
+    },
+    {
+      "bytes": 2103,
+      "path": "crates/leselang-runtime-core/src/dispatch_capacity.rs",
+      "sha256": "51f6bd64dee71cf2290a15c79f115341667dd8b02e9961aba54420c24e815cac",
+      "source": "crates/leselang-runtime-core/src/dispatch_capacity.rs"
+    },
+    {
+      "bytes": 2405,
+      "path": "crates/leselang-runtime-core/src/dispatch_data.rs",
+      "sha256": "1652795cb5c3da49daa2891a4cb9f1475433a2be25ceb8882895747da0cc3e92",
+      "source": "crates/leselang-runtime-core/src/dispatch_data.rs"
+    },
+    {
+      "bytes": 2309,
+      "path": "crates/leselang-runtime-core/src/dispatch_lease.rs",
+      "sha256": "f8e178d66befa545bb83fd46e38f3eb13183acb0b0c106fc7539d3f317329686",
+      "source": "crates/leselang-runtime-core/src/dispatch_lease.rs"
+    },
+    {
+      "bytes": 2466,
+      "path": "crates/leselang-runtime-core/src/dispatch_plan.rs",
+      "sha256": "281d2fcd78ad9fef31fc640cb36c30aa92993e925393a5b633bcca08fe39c258",
+      "source": "crates/leselang-runtime-core/src/dispatch_plan.rs"
+    },
+    {
+      "bytes": 4986,
+      "path": "crates/leselang-runtime-core/src/dispatch_recovery.rs",
+      "sha256": "16cec22b7f555998faf5d2b7a7dc4801b665942290a67c9c52a9d26feeb028be",
+      "source": "crates/leselang-runtime-core/src/dispatch_recovery.rs"
+    },
+    {
+      "bytes": 6731,
+      "path": "crates/leselang-runtime-core/src/fold.rs",
+      "sha256": "781cd00a3e51ba8d8b80ac764584b4bb7691381b5c9369173ab7eac8e5124f8f",
+      "source": "crates/leselang-runtime-core/src/fold.rs"
+    },
+    {
+      "bytes": 2721,
+      "path": "crates/leselang-runtime-core/src/fuel.rs",
+      "sha256": "f2700d18c51e45d98aab4143c8050dfbcc8e3d5de408d1172fbef2ffe2ef82cb",
+      "source": "crates/leselang-runtime-core/src/fuel.rs"
+    },
+    {
+      "bytes": 4786,
+      "path": "crates/leselang-runtime-core/src/group_graph.rs",
+      "sha256": "4bd18ed987f9327382a9226f2096c4b0eff1c541d1b63848f67180d7ba982acf",
+      "source": "crates/leselang-runtime-core/src/group_graph.rs"
+    },
+    {
+      "bytes": 5324,
+      "path": "crates/leselang-runtime-core/src/group_recovery.rs",
+      "sha256": "a0972c3d6ed9ea77573e86a59409e70df93ac676282875294d70e6ba3fa3454a",
+      "source": "crates/leselang-runtime-core/src/group_recovery.rs"
+    },
+    {
+      "bytes": 5401,
+      "path": "crates/leselang-runtime-core/src/group_recovery_batch.rs",
+      "sha256": "716310206017ac79a6edda1bd36e62105cbeba44213149da4d6b7f4d2d923c61",
+      "source": "crates/leselang-runtime-core/src/group_recovery_batch.rs"
+    },
+    {
+      "bytes": 5063,
+      "path": "crates/leselang-runtime-core/src/host_result.rs",
+      "sha256": "b89186b023d4555844c535439b95767054fd0d4d3d65647eac733dfeaa5bf165",
+      "source": "crates/leselang-runtime-core/src/host_result.rs"
+    },
+    {
+      "bytes": 20988,
+      "path": "crates/leselang-runtime-core/src/lib.rs",
+      "sha256": "f82ab635dae723aa692c335907574ae0ce46f280259689df84859baecaf68cdf",
+      "source": "crates/leselang-runtime-core/src/lib.rs"
+    },
+    {
+      "bytes": 6899,
+      "path": "crates/leselang-runtime-core/src/local_execution.rs",
+      "sha256": "5b87372ca61605b4452c69c0541604fdfd4371a64ad4f24c8afc83b09b70508a",
+      "source": "crates/leselang-runtime-core/src/local_execution.rs"
+    },
+    {
+      "bytes": 6661,
+      "path": "crates/leselang-runtime-core/src/outcome_summary.rs",
+      "sha256": "173c31de78254413ae2daf5ce831a19018fd126325d7507cf1acb984cebb8d1b",
+      "source": "crates/leselang-runtime-core/src/outcome_summary.rs"
+    },
+    {
+      "bytes": 2757,
+      "path": "crates/leselang-runtime-core/src/owned_scope.rs",
+      "sha256": "9c8a7cc78c399771b5d6f1f742b0aaae1b9faca67f543707f6d19e336a94e319",
+      "source": "crates/leselang-runtime-core/src/owned_scope.rs"
+    },
+    {
+      "bytes": 4565,
+      "path": "crates/leselang-runtime-core/src/projection.rs",
+      "sha256": "56f6a7c27d6b2839c8e5b2ca7e82d1f34c5c14b327a0e6c015986fd0d2a25dfa",
+      "source": "crates/leselang-runtime-core/src/projection.rs"
+    },
+    {
+      "bytes": 5820,
+      "path": "crates/leselang-runtime-core/src/record_recovery.rs",
+      "sha256": "a9e926a2946f516aef7612981cbc6894a1a6d4a5e099a45c83cc62fddceb0c72",
+      "source": "crates/leselang-runtime-core/src/record_recovery.rs"
+    },
+    {
+      "bytes": 2594,
+      "path": "crates/leselang-runtime-core/src/recovery.rs",
+      "sha256": "67371db69bea9ae114af213745da4778d3d98edf7eefdc76c4aa301263456443",
+      "source": "crates/leselang-runtime-core/src/recovery.rs"
+    },
+    {
+      "bytes": 7033,
+      "path": "crates/leselang-runtime-core/src/recovery_fence.rs",
+      "sha256": "72f3c2a451413a4a32d64315cdc76be60e892785ffeb8f3738c8285177b15dd9",
+      "source": "crates/leselang-runtime-core/src/recovery_fence.rs"
+    },
+    {
+      "bytes": 15777,
+      "path": "crates/leselang-runtime-core/src/reply.rs",
+      "sha256": "a876ee1347215b4d75d5c4f943a67684e3c1b7ceca26c6386f4e6afb8df2d0b9",
+      "source": "crates/leselang-runtime-core/src/reply.rs"
+    },
+    {
+      "bytes": 3447,
+      "path": "crates/leselang-runtime-core/src/retry_schedule.rs",
+      "sha256": "21321604782dff9bab0c5e63a9ae28e2e50402285ff8745a51cb255045251c6b",
+      "source": "crates/leselang-runtime-core/src/retry_schedule.rs"
+    },
+    {
+      "bytes": 4888,
+      "path": "crates/leselang-runtime-core/src/scalar_contract.rs",
+      "sha256": "84b88252eae82675b303e51bc1cfeccd439441fc4cc254e9a4ceb8bf7b181fe0",
+      "source": "crates/leselang-runtime-core/src/scalar_contract.rs"
+    },
+    {
+      "bytes": 14504,
+      "path": "crates/leselang-runtime-core/src/scalar_ops.rs",
+      "sha256": "485e482bf5ab109bf84c27c4817584d1ca4781637f255bdd8503bb669f24edaa",
+      "source": "crates/leselang-runtime-core/src/scalar_ops.rs"
+    },
+    {
+      "bytes": 6166,
+      "path": "crates/leselang-runtime-core/src/scope.rs",
+      "sha256": "65fa2ab2cdcfc996456684c383b0fb587691da0a4bbb27f18cb063b9b00efcee",
+      "source": "crates/leselang-runtime-core/src/scope.rs"
+    },
+    {
+      "bytes": 4596,
+      "path": "crates/leselang-runtime-core/src/sequence_frontier.rs",
+      "sha256": "06934cb931162f12cc132b180457e06bbec8ecedf1a867286e3006ebb6bf02f1",
+      "source": "crates/leselang-runtime-core/src/sequence_frontier.rs"
+    },
+    {
+      "bytes": 3066,
+      "path": "crates/leselang-runtime-core/src/sequence_watermark.rs",
+      "sha256": "f6c9e410b332d4cb0a9b21468fe78a9291dc452aacd8a7e8abe086bd84fe226c",
+      "source": "crates/leselang-runtime-core/src/sequence_watermark.rs"
+    },
+    {
+      "bytes": 10739,
+      "path": "crates/leselang-runtime-core/src/signature.rs",
+      "sha256": "9e5ee36df2378c5c6c041f69780d9b198ad3ae373d4b58e0c262305dd47bc26e",
+      "source": "crates/leselang-runtime-core/src/signature.rs"
+    },
+    {
+      "bytes": 4557,
+      "path": "crates/leselang-runtime-core/src/structure.rs",
+      "sha256": "465f1a7ad44fff7b633f0d19962dfa1aa1cb1347350cb8f2e8a35ffef5c8fe3b",
+      "source": "crates/leselang-runtime-core/src/structure.rs"
+    },
+    {
+      "bytes": 3454,
+      "path": "crates/leselang-runtime-core/src/successor_chain.rs",
+      "sha256": "83dd795bfe9e7b0f030a00d55856c744e9c728125decfb42997704c0a36fb7e1",
+      "source": "crates/leselang-runtime-core/src/successor_chain.rs"
+    },
+    {
+      "bytes": 7336,
+      "path": "crates/leselang-runtime-core/src/value.rs",
+      "sha256": "3431ae6589bb53ef9061a7657fe1d752236d450ad26bffc20e91483a11f3b981",
+      "source": "crates/leselang-runtime-core/src/value.rs"
+    },
+    {
+      "bytes": 16788,
+      "path": "crates/leselang-runtime-core/tests/admission.rs",
+      "sha256": "69b404c4dc43f658daa60f413dfd0675e4528c345663d656d8d67e88dc966f61",
+      "source": "crates/leselang-runtime-core/tests/admission.rs"
+    },
+    {
+      "bytes": 10908,
+      "path": "crates/leselang-runtime-core/tests/argument_binding.rs",
+      "sha256": "f61a350fe6c76f5c55f2914f87fa9c86a91c1346da58c2a27a2bd09f8b93b8c8",
+      "source": "crates/leselang-runtime-core/tests/argument_binding.rs"
+    },
+    {
+      "bytes": 18071,
+      "path": "crates/leselang-runtime-core/tests/argument_typing.rs",
+      "sha256": "a79c8faf7822ea13fffea8b447f1a83712b66b054ac08de73044a729f76562d8",
+      "source": "crates/leselang-runtime-core/tests/argument_typing.rs"
+    },
+    {
+      "bytes": 3393,
+      "path": "crates/leselang-runtime-core/tests/backoff.rs",
+      "sha256": "b81385876209b7409e518f6fb6ce484705ffa2cf58e9806ec35244d7553ae44b",
+      "source": "crates/leselang-runtime-core/tests/backoff.rs"
+    },
+    {
+      "bytes": 10596,
+      "path": "crates/leselang-runtime-core/tests/capture_correspondence.rs",
+      "sha256": "5d1e88fc27b1432c450f151917690e92e121d9e1a401a0b469cde6cc14455e9a",
+      "source": "crates/leselang-runtime-core/tests/capture_correspondence.rs"
+    },
+    {
+      "bytes": 10566,
+      "path": "crates/leselang-runtime-core/tests/capture_extension.rs",
+      "sha256": "d770edd88be411b4e6808169a3db84df9e629547b0cac085099e4a7f4c362171",
+      "source": "crates/leselang-runtime-core/tests/capture_extension.rs"
+    },
+    {
+      "bytes": 19633,
+      "path": "crates/leselang-runtime-core/tests/capture_scope.rs",
+      "sha256": "071d272ac1e565a878aaa5efdedb4ba7b980352ae75b225b276dc2aa1b042c72",
+      "source": "crates/leselang-runtime-core/tests/capture_scope.rs"
+    },
+    {
+      "bytes": 19508,
+      "path": "crates/leselang-runtime-core/tests/capture_scope_state.rs",
+      "sha256": "852a1670ae2f1865ac74bdf564179436ca107b8513afcc2390d694ab2d01448f",
+      "source": "crates/leselang-runtime-core/tests/capture_scope_state.rs"
+    },
+    {
+      "bytes": 17143,
+      "path": "crates/leselang-runtime-core/tests/capture_snapshot.rs",
+      "sha256": "14b9b845e989b98d61a340d3ef49fe3049bf507efb1b49d9b80459962318e6dc",
+      "source": "crates/leselang-runtime-core/tests/capture_snapshot.rs"
+    },
+    {
+      "bytes": 17900,
+      "path": "crates/leselang-runtime-core/tests/capture_validation.rs",
+      "sha256": "f7ec24a69f51425a814f9a9ce64cfae5d5d30514c385eccf1f8305af635d5185",
+      "source": "crates/leselang-runtime-core/tests/capture_validation.rs"
+    },
+    {
+      "bytes": 8873,
+      "path": "crates/leselang-runtime-core/tests/captured_bindings.rs",
+      "sha256": "02b7c764f4c9833e0dfdd5822b5944ba54acdf95a7bc9ceb21d0954c335b77dd",
+      "source": "crates/leselang-runtime-core/tests/captured_bindings.rs"
+    },
+    {
+      "bytes": 18062,
+      "path": "crates/leselang-runtime-core/tests/catalog.rs",
+      "sha256": "9cc30adcc08b6f7faff23d923f42c852a4947c29cef8aa5446288b177106b5d2",
+      "source": "crates/leselang-runtime-core/tests/catalog.rs"
+    },
+    {
+      "bytes": 38368,
+      "path": "crates/leselang-runtime-core/tests/checkpoint.rs",
+      "sha256": "70919297d1a831a43496cad7dec0c50199039eb7e6e55c503bf1d2471ce09bfd",
+      "source": "crates/leselang-runtime-core/tests/checkpoint.rs"
+    },
+    {
+      "bytes": 5392,
+      "path": "crates/leselang-runtime-core/tests/clock.rs",
+      "sha256": "2dc23d1faf084765074b608617f250d779dbb60bc112c983e8db5009a3023f75",
+      "source": "crates/leselang-runtime-core/tests/clock.rs"
+    },
+    {
+      "bytes": 9286,
+      "path": "crates/leselang-runtime-core/tests/collection.rs",
+      "sha256": "493712c46843157caf8c48e0229fcf98ffe37845e80b43f71a4d9c6baee0d6e8",
+      "source": "crates/leselang-runtime-core/tests/collection.rs"
+    },
+    {
+      "bytes": 7776,
+      "path": "crates/leselang-runtime-core/tests/continuation.rs",
+      "sha256": "ca31fd8015de615958b031e90f94fbaa1b9b4ee73ce6dfb4da0d5bd10718b143",
+      "source": "crates/leselang-runtime-core/tests/continuation.rs"
+    },
+    {
+      "bytes": 9547,
+      "path": "crates/leselang-runtime-core/tests/continuation_context.rs",
+      "sha256": "338626aa2078a1e4ea134d6a7faf3104fd4fcee6bd1cae5e3edeef6866ddfff7",
+      "source": "crates/leselang-runtime-core/tests/continuation_context.rs"
+    },
+    {
+      "bytes": 12518,
+      "path": "crates/leselang-runtime-core/tests/control.rs",
+      "sha256": "27ecb9be5a74c7418a78b35a3bf05495a5c9ac4a43118fce658eefa96a1a7f81",
+      "source": "crates/leselang-runtime-core/tests/control.rs"
+    },
+    {
+      "bytes": 8301,
+      "path": "crates/leselang-runtime-core/tests/diagnostics.rs",
+      "sha256": "8086eb3d530f86104e252c2c9459d10ed85078ec6bde21b773c30765d625f147",
+      "source": "crates/leselang-runtime-core/tests/diagnostics.rs"
+    },
+    {
+      "bytes": 6249,
+      "path": "crates/leselang-runtime-core/tests/dispatch_capacity.rs",
+      "sha256": "38ed96d10b64e164b10540ab6cd4bddedf1dedd457bd54435155c56c089ab0fe",
+      "source": "crates/leselang-runtime-core/tests/dispatch_capacity.rs"
+    },
+    {
+      "bytes": 8919,
+      "path": "crates/leselang-runtime-core/tests/dispatch_data.rs",
+      "sha256": "d17c78c562e2af38e51f303c3b2cc396b08ffeb3a7cc1d6b9edf8f8b48e05a34",
+      "source": "crates/leselang-runtime-core/tests/dispatch_data.rs"
+    },
+    {
+      "bytes": 5446,
+      "path": "crates/leselang-runtime-core/tests/dispatch_lease.rs",
+      "sha256": "182d3bf91996bc362503599528c988957fa9965d5d2496b13b0ded063278d7cf",
+      "source": "crates/leselang-runtime-core/tests/dispatch_lease.rs"
+    },
+    {
+      "bytes": 18861,
+      "path": "crates/leselang-runtime-core/tests/dispatch_plan.rs",
+      "sha256": "b625ea48e78d45697229fdcad8231d8c7014e176ea5cf3265ddcb3c5b213c5be",
+      "source": "crates/leselang-runtime-core/tests/dispatch_plan.rs"
+    },
+    {
+      "bytes": 9472,
+      "path": "crates/leselang-runtime-core/tests/fold.rs",
+      "sha256": "0f887af60a24bfa422375e2fb3c1c5187c3474b87c64d6de377f2e94a4981ec4",
+      "source": "crates/leselang-runtime-core/tests/fold.rs"
+    },
+    {
+      "bytes": 3558,
+      "path": "crates/leselang-runtime-core/tests/fuel.rs",
+      "sha256": "a9c894768865cd194431e5e26019e6ca16bb203dfcf04c86f1bd641be52d12e1",
+      "source": "crates/leselang-runtime-core/tests/fuel.rs"
+    },
+    {
+      "bytes": 12071,
+      "path": "crates/leselang-runtime-core/tests/group_graph.rs",
+      "sha256": "7f8bc2130df429539d72aa7d130c48f52fb00182477ab75df0f32ec26de637ef",
+      "source": "crates/leselang-runtime-core/tests/group_graph.rs"
+    },
+    {
+      "bytes": 10457,
+      "path": "crates/leselang-runtime-core/tests/host_ownership.rs",
+      "sha256": "66c1f0e2ac9904b65949d2edbf00a43a767cb0302a06e1e81168ab5a07d9769e",
+      "source": "crates/leselang-runtime-core/tests/host_ownership.rs"
+    },
+    {
+      "bytes": 12502,
+      "path": "crates/leselang-runtime-core/tests/host_result.rs",
+      "sha256": "0311dba4f32eca1ae26cd97891c578456da0e2d1fdd9313cdbf8984ae47f7168",
+      "source": "crates/leselang-runtime-core/tests/host_result.rs"
+    },
+    {
+      "bytes": 6528,
+      "path": "crates/leselang-runtime-core/tests/local_execution.rs",
+      "sha256": "c8ce25d82fe0a86e3a02f62cdccfce85af416da668a485d0c68799434a296d3a",
+      "source": "crates/leselang-runtime-core/tests/local_execution.rs"
+    },
+    {
+      "bytes": 8156,
+      "path": "crates/leselang-runtime-core/tests/observation.rs",
+      "sha256": "f7a106ac44b0f123c31edcda521de27d872dcfc59befc9ad610ab1b4e56e6d92",
+      "source": "crates/leselang-runtime-core/tests/observation.rs"
+    },
+    {
+      "bytes": 8560,
+      "path": "crates/leselang-runtime-core/tests/outcome_summary.rs",
+      "sha256": "d9a258bdcaa877336753fc2172b6404b2036dd52745182455cb0d1daad66f0ae",
+      "source": "crates/leselang-runtime-core/tests/outcome_summary.rs"
+    },
+    {
+      "bytes": 7757,
+      "path": "crates/leselang-runtime-core/tests/owned_scope.rs",
+      "sha256": "0427292f4af39c5e7f65793e53f200c8f85d7973a63cc033b6533e8519527eb3",
+      "source": "crates/leselang-runtime-core/tests/owned_scope.rs"
+    },
+    {
+      "bytes": 11274,
+      "path": "crates/leselang-runtime-core/tests/projection.rs",
+      "sha256": "1534899c1d9df1eeb3eee5cf25a2effab44d0160dd160261ba92b1159daeb3af",
+      "source": "crates/leselang-runtime-core/tests/projection.rs"
+    },
+    {
+      "bytes": 6470,
+      "path": "crates/leselang-runtime-core/tests/recovery.rs",
+      "sha256": "a353dd32cbb3ac9154ddd66998526fb0fba83fee921fce62ccb50f2dd4d0a4f1",
+      "source": "crates/leselang-runtime-core/tests/recovery.rs"
+    },
+    {
+      "bytes": 38785,
+      "path": "crates/leselang-runtime-core/tests/recovery_fence.rs",
+      "sha256": "f3e4e8f7fc1f917704a7582098498a192caefe742973600f0c7dd98252a98c6b",
+      "source": "crates/leselang-runtime-core/tests/recovery_fence.rs"
+    },
+    {
+      "bytes": 32524,
+      "path": "crates/leselang-runtime-core/tests/reply.rs",
+      "sha256": "74da7d0765461fb136b47851dd92967a4409b67b504f0b4c3966f309b8989b52",
+      "source": "crates/leselang-runtime-core/tests/reply.rs"
+    },
+    {
+      "bytes": 6525,
+      "path": "crates/leselang-runtime-core/tests/retry_schedule.rs",
+      "sha256": "144d7dad89ee0f50228c85c6cffadd4f1fc4cec9bff953c809fef91aa036a412",
+      "source": "crates/leselang-runtime-core/tests/retry_schedule.rs"
+    },
+    {
+      "bytes": 10997,
+      "path": "crates/leselang-runtime-core/tests/scalar_contract.rs",
+      "sha256": "208e6e5843a2a29a4ea2c9ec154150bc723810f63ab097fa2023801f0f22b6c5",
+      "source": "crates/leselang-runtime-core/tests/scalar_contract.rs"
+    },
+    {
+      "bytes": 18322,
+      "path": "crates/leselang-runtime-core/tests/scalar_operations.rs",
+      "sha256": "c1476a15bbc60444bcedb268c66b6d3232e961935dfc657bea1bf3663bf30601",
+      "source": "crates/leselang-runtime-core/tests/scalar_operations.rs"
+    },
+    {
+      "bytes": 9380,
+      "path": "crates/leselang-runtime-core/tests/scope.rs",
+      "sha256": "26ad2505d953bf38a30f2ad6c21a4f251b05b28fb8ccee0a68423785c3924dd6",
+      "source": "crates/leselang-runtime-core/tests/scope.rs"
+    },
+    {
+      "bytes": 14008,
+      "path": "crates/leselang-runtime-core/tests/sequence_frontier.rs",
+      "sha256": "db9a1c35ab041c6b177728f74be0a98ddc54cda2cd0cff3431ed784a1751e99e",
+      "source": "crates/leselang-runtime-core/tests/sequence_frontier.rs"
+    },
+    {
+      "bytes": 7133,
+      "path": "crates/leselang-runtime-core/tests/sequence_watermark.rs",
+      "sha256": "342dd85d50e00555e1e1d9d5f29e808a0c2eadd50199b13872f23dd496e5cedc",
+      "source": "crates/leselang-runtime-core/tests/sequence_watermark.rs"
+    },
+    {
+      "bytes": 8407,
+      "path": "crates/leselang-runtime-core/tests/signature.rs",
+      "sha256": "bae6c2fceaf52ab8c63d34819aa22a5b98f8de258e8891592ab96f40c434bd1e",
+      "source": "crates/leselang-runtime-core/tests/signature.rs"
+    },
+    {
+      "bytes": 7140,
+      "path": "crates/leselang-runtime-core/tests/structure.rs",
+      "sha256": "22ace95cc1a88106f5977b302b2cf07f5763f8d13c8eba4f37d0344c0ff55491",
+      "source": "crates/leselang-runtime-core/tests/structure.rs"
+    },
+    {
+      "bytes": 9466,
+      "path": "crates/leselang-runtime-core/tests/successor_chain.rs",
+      "sha256": "ee6802c4e13758ba736a3c50599ab32357b2962f85ff8889b0e6281dba0b0e0b",
+      "source": "crates/leselang-runtime-core/tests/successor_chain.rs"
+    },
+    {
+      "bytes": 9622,
+      "path": "crates/leselang-runtime-core/tests/terminal_observation.rs",
+      "sha256": "1c8d7382c2aab691ecbe9103d354fb33dc0a745f9331d034a1c1c74b1360e1c2",
+      "source": "crates/leselang-runtime-core/tests/terminal_observation.rs"
+    },
+    {
+      "bytes": 10290,
+      "path": "crates/leselang-runtime-core/tests/values.rs",
+      "sha256": "92b15f9e6e78fdef0b108d74bbe867b05c9cc83b2a8e7a1864bb0aca28c346f4",
+      "source": "crates/leselang-runtime-core/tests/values.rs"
+    },
+    {
+      "bytes": 294,
+      "path": "crates/leselang-syntax/Cargo.toml",
+      "sha256": "3e4e9d08686c6b2c10cb73ef60f421ff4a6b7a96da2a577969a0661cfec42376",
+      "source": null
+    },
+    {
+      "bytes": 34029,
+      "path": "crates/leselang-syntax/src/lib.rs",
+      "sha256": "c9e9cbc81bc7c2de7685897db01d4b591ae91f343e6a98769183775efa0ce462",
+      "source": "crates/leselang-syntax/src/lib.rs"
+    },
+    {
+      "bytes": 2147,
+      "path": "crates/leselang-syntax/tests/computation.rs",
+      "sha256": "0bf83346d09ce14b3466b9a31792576723edf25e2472f286e43019f2dbe74a48",
+      "source": "crates/leselang-syntax/tests/computation.rs"
+    },
+    {
+      "bytes": 1259,
+      "path": "crates/leselang-syntax/tests/control_flow.rs",
+      "sha256": "4ecef48d2fbb23d54b88d3e8ab0739b79196c6b775226897409f96085932ca38",
+      "source": "crates/leselang-syntax/tests/control_flow.rs"
+    },
+    {
+      "bytes": 4526,
+      "path": "crates/leselang-syntax/tests/functions.rs",
+      "sha256": "b6c0768734112c59d00c2b350d72ceb3181089def42d2181458a5246366b7429",
+      "source": "crates/leselang-syntax/tests/functions.rs"
+    },
+    {
+      "bytes": 586,
+      "path": "crates/leselang-vm/Cargo.toml",
+      "sha256": "06d42eb9b8b04f9ce2a7fd192df95bbeb56cc55d54d2a881a882f49519a32b91",
+      "source": null
+    },
+    {
+      "bytes": 34011,
+      "path": "crates/leselang-vm/examples/native_counter.rs",
+      "sha256": "7cd3426dc70c686577550a88084ae756c4d1fd1bc4d2d9bd31ba52c1d069b949",
+      "source": "crates/leselang-vm/examples/native_counter.rs"
+    },
+    {
+      "bytes": 818,
+      "path": "crates/leselang-vm/src/lib.rs",
+      "sha256": "6461e36606f74919f42daa7d1bbb743e964e1e9754ac9e6cd2e8b64c78e64d06",
+      "source": "crates/leselang-vm/src/lib.rs"
+    },
+    {
+      "bytes": 1977,
+      "path": "crates/leselang-vm/src/native.rs",
+      "sha256": "d895cfcdff7fb4e23eafb1ea2a691138dfd9d489c39777384793cc21b83c8dfa",
+      "source": "crates/leselang-vm/src/native.rs"
+    },
+    {
+      "bytes": 45317,
+      "path": "crates/leselang-vm/tests/native_embedding.rs",
+      "sha256": "077fa4a82ddbdc649ada2b8a867049068f9bf0a98f6ba8e1da2917b3065a6c0c",
+      "source": "crates/leselang-vm/tests/native_embedding.rs"
+    },
+    {
+      "bytes": 369006,
+      "path": "crates/leselang-vm/tests/native_host_pipeline.rs",
+      "sha256": "a2d2fe421293cb215766c9d06e3b6c9a1e00df4d9e05f434f5eb836760d88506",
+      "source": "crates/leselang-vm/tests/native_host_pipeline.rs"
+    },
+    {
+      "bytes": 26136,
+      "path": "crates/leselang-vm/tests/support/native_checkpoint.rs",
+      "sha256": "2bc59a5254558159172ede9fead81e262dc09cdf13a2135362926416e4c3d236",
+      "source": "crates/leselang-vm/tests/support/native_checkpoint.rs"
+    },
+    {
+      "bytes": 134473,
+      "path": "crates/leselang-vm/tests/support/native_group_checkpoint.rs",
+      "sha256": "cd44bd40cde9350fb8ed321c5b0514e82da4ba530b289d3d05be4391396a7312",
+      "source": "crates/leselang-vm/tests/support/native_group_checkpoint.rs"
+    }
+  ],
+  "full_extraction_gate": false,
+  "kind": "leselang-native-source-checkpoint",
+  "native_vm_facade": true,
+  "schema_version": 1,
+  "verified": false,
+  "version": "2.5.0"
+}

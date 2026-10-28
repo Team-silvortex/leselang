@@ -1,0 +1,15 @@
+[package]
+name = "leselang-hir-core"
+version = "0.1.0"
+publish = false
+edition = "2024"
+description = "Host-neutral Leselang HIR, compilation and bounded execution"
+license = "MIT"
+
+[dependencies]
+leselang-runtime-core = { path = "../leselang-runtime-core" }
+leselang-syntax = { path = "../leselang-syntax" }
+serde = { version = "=1.0.228", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "=1.0.150"

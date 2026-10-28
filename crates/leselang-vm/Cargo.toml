@@ -1,0 +1,18 @@
+[package]
+name = "leselang-vm"
+version = "0.1.0"
+publish = false
+edition = "2024"
+description = "Stackless Leselang evaluator with versioned effect continuations"
+license = "MIT"
+
+[dependencies]
+leselang-hir = { path = "../leselang-hir", default-features = false }
+leselang-runtime-core = { path = "../leselang-runtime-core" }
+leselang-syntax = { path = "../leselang-syntax" }
+[dev-dependencies]
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+
+[lints.rust]
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(feature, values("leserpent-profile"))'] }

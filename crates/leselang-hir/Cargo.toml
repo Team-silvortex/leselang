@@ -1,0 +1,19 @@
+[package]
+name = "leselang-hir"
+version = "0.1.0"
+publish = false
+edition = "2024"
+description = "Typed, capability-aware high-level IR for Leselang"
+license = "MIT"
+
+[dependencies]
+leselang-hir-core = { path = "../leselang-hir-core" }
+leselang-runtime-core = { path = "../leselang-runtime-core" }
+leselang-syntax = { path = "../leselang-syntax" }
+serde = { version = "=1.0.228", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "=1.0.150"
+
+[lints.rust]
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(feature, values("leserpent-profile"))'] }

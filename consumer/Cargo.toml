@@ -1,0 +1,186 @@
+[workspace]
+
+[package]
+name = "leselang-native-source-consumer"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+autotests = false
+
+[dependencies]
+leselang-hir = { path = "../crates/leselang-hir" }
+leselang-hir-core = { path = "../crates/leselang-hir-core" }
+leselang-runtime-core = { path = "../crates/leselang-runtime-core" }
+leselang-syntax = { path = "../crates/leselang-syntax" }
+leselang-vm = { path = "../crates/leselang-vm", default-features = false }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+
+[profile.lean]
+inherits = "dev"
+debug = 0
+incremental = false
+
+[[test]]
+name = "repository_boundary"
+path = "tests/repository_boundary.rs"
+
+[[test]]
+name = "core_identity"
+path = "tests/core_identity.rs"
+
+[[test]]
+name = "local_names"
+path = "tests/local_names.rs"
+
+[[test]]
+name = "scalar_form"
+path = "tests/scalar_form.rs"
+
+[[test]]
+name = "fold_preparation"
+path = "tests/fold_preparation.rs"
+
+[[test]]
+name = "loop_preparation"
+path = "tests/loop_preparation.rs"
+
+[[test]]
+name = "source_preparation"
+path = "tests/source_preparation.rs"
+
+[[test]]
+name = "argument_binding"
+path = "tests/argument_binding.rs"
+
+[[test]]
+name = "declaration_source"
+path = "tests/declaration_source.rs"
+
+[[test]]
+name = "computation_profile"
+path = "tests/computation_profile.rs"
+
+[[test]]
+name = "checkpoint_recovery"
+path = "tests/checkpoint_recovery.rs"
+
+[[test]]
+name = "continuation_frame"
+path = "tests/continuation_frame.rs"
+
+[[test]]
+name = "continuation_context"
+path = "tests/continuation_context.rs"
+
+[[test]]
+name = "group_graph"
+path = "tests/group_graph.rs"
+
+[[test]]
+name = "recovery_fences"
+path = "tests/recovery_fences.rs"
+
+[[test]]
+name = "dispatch_lease"
+path = "tests/dispatch_lease.rs"
+
+[[test]]
+name = "dispatch_capacity"
+path = "tests/dispatch_capacity.rs"
+
+[[test]]
+name = "dispatch_plan"
+path = "tests/dispatch_plan.rs"
+
+[[test]]
+name = "dispatch_data"
+path = "tests/dispatch_data.rs"
+
+[[test]]
+name = "retry_schedule"
+path = "tests/retry_schedule.rs"
+
+[[test]]
+name = "sequence_watermark"
+path = "tests/sequence_watermark.rs"
+
+[[test]]
+name = "successor_chain"
+path = "tests/successor_chain.rs"
+
+[[test]]
+name = "sequence_frontier"
+path = "tests/sequence_frontier.rs"
+
+[[test]]
+name = "outcome_summary"
+path = "tests/outcome_summary.rs"
+
+[[test]]
+name = "capture_correspondence"
+path = "tests/capture_correspondence.rs"
+
+[[test]]
+name = "capture_extension"
+path = "tests/capture_extension.rs"
+
+[[test]]
+name = "durable_control"
+path = "tests/durable_control.rs"
+
+[[test]]
+name = "captured_reentry"
+path = "tests/captured_reentry.rs"
+
+[[test]]
+name = "owned_scope"
+path = "tests/owned_scope.rs"
+
+[[test]]
+name = "local_execution"
+path = "tests/local_execution.rs"
+
+[[test]]
+name = "control_session"
+path = "tests/control_session.rs"
+
+[[test]]
+name = "return_stack"
+path = "tests/return_stack.rs"
+
+[[test]]
+name = "saved_parallel"
+path = "tests/saved_parallel.rs"
+
+[[test]]
+name = "saved_sequence"
+path = "tests/saved_sequence.rs"
+
+[[test]]
+name = "saved_call"
+path = "tests/saved_call.rs"
+
+[[test]]
+name = "saved_group"
+path = "tests/saved_group.rs"
+
+[[test]]
+name = "prepared_counter_host"
+path = "tests/prepared_counter_host.rs"
+
+[[test]]
+name = "prepared_gui_host"
+path = "tests/prepared_gui_host.rs"
+
+[[test]]
+name = "native_vm_embedding"
+path = "tests/native_vm_embedding.rs"
+
+[[test]]
+name = "native_host_pipeline"
+path = "tests/native_host_pipeline.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(feature, values("leserpent-profile"))'] }

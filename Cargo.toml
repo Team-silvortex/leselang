@@ -1,0 +1,9 @@
+[workspace]
+members = ["crates/leselang-syntax", "crates/leselang-runtime-core", "crates/leselang-hir-core", "crates/leselang-hir", "crates/leselang-vm"]
+exclude = ["consumer"]
+resolver = "3"
+
+[profile.lean]
+inherits = "dev"
+debug = 0
+incremental = false
