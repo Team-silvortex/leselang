@@ -19,6 +19,13 @@ cargo test --workspace --all-features --locked --offline --profile lean
 cargo clippy --workspace --all-features --all-targets --locked --offline --profile lean -- -D warnings
 cargo test --manifest-path consumer/Cargo.toml --locked --offline --profile lean
 cargo clippy --manifest-path consumer/Cargo.toml --all-targets --locked --offline --profile lean -- -D warnings
+cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- check examples/arithmetic.lese
+cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/arithmetic.lese
+cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/two_effects.lese --allow stdio
+cargo run --example embedded_counter --locked --offline --profile lean
+cargo run --manifest-path consumer/Cargo.toml --example embedded_counter --locked --offline --profile lean
+cargo run --example protocol_hosts --locked --offline --profile lean
+cargo run --manifest-path consumer/Cargo.toml --example protocol_hosts --locked --offline --profile lean
 cargo test --example native_counter --locked --offline --profile lean
 cargo test --manifest-path consumer/Cargo.toml --example native_counter --locked --offline --profile lean
 cargo run --example native_counter --locked --offline --profile lean
@@ -32,6 +39,19 @@ checkout or optional product dependency cannot silently become a prerequisite.
 Use the `lean` profile for local checks. Root and consumer commands share `target/`
 through `.cargo/config.toml`; avoid assigning a new target directory per test.
 No containers or external server are needed for these native tests.
+
+CLI integration tests run with the workspace suite. The smoke commands above
+check a pure program, evaluate its result and execute two explicitly granted
+stdout Effects. Keep the examples in `examples/` executable when changing the
+scalar language or CLI host; document profile changes in
+[the language guide](docs/language.md).
+
+The `protocol_hosts` example runs both reference adapters against the local host
+protocol. Conformance changes must preserve stale-object/revision rejection,
+VM-scope revocation and the distinction between submitted actions and observed
+postconditions. These headless fixtures do not establish compatibility with a
+concrete GUI framework; update [the protocol draft](docs/host-protocol.md) when
+its evidence or remaining gates change.
 
 ## Changes And Releases
 

@@ -34,6 +34,7 @@ mod fuel;
 mod group_graph;
 mod group_recovery;
 mod group_recovery_batch;
+pub mod host_protocol;
 mod host_result;
 mod local_execution;
 mod outcome_summary;

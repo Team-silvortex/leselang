@@ -197,6 +197,16 @@ impl<'a, Key, Parameter, Domain, Result, Capability>
         self.version
     }
 
+    /// Discover the exact registered schemas in declaration order, without
+    /// invoking native equality, cloning domains or granting execution authority.
+    /// Hosts control who can inspect this metadata. Discovery is independent of
+    /// the current grants; dispatch must still authorize against live policy.
+    pub const fn schemas(
+        &self,
+    ) -> &'a [OperationSchema<'a, Key, Parameter, Domain, Result, Capability>] {
+        self.schemas
+    }
+
     /// Exact version before native lookup. Borrow permits an owned string key to
     /// be queried by str, without constructing/cloning a key or normalizing it.
     /// Success returns the original declaration, not approval of argument values.

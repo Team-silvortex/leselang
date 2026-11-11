@@ -454,6 +454,248 @@ where
     evaluate_arguments(arguments, &names, schema, scope, environment, fuel, limits)
 }
 
+/// One evaluated scalar or opaque native result, in original schema order.
+///
+/// Native values use the pure environment's existing alias/Clone contract. This
+/// row neither serializes an object identity nor certifies live authority.
+pub struct PreparedValueArgument<'schema, NativeResult> {
+    pub parameter_index: usize,
+    pub argument_index: usize,
+    pub name: &'schema str,
+    pub value: PureValue<NativeResult>,
+}
+
+impl<NativeResult> fmt::Debug for PreparedValueArgument<'_, NativeResult> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PreparedValueArgument")
+            .field("parameter_index", &self.parameter_index)
+            .field("argument_index", &self.argument_index)
+            .field("value", &self.value)
+            .finish()
+    }
+}
+
+/// Move-only, declaration-ordered operands using the original borrowed schema.
+///
+/// The native payload requires no Debug, serde, Send or 'static bound. A successful
+/// preparation is not dispatch permission: the host must revalidate references,
+/// current grants and operation policy immediately before actual native work.
+///
+/// ```compile_fail
+/// use leselang_hir_core::call_evaluation::PreparedValueCall;
+/// fn duplicate(call: PreparedValueCall<'_, u32, (), (), (), ()>) {
+///     let other = call.clone();
+/// }
+/// ```
+#[must_use = "prepared operands must be handed to their host or deliberately discarded"]
+pub struct PreparedValueCall<'schema, Key, Domain, ResultTag, Capability, NativeResult> {
+    schema: &'schema OperationSchema<'schema, Key, &'schema str, Domain, ResultTag, Capability>,
+    arguments: Vec<PreparedValueArgument<'schema, NativeResult>>,
+}
+
+/// Original schema plus the exact owned prepared operands, without conversion.
+pub type PreparedValueCallParts<'schema, Key, Domain, ResultTag, Capability, NativeResult> = (
+    &'schema OperationSchema<'schema, Key, &'schema str, Domain, ResultTag, Capability>,
+    Vec<PreparedValueArgument<'schema, NativeResult>>,
+);
+
+/// Mixed-operand preparation with separate evaluation and native-admission errors.
+pub type ValueCallEvaluationResult<
+    'schema,
+    Key,
+    Domain,
+    ResultTag,
+    Capability,
+    NativeResult,
+    NativeError,
+    Validation,
+> = Result<
+    PreparedValueCall<'schema, Key, Domain, ResultTag, Capability, NativeResult>,
+    ValueCallEvaluationError<NativeError, Validation>,
+>;
+
+impl<'schema, Key, Domain, ResultTag, Capability, NativeResult>
+    PreparedValueCall<'schema, Key, Domain, ResultTag, Capability, NativeResult>
+{
+    pub fn schema(
+        &self,
+    ) -> &'schema OperationSchema<'schema, Key, &'schema str, Domain, ResultTag, Capability> {
+        self.schema
+    }
+
+    pub fn arguments(&self) -> &[PreparedValueArgument<'schema, NativeResult>] {
+        &self.arguments
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> PreparedValueCallParts<'schema, Key, Domain, ResultTag, Capability, NativeResult> {
+        (self.schema, self.arguments)
+    }
+}
+
+impl<Key, Domain, ResultTag, Capability, NativeResult> fmt::Debug
+    for PreparedValueCall<'_, Key, Domain, ResultTag, Capability, NativeResult>
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PreparedValueCall")
+            .field("arguments", &self.arguments.len())
+            .finish()
+    }
+}
+
+/// Original evaluation failure or opaque native argument admission failure.
+/// Native validation errors never acquire scalar recovery provenance.
+pub enum ValueCallEvaluationError<Native, Validation> {
+    Preparation(CallEvaluationError<Native>),
+    Argument {
+        parameter_index: usize,
+        argument_index: usize,
+        error: Validation,
+    },
+}
+
+impl<Native, Validation> fmt::Display for ValueCallEvaluationError<Native, Validation> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Preparation(error) => error.fmt(formatter),
+            Self::Argument { .. } => {
+                formatter.write_str("evaluated call argument admission failed")
+            }
+        }
+    }
+}
+impl<Native, Validation> fmt::Debug for ValueCallEvaluationError<Native, Validation> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, formatter)
+    }
+}
+impl<Native, Validation> std::error::Error for ValueCallEvaluationError<Native, Validation> {}
+impl<Native, Validation> From<CallEvaluationError<Native>>
+    for ValueCallEvaluationError<Native, Validation>
+{
+    fn from(error: CallEvaluationError<Native>) -> Self {
+        Self::Preparation(error)
+    }
+}
+
+/// Evaluate mixed scalar/native operands with the existing pure evaluator.
+///
+/// Complete physical forest, scope and named-signature preflight precede any
+/// native value access or cloning. Values then evaluate once in declaration
+/// order, including the existing scalar copy charges and bounds. Only after
+/// every operand succeeds does `validate` run, also in declaration order. It
+/// must check each scalar domain or native type, owner, lease and value bounds;
+/// no domain is implicitly accepted. It receives the original Fuel for any
+/// additional trusted host accounting. Native cloning/validation is host-owned
+/// work, not preempted or measured by inspecting opaque payloads.
+///
+/// Optional operands remain omitted. Prefix bindings are borrowed and remain
+/// unchanged; native Local reads follow `Environment::Result::clone`, so hosts
+/// should use bounded aliases such as opaque references or Rc views. Failure or
+/// unwind discards partial operands without retry, rollback or fuel refund.
+///
+/// One call root is structurally counted, but root execution fuel belongs to
+/// the caller, as with `evaluate_call_arguments_in_scope`. This performs no
+/// catalog/version/grant lookup, cold static typing, correlation or dispatch.
+/// The scalar-only API and its early NonScalar refusal remain unchanged.
+pub fn evaluate_value_call_arguments_in_scope<
+    'expression,
+    'schema,
+    Field,
+    Operation,
+    HostEffect,
+    IrResult,
+    Key,
+    Domain,
+    ResultTag,
+    Capability,
+    Environment,
+    Validation,
+>(
+    arguments: &'expression Arguments<Field, Operation, HostEffect, IrResult>,
+    schema: &'schema OperationSchema<'schema, Key, &'schema str, Domain, ResultTag, Capability>,
+    scope: &mut ScopeFrame<'_, 'expression, PureValue<Environment::Result>>,
+    environment: &Environment,
+    fuel: &mut Fuel,
+    limits: CallEvaluationLimits,
+    mut validate: impl FnMut(
+        &Domain,
+        &PureValue<Environment::Result>,
+        &mut Fuel,
+    ) -> Result<(), Validation>,
+) -> ValueCallEvaluationResult<
+    'schema,
+    Key,
+    Domain,
+    ResultTag,
+    Capability,
+    Environment::Result,
+    Environment::Error,
+    Validation,
+>
+where
+    Environment: PureEvaluationEnvironment<Field, Operation>,
+{
+    let names = preflight(arguments, scope, limits)?;
+    preflight_signature(&names, schema, limits.max_arguments)
+        .map_err(CallEvaluationError::Preflight)?;
+    let mut values = Vec::with_capacity(arguments.len());
+    for (parameter_index, parameter) in schema.parameters.iter().enumerate() {
+        let Some(argument_index) = names.iter().position(|name| *name == parameter.name) else {
+            continue;
+        };
+        let value = evaluate_preflighted_in_scope(
+            &arguments[argument_index].value,
+            scope,
+            environment,
+            fuel,
+            limits.pure.max_bindings,
+        )
+        .map_err(|failure| CallEvaluationError::Evaluation {
+            parameter_index,
+            argument_index,
+            failure,
+        })?;
+        if let PureValue::Scalar(value) = &value {
+            if !value.is_bounded() {
+                return Err(CallEvaluationError::Argument {
+                    parameter_index,
+                    argument_index,
+                    error: ArgumentTypeError::UnboundedLiteral,
+                }
+                .into());
+            }
+            fuel.charge(scalar_copy_cost(value))
+                .map_err(|_| CallEvaluationError::FuelExhausted)?;
+        }
+        values.push(PreparedValueArgument {
+            parameter_index,
+            argument_index,
+            name: parameter.name,
+            value,
+        });
+    }
+    for value in &values {
+        validate(
+            &schema.parameters[value.parameter_index].domain,
+            &value.value,
+            fuel,
+        )
+        .map_err(|error| ValueCallEvaluationError::Argument {
+            parameter_index: value.parameter_index,
+            argument_index: value.argument_index,
+            error,
+        })?;
+    }
+    Ok(PreparedValueCall {
+        schema,
+        arguments: values,
+    })
+}
+
 /// Prepare one real shared Call through an exact-version, trusted-grant catalog.
 ///
 /// Physical/prefix preflight precedes native key comparisons; authorization and

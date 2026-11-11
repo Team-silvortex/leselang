@@ -1,0 +1,2 @@
+fn double(n: integer) = mul(left: n, right: 2)
+fn main() = double(n: 21)

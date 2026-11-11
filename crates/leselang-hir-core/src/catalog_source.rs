@@ -1,8 +1,14 @@
 //! Catalog-driven compilation of scalar/call Bind/Choose expressions.
 
-use std::{borrow::Borrow, fmt, marker::PhantomData};
+use std::{
+    borrow::{Borrow, Cow},
+    fmt,
+    marker::PhantomData,
+};
 
-use leselang_runtime_core::{ScalarArgumentDomain, ScalarType};
+use leselang_runtime_core::{
+    ScalarArgumentDomain, ScalarArgumentType, ScalarType, check_argument_type,
+};
 use leselang_syntax::{Expression, Span};
 
 use crate::bound_projection_source::{
@@ -24,7 +30,7 @@ use crate::pure_typing::{MAX_TYPE_INFERENCE_NODES, PureType, TypeInferenceLimits
 use crate::scalar_source::{
     ScalarSourceError, ScalarSourceLimits, lower_scalar_source_with_scope, primitive,
 };
-use crate::source_call::{SourceCallError, SourceCallHost, lower_source_call, span};
+use crate::source_call::{SourceCallError, SourceCallHost, bind_source_arguments, preflight, span};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CatalogSourceLimits {
@@ -127,6 +133,8 @@ impl<Error> std::error::Error for CatalogSourceError<Error> {}
 pub type CatalogSourceResult<Node, ResultType, Error> =
     Result<(Node, PureType<ResultType>), CatalogSourceError<Error>>;
 type ScalarResult<Node, Error> = Result<(Node, ScalarType), CatalogSourceError<Error>>;
+type ArgumentSourceResult<'scope, Node, ResultType, Error> =
+    Result<(Node, Cow<'scope, PureType<ResultType>>), CatalogSourceError<Error>>;
 type Node<Field, Operation, HostEffect, IrResult> =
     Computation<Field, Operation, HostEffect, IrResult>;
 
@@ -399,6 +407,75 @@ impl<'source, 'schema, Operation, Domain, Declaration, Capability, Environment, 
         .map_err(|error| CatalogSourceError::ComputedProjection(Box::new(error)))
     }
 
+    fn pure_argument<'scope, Field, HostEffect, IrResult>(
+        &mut self,
+        source: &'source Expression,
+        prefix: &[(&'source str, &'scope PureType<Environment::Result>)],
+    ) -> ArgumentSourceResult<
+        'scope,
+        Node<Field, Operation, HostEffect, IrResult>,
+        Environment::Result,
+        Environment::Error,
+    >
+    where
+        Operation: Borrow<str> + PartialEq,
+        Domain: ScalarArgumentDomain,
+        Capability: PartialEq,
+        Environment: CatalogSourceEnvironment<'source, 'schema, Field, Operation, Declaration>,
+        Locals: CatalogLocalSource<
+                'source,
+                Field,
+                Operation,
+                HostEffect,
+                IrResult,
+                Environment::Result,
+                Environment::Error,
+            >,
+    {
+        if let Expression::Reference { name, .. } = source
+            && let Some((_, ty @ PureType::Result(_))) =
+                prefix.iter().find(|(bound, _)| *bound == name)
+        {
+            return Ok((Node::Local { name: name.clone() }, Cow::Borrowed(ty)));
+        }
+        if matches!(source, Expression::Call { callee, .. } if callee == "member") {
+            return self
+                .projection(source, prefix)
+                .map(|(node, ty)| (node, Cow::Owned(ty)));
+        }
+        if matches!(source, Expression::Call { callee, .. } if matches!(callee.as_str(), "bind" | "choose"))
+            && prefix
+                .iter()
+                .any(|(_, ty)| matches!(ty, PureType::Result(_)))
+        {
+            // A native result can be selected or aliased by pure control. Keep
+            // nested catalog effects on the legacy rejecting path, before any
+            // source-operation mapping. Helpers retain their existing expansion
+            // checks and the shared operand preflight rejects impure output.
+            let mut pending = vec![source];
+            let mut has_effect = false;
+            while let Some(child) = pending.pop() {
+                if let Expression::Call { arguments, .. } = child {
+                    if !intrinsic(child)
+                        && !self.locals.contains(child)
+                        && !self.program.is_some_and(|program| program.is_helper(child))
+                    {
+                        has_effect = true;
+                        break;
+                    }
+                    pending.extend(arguments.iter().map(|argument| &argument.value));
+                }
+            }
+            if !has_effect {
+                return lower_preflighted_control_source(source, prefix, self.limits.control, self)
+                    .map(|(node, ty)| (node, Cow::Owned(ty)))
+                    .map_err(|error| CatalogSourceError::Control(Box::new(error)));
+            }
+        }
+        self.scalar(source, prefix)
+            .map(|(node, ty)| (node, Cow::Owned(PureType::Scalar(ty))))
+    }
+
     fn scalar<Field, HostEffect, IrResult>(
         &mut self,
         source: &'source Expression,
@@ -603,15 +680,54 @@ where
             }) {
                 return lowered;
             }
-            let prepared =
-                lower_source_call(source, self.host, self.limits.control.source, |arg| {
-                    self.scalar(&arg.value, scope.bindings())
-                        .map(|(node, ty)| (node, Some(ty)))
-                })
-                .map_err(|error| CatalogSourceError::Call {
-                    span: span(source),
-                    error: Box::new(error),
-                })?;
+            let call_error = |error| CatalogSourceError::Call {
+                span: span(source),
+                error: Box::new(error),
+            };
+            let Expression::Call {
+                callee, arguments, ..
+            } = source
+            else {
+                return Err(call_error(SourceCallError::NotCall));
+            };
+            preflight(source, self.limits.control.source).map_err(call_error)?;
+            let schema = self
+                .host
+                .catalog
+                .authorize(callee.as_str(), self.host.version, self.host.granted)
+                .map_err(|error| call_error(SourceCallError::Catalog(error)))?;
+            let bound = bind_source_arguments(arguments, schema, self.limits.control.source)
+                .map_err(call_error)?;
+            let environment = self.environment;
+            let prepared = bound
+                .lower_with(
+                    |arg| self.pure_argument(&arg.value, scope.bindings()),
+                    |schema, parameter_index, node, ty| {
+                        let ty = ty.as_ref();
+                        let parameter = &schema.parameters[parameter_index];
+                        if let PureType::Result(result) = ty
+                            && environment.call_native_argument_type(
+                                &schema.key,
+                                parameter.name,
+                                result,
+                            )
+                        {
+                            return Ok(());
+                        }
+                        check_argument_type(
+                            &parameter.domain,
+                            ScalarArgumentType {
+                                scalar_type: ty.scalar_type(),
+                                is_pure: true,
+                                literal: match node {
+                                    Node::Literal { value } => Some(value),
+                                    _ => None,
+                                },
+                            },
+                        )
+                    },
+                )
+                .map_err(call_error)?;
             let schema = prepared.schema();
             let operation = self
                 .environment
@@ -698,6 +814,10 @@ where
 /// pass before slot mapping, export or result-type queries. All arguments use the
 /// schema's declaration order. One control-output budget and final whole cold
 /// flow inference prevent per-leaf budgets or supplied observations granting IR.
+/// Native result arguments require explicit `call_native_argument_type` admission
+/// for the original operation/parameter. Bound results, member views and pure
+/// Bind/Choose selection retain their native type; scalar arguments keep the
+/// existing scalar-domain checks. Nested effect arguments remain rejected.
 ///
 /// Supports scalar forms/loop/fold, Bind/Choose, catalog calls and direct bound
 /// field/member projection, plus fields over pure computed results. Computed

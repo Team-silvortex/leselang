@@ -231,6 +231,44 @@ where
     Domain: ScalarArgumentDomain,
     Environment: PureTypeEnvironment<Field, Operation>,
 {
+    check_in_scope_with_native(
+        arguments,
+        names,
+        schema,
+        scope,
+        environment,
+        limits,
+        |_, _| false,
+    )
+}
+
+// The caller must bind this native-type policy to the original selected operation.
+// Scalar values always retain the existing schema/domain checks.
+pub(crate) fn check_in_scope_with_native<
+    'expression,
+    'schema,
+    Field,
+    Operation,
+    HostEffect,
+    IrResult,
+    Key,
+    Domain,
+    ResultTag,
+    Capability,
+    Environment,
+>(
+    arguments: &'expression Arguments<Field, Operation, HostEffect, IrResult>,
+    names: &[&str],
+    schema: &'schema OperationSchema<'_, Key, &str, Domain, ResultTag, Capability>,
+    scope: &mut ScopeFrame<'_, 'expression, PureType<Environment::Result>>,
+    environment: &Environment,
+    limits: CallTypeLimits,
+    mut accepts_native: impl FnMut(&str, &Environment::Result) -> bool,
+) -> Result<&'schema ResultTag, CallTypeError>
+where
+    Domain: ScalarArgumentDomain,
+    Environment: PureTypeEnvironment<Field, Operation>,
+{
     for (parameter_index, parameter) in schema.parameters.iter().enumerate() {
         let Some(argument_index) = names.iter().position(|name| *name == parameter.name) else {
             continue;
@@ -242,6 +280,11 @@ where
                 error,
             },
         )?;
+        if let PureType::Result(result) = &ty
+            && accepts_native(parameter.name, result)
+        {
+            continue;
+        }
         let facts = ScalarArgumentType {
             scalar_type: ty.scalar_type(),
             is_pure: true,

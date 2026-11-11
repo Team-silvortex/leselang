@@ -17,3 +17,6 @@ use leselang_vm::{Vm, EffectOperation, PresentationOperation};
 //! execution uses the existing HIR sessions, not a duplicate evaluator.
 
 pub mod native;
+
+/// Optional convenience adapter for local scalar hosts, using the native VM.
+pub mod embedding;

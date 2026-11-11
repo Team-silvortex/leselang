@@ -1,0 +1,6 @@
+fn main() = loop(
+    n: 1,
+    while: lt(left: n, right: 16),
+    next: mul(left: n, right: 2),
+    limit: 4,
+)

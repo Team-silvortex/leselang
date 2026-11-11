@@ -21,6 +21,13 @@ jobs:
       - run: cargo +1.98.0 clippy --workspace --all-features --all-targets --locked --offline --profile lean -- -D warnings
       - run: cargo +1.98.0 test --manifest-path consumer/Cargo.toml --locked --offline --profile lean
       - run: cargo +1.98.0 clippy --manifest-path consumer/Cargo.toml --all-targets --locked --offline --profile lean -- -D warnings
+      - run: cargo +1.98.0 run -p leselang-vm --bin leselang --locked --offline --profile lean -- check examples/arithmetic.lese
+      - run: cargo +1.98.0 run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/arithmetic.lese
+      - run: cargo +1.98.0 run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/two_effects.lese --allow stdio
+      - run: cargo +1.98.0 run --example embedded_counter --locked --offline --profile lean
+      - run: cargo +1.98.0 run --manifest-path consumer/Cargo.toml --example embedded_counter --locked --offline --profile lean
+      - run: cargo +1.98.0 run --example protocol_hosts --locked --offline --profile lean
+      - run: cargo +1.98.0 run --manifest-path consumer/Cargo.toml --example protocol_hosts --locked --offline --profile lean
       - run: cargo +1.98.0 test --example native_counter --locked --offline --profile lean
       - run: cargo +1.98.0 run --example native_counter --locked --offline --profile lean
       - run: cargo +1.98.0 run --example native_counter --locked --offline --profile lean -- --cancel

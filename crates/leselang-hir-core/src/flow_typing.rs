@@ -5,7 +5,7 @@ use std::fmt;
 use leselang_runtime_core::{ScalarType, ScopeFrame, StructureBudget, StructureError};
 
 use crate::call_typing::{
-    CallTypeError, CallTypeLimits, MAX_CALL_ARGUMENTS, check_in_scope,
+    CallTypeError, CallTypeLimits, MAX_CALL_ARGUMENTS, check_in_scope_with_native,
     preflight_arguments_with_budget, preflight_signature,
 };
 use crate::ir::Computation;
@@ -35,6 +35,26 @@ pub trait CallFlowEnvironment<'schema, Field, Operation, ResultDeclaration>:
         operation: &Operation,
         declaration: &'schema ResultDeclaration,
     ) -> Option<PureType<Self::Result>>;
+
+    /// Opt in to a pure native-result operand for this exact operation/parameter.
+    ///
+    /// The default preserves scalar-only calls. This hook is queried only after
+    /// whole cold shape/signature checks and lexical type inference; scalar
+    /// operands always use their original scalar domain. Implementations must
+    /// match the original operation's declared parameter and native type, and
+    /// keep that policy consistent with source lowering and runtime preparation.
+    /// Admission is a type observation, never a value or authority check: the
+    /// host must validate actual native operands and live execution policy again
+    /// before dispatch. Use scalar domains rejecting every scalar for exclusively
+    /// native parameters; no scalar value is converted into a native reference.
+    fn call_native_argument_type(
+        &self,
+        _operation: &Operation,
+        _parameter_name: &str,
+        _result: &Self::Result,
+    ) -> bool {
+        false
+    }
 }
 
 /// Inclusive physical limits. max_calls includes all cold call sites, not the
@@ -659,13 +679,16 @@ where
                 return Err(CallFlowTypeError::UnsupportedFlow);
             };
             selections.next += 1;
-            let result = check_in_scope(
+            let result = check_in_scope_with_native(
                 arguments,
                 &selected.names,
                 selected.schema,
                 scope,
                 environment,
                 limits.call,
+                |parameter, result| {
+                    environment.call_native_argument_type(operation, parameter, result)
+                },
             )
             .map_err(|error| CallFlowTypeError::Call { call_index, error })?;
             environment

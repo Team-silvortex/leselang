@@ -1,0 +1,5 @@
+fn main() = choose(
+    when: lt(left: 1, right: 2),
+    then: recover(value: div(left: 1, right: 0), fallback: 42),
+    otherwise: 0,
+)

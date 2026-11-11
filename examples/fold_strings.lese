@@ -1,0 +1,7 @@
+fn main() = fold(
+    total: 0,
+    items: strings(first: "Lese", second: "Lang"),
+    item: "word",
+    next: add(left: total, right: len(value: word)),
+    limit: 2,
+)

@@ -1,0 +1,4 @@
+fn main() = bind(
+    first: std.print(message: "first"),
+    body: std.print(message: "second"),
+)

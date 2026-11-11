@@ -538,8 +538,6 @@ pub fn bind_source_arguments<'source, 'schema, Key, Domain, Result, Capability, 
 
 impl<'source, 'schema, Key, Domain, Result, Capability>
     BoundSourceArguments<'source, 'schema, Key, Domain, Result, Capability>
-where
-    Domain: ScalarArgumentDomain,
 {
     /// Consume the alignment once, keeping declaration order and original borrows.
     /// The output call root and operand forest share one meter; physical purity
@@ -549,7 +547,7 @@ where
     /// Binding is not source admission or live execution authority.
     pub fn lower<Field, Operation, HostEffect, IrResult, Error>(
         self,
-        mut lower: impl FnMut(
+        lower: impl FnMut(
             &'source NamedArgument,
         ) -> std::result::Result<
             (
@@ -558,6 +556,55 @@ where
             ),
             Error,
         >,
+    ) -> SourceCallResult<
+        'source,
+        'schema,
+        Key,
+        Domain,
+        Result,
+        Capability,
+        Computation<Field, Operation, HostEffect, IrResult>,
+        Error,
+    >
+    where
+        Domain: ScalarArgumentDomain,
+    {
+        self.lower_with(lower, |schema, parameter_index, value, scalar_type| {
+            check_argument_type(
+                &schema.parameters[parameter_index].domain,
+                ScalarArgumentType {
+                    scalar_type: *scalar_type,
+                    is_pure: true,
+                    literal: match value {
+                        Computation::Literal { value } => Some(value),
+                        _ => None,
+                    },
+                },
+            )
+        })
+    }
+
+    /// Lower pure operands with explicit native type admission against each
+    /// original schema parameter. The same shared physical budget and declaration
+    /// order as `lower` apply; admission runs only after that operand is proved
+    /// pure. Observations are trusted compiler data, not inferred by this entry.
+    /// The checker must corroborate scalar types/bounds/domains or an explicitly
+    /// supported native type. It must not execute effects or grant authority.
+    /// Runtime values and live policy still require validation before dispatch.
+    pub fn lower_with<Field, Operation, HostEffect, IrResult, Type, Error>(
+        self,
+        mut lower: impl FnMut(
+            &'source NamedArgument,
+        ) -> std::result::Result<
+            (Computation<Field, Operation, HostEffect, IrResult>, Type),
+            Error,
+        >,
+        mut check: impl FnMut(
+            &'schema SourceSchema<'schema, Key, Domain, Result, Capability>,
+            usize,
+            &Computation<Field, Operation, HostEffect, IrResult>,
+            &Type,
+        ) -> std::result::Result<(), ArgumentTypeError>,
     ) -> SourceCallResult<
         'source,
         'schema,
@@ -579,18 +626,16 @@ where
         let mut lowered = Vec::with_capacity(arguments.len());
         for (parameter_index, argument_index) in bindings {
             let argument = &arguments[argument_index];
-            let parameter = &schema.parameters[parameter_index];
             budget
                 .check_pending(0, 1)
                 .map_err(|error| SourceCallError::Output {
                     argument_index,
                     error: PureTypeError::Structure(error),
                 })?;
-            let (value, scalar_type) =
-                lower(argument).map_err(|error| SourceCallError::Lowering {
-                    argument_index,
-                    error,
-                })?;
+            let (value, observed) = lower(argument).map_err(|error| SourceCallError::Lowering {
+                argument_index,
+                error,
+            })?;
             preflight_with_budget(&value, 1, &mut budget).map_err(|error| match error {
                 PureTypeError::Impure => SourceCallError::Argument {
                     parameter_index,
@@ -602,16 +647,7 @@ where
                     error,
                 },
             })?;
-            // Generated-IR preflight already proved physical purity; do not walk it again.
-            let facts = ScalarArgumentType {
-                scalar_type,
-                is_pure: true,
-                literal: match &value {
-                    Computation::Literal { value } => Some(value),
-                    _ => None,
-                },
-            };
-            check_argument_type(&parameter.domain, facts).map_err(|error| {
+            check(schema, parameter_index, &value, &observed).map_err(|error| {
                 SourceCallError::Argument {
                     parameter_index,
                     argument_index,
