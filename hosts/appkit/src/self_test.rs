@@ -579,12 +579,46 @@ fn roles_and_bounds(gui: &Gui) -> Check {
     })
 }
 
+fn typed_task(gui: &Gui) -> Check {
+    let source = include_str!("../examples/text_task.lese");
+    let inputs = |text: &str| {
+        vec![
+            ("text".into(), ScalarValue::String(text.into())),
+            ("name".into(), ScalarValue::String("input".into())),
+        ]
+    };
+    for text in ["typed native helper ✓", "second task input"] {
+        let result = driver::run_task(gui, source, "main", inputs(text))?;
+        assert_eq!(result.value, ScalarValue::Boolean(true));
+        assert_eq!(result.effects, 4);
+        assert_eq!(result.observations.len(), 2);
+        assert_eq!(gui.snapshot(2).unwrap().value, text);
+    }
+    let before = gui.snapshot(2).unwrap();
+    assert!(driver::run_task(gui, source, "main", vec![]).is_err());
+    assert!(driver::run(gui, source).is_err());
+    assert_eq!(gui.snapshot(2).unwrap(), before);
+    host::with_host(gui, |host, _| {
+        for source in [
+            "fn bad(target: object) = gui.observe(target: target)\nfn main() = bad(target: \"forged\")",
+            "fn bad(observed: snapshot) = field(value: observed, name: \"value\")\nfn main() = bind(target: gui.find(name: \"input\"), body: bad(observed: target))",
+        ] {
+            assert!(host.compile(source).is_err());
+        }
+    }).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 pub fn run() -> Check {
     let gui = Gui::new().map_err(|e| e.to_string())?;
     gui.show().map_err(|e| e.to_string())?;
     type Case = (&'static str, fn(&Gui) -> Check);
     let cases: &[Case] = &[
         ("real controls and source-selected routing", real_controls),
+        (
+            "typed scalar task inputs and native helper parameters",
+            typed_task,
+        ),
         ("submit / pump / accept / observe phases", phases),
         (
             "revision, ABA, replacement, permission and enabled fences",

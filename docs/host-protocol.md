@@ -361,11 +361,41 @@ with explicit request correlation, dispatch and reply acceptance. Native
 validation errors stay external failures and do not become recoverable scalar
 errors.
 
-Helper input annotations remain the six scalar types. A helper may return a
-native object result, which its caller can bind and pass to a host operation;
-an `object` helper parameter annotation is not yet supported. Snapshot `field`
-projections also remain scalar, so retain the discovered object separately
-from its observation's revision and text.
+Native hosts can opt into helper parameter types with
+`compile_catalog_typed_program` and
+`CatalogSourceEnvironment::source_type_name`. The existing catalog compiler
+retains its scalar-only helper signatures, and the new hook defaults to refusing
+unknown names. The typed path first admits the complete declaration forest,
+then resolves each non-scalar helper annotation to the host's exact native type
+metadata. Scalar names keep their six fixed meanings. Types are compared
+exactly; there is no subtype, coercion or union of exported fields.
+
+The AppKit and AX controls hosts declare `object` and `snapshot` for their own
+local representations. Source can now factor observation into a helper:
+
+```text
+fn observe_target(target: object) = gui.observe(target: target)
+```
+
+Its caller must first bind a discovered native result and then pass that local
+to the helper. Helper arguments remain pure expressions: putting `gui.find`
+directly inside the helper argument does not implicitly perform an Effect.
+The normal named binding, cold checks, hygiene, expansion budgets, capture and
+runtime native operand validation still apply. A type annotation describes
+host metadata; it never manufactures an object, grants access or bypasses a
+generation, lease or revision check. The
+[AppKit task](../hosts/appkit/examples/text_task.lese) and
+[AX controls task](../hosts/macos-ax/examples/controls_text_task.lese) show
+helpers combined with externally supplied text inputs.
+
+The same typed compiler admits required scalar task entry parameters and
+returns their owned signature in `CompiledCatalogProgram::entry_parameters`.
+Native hosts may use `embedding::bind_entry_arguments` to check and move named
+scalar inputs into declaration order before constructing original VM locals.
+The binder creates no scope and grants no authority. Entry inputs cannot carry
+native objects or snapshots; discover these under the session's live scope.
+Snapshot `field` projections remain scalar, so retain the discovered object
+separately from its observation's revision and text.
 
 The `leselang_vm::embedding` convenience API and standalone CLI still expose
 their scalar registration profile. Native object operands are an opt-in native
@@ -378,7 +408,8 @@ identity.
 | Milestone | Current evidence and boundary |
 | --- | --- |
 | Reusable Rust embedding | Registration, compilation and explicit session driving use the existing HIR/VM; independent consumers test Fuel, revocation, cancellation, late replies and partial effects. |
-| Standalone scalar CLI | `check` and `run` execute complete source programs; `std.print` is an explicitly granted reference host operation. |
+| Standalone scalar CLI | `check` and `run` admit complete source programs; `--entry` selects a task and `--text` supplies bounded string inputs. `check` validates inputs without execution; `std.print` is an explicitly granted reference host operation. |
+| Typed task inputs and native helpers | Scalar embedding admits required named inputs through an explicit task compiler and moves validated payloads into original VM locals. Independent Consumer tests compare input reads with native VM Fuel cutoffs, and cover input errors, two Effects, revocation and partial outcomes. Native hosts can opt into exact helper types; AppKit and AX controls expose `object` and `snapshot` while keeping task entry inputs scalar. |
 | Local protocol draft | Opaque object identity, generation, execution lease, revision checks and historical observations are exercised through GUI/CLI headless host conformance tests with distinct native representations and explicit queues. |
 | Dynamic native object operands | Real source discovers and binds an object, then passes the typed result to observe/apply operations; two objects exercise identity-based routing. Scalar adapters reject native operands by default. |
 | Real GUI adapter | The separate macOS AppKit host binds actual `NSButton` and `NSTextField` objects to bounded discovery, text replacement and target/action dispatch through the existing VM protocol. Its form verifies edited and submitted values and tracks Save's dependency on the input revision. Its desktop self-test exercises the full source flow and live object/session fences; macOS CI builds, lints and runs the non-GUI package tests separately. This establishes an application-owned AppKit adapter, not cross-platform or other-process automation. |
@@ -387,7 +418,7 @@ identity.
 | Generic application/window selection | An explicit bundle path and optional matching PID admit one running same-user application instance. Bounded window metadata and exact unique selection or same-connection keys bind one native window independently of later title changes. The generic controls path completed a six-Effect two-replacement flow against a dedicated Stickies 10.3 note, retaining the selected window through changing titles and independently verifying its final text. Window/process replacement, permission loss and observed state changes still refuse stale work; this is macOS scope selection with per-application compatibility requirements, not atomic remote state or universal GUI coverage. See the application selection guide for the tested flow and boundaries. |
 | Common widget operations | The optional 13-operation widgets catalog adds exact role/value discovery, scoped menu operations, desired checkbox state, native item selection and normalized scrollbar position. A real Finder workflow used explicit View Options and folder-window sessions, opened/cancelled/chose a popup item, cleared Size/Kind checkboxes, selected one exact native row and scrolled from 0 to 1,000, with independent desktop inspection. The menu choice's immediate observation had not updated, so its source stopped; a later explicit read established the postcondition before the next session continued. The [widget guide](macos-ax-widgets.md) records each source result and the same-process boundary, including refusal of Preview's XPC Export panel. Portable and native tests separately preserve identity, failure, Fuel and session fences. |
 | Explicit auxiliary process scopes | A reviewed PID/start-time/executable grant admits helper-owned objects only through the selected window's bounded AX relationships, with shared monotonic revocation and repeated process checks. Preview's Export panel completed a six-Effect source flow that wrote and observed two successive export-name values in an AppKit helper, followed by independent desktop inspection and cancellation without exporting. Default ungranted access and a mismatched start time refused. The [auxiliary-process guide](macos-ax-auxiliary-processes.md) records the tested instance, embedding API and boundaries; the helper's other windows remain outside scope. |
-| Wider object language and remote/durable hosts | Native helper parameter annotations and object-valued field projections remain separate language extensions. Remote/durable hosts still require transport identity, version negotiation, failure recovery and compatibility decisions; local references cannot be reused as wire handles. |
+| Wider object language and remote/durable hosts | Object-valued field projections and external native-object entry inputs remain outside this profile. Remote/durable hosts still require transport identity, version negotiation, failure recovery and compatibility decisions; local references cannot be reused as wire handles. |
 
 See the [embedding guide](embedding.md) for Rust host setup and the
 [architecture](architecture.md) for ownership and dependency boundaries.

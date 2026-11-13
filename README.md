@@ -40,10 +40,23 @@ embedding. The arithmetic example prints `42`; the Effect example prints two
 lines through the CLI's explicitly granted `std.print` host operation. `check`
 never invokes host callbacks. Read the [language and CLI guide](docs/language.md)
 for scalar values, helpers, control flow, Fuel and the supported profile.
+Use `check/run FILE --entry NAME` to select a parameterless task instead of
+`main`. The [named-entry example](examples/entry_points.lese) shares a helper
+between a pure result and a two-Effect report; the
+[entry guide](docs/language.md#select-an-entry-function) explains complete-file
+validation and permissions when switching tasks.
+Use `--text NAME VALUE` to pass required string inputs as data to a task;
+[`check` validates the same inputs](docs/language.md#supply-text-inputs) without
+running callbacks. The source can stay unchanged between invocations.
 Editors and agents can select `check --diagnostic-format json FILE` or
 `run --diagnostic-format json FILE` for versioned JSON Lines diagnostics on
 standard error. Default text diagnostics and program output remain available;
 the guide specifies coordinates, failure phases and compatibility rules.
+Use `leselang fmt FILE` to write formatted source while retaining comments,
+or `leselang fmt --check FILE` for a quiet byte-for-byte formatting check.
+Both are syntax-only and leave source files untouched; the
+[formatting guide](docs/language.md#format-source-without-losing-comments)
+explains layout, limits and the comment-preserving Rust API.
 
 ## Embed From Rust
 
@@ -68,6 +81,15 @@ fn main() = bind(first: increment(n: 19), body: increment(n: add(left: first, ri
 The queued mode interleaves two independent local VMs over shared immutable IR.
 It is a bounded, single-threaded host loop, not an implicit async runtime.
 See the [embedding guide](docs/embedding.md) for cancellation and authority tests.
+Rust hosts can also select a task with `Host::compile_entry` and inspect its
+`Program::entry_name()` and inferred `Program::result_type()` before starting
+an independent session. Existing `Host::compile` keeps the `main` default.
+For typed task inputs, `Host::compile_task` retains the required parameter
+signature and `start_with_arguments` binds owned scalar values by name. One
+compiled program can run with different inputs; startup moves validated values
+into the original VM locals without consuming Fuel. The
+[task input guide](docs/embedding.md#supply-typed-task-inputs) covers all six
+scalar types and startup failures.
 The same module exposes [structured diagnostics](docs/embedding.md#structured-diagnostics)
 with host-neutral categories and source spans, so custom Rust hosts can present
 errors without decoding CLI text or walking nested compiler errors themselves.
@@ -78,6 +100,12 @@ objects and reject replies from the wrong object.
 An action acknowledgement records submission; a later observation verifies the
 changed state. Native object operands are an explicit HIR adapter opt-in; the
 high-level embedding API remains scalar.
+Native hosts can also opt into exact `object` and `snapshot` helper parameter
+types through the typed catalog compiler. The
+[AppKit](hosts/appkit/examples/text_task.lese) and
+[AX controls](hosts/macos-ax/examples/controls_text_task.lese) task examples
+combine scalar text inputs with helpers receiving discovered native objects.
+Object identity, current permissions and revision checks remain with the host.
 
 ## Run A Real GUI Host
 

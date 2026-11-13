@@ -2,7 +2,6 @@
 use leselang_macos_ax_host::scope::{
     ApplicationSpec, AuxiliaryProcessSpec, MAX_AUXILIARY_PROCESSES, WindowSelector,
 };
-#[cfg(any(target_os = "macos", test))]
 use leselang_vm::native::core::ScalarValue;
 use std::{
     ffi::OsString,
@@ -14,7 +13,7 @@ pub const INITIAL: &str = "LeseLang AX initial\n";
 #[cfg(target_os = "macos")]
 pub const EXPECTED: &str = "LeseLang cross-process ✓\n";
 pub const MAX_SOURCE_BYTES: usize = 16 * 1024;
-pub const HELP: &str = "LeseLang macOS Accessibility host\n  --prepare FILE                  Create a new plain-text test document (never overwrite)\n  --check-permission              Check this process's Accessibility access without prompting\n  --document FILE [--run SOURCE]   Drive exactly that already-open TextEdit document\n  --calculator [--run SOURCE]      Drive Calculator's supported basic-mode window\n  --app ABS_APP [--pid PID]       Select an already-running .app executable instance\n  --windows                      List windows of --app without reading controls\n  --window-title TITLE           Match an exact window title\n  --window-id IDENTIFIER         Match an exact window identifier\n  --window-document FILE         Match an exact local document path\n  --controls                     Use the per-control catalog in the selected scope\n  --widgets                      Opt in to common widgets (requires --app and window)\n  --wait-values                  Add gui.wait_value to --widgets --run; CLI schedules explicit steps\n  --wait-states                  Add value/checked/selected/position waits to --widgets --run\n  --auxiliary-processes          Inspect foreign process frontiers of an exact window (read only)\n  --allow-auxiliary PID START_SECONDS START_MICROS EXECUTABLE\n                                 Explicit widget grant; repeat for at most four processes\n  --discover                     Print bounded metadata (requires --controls or --widgets)\n  --help                         Show usage\nRequires macOS 14+, the selected application already open and Accessibility access.\nTextEdit uses 1000 Fuel; its default program requires the exact initial test text.\nCalculator uses 2000 Fuel; its default program requires display 0 before 1 + 2 =.\nThe legacy Calculator demo supports the observed English basic-mode interface.\nControl mode requires --discover or --run SOURCE and uses 10000 Fuel for source.\nWith --app, use --windows or --controls/--widgets with an exact window field.\nWindow fields combine; missing or multiple matches fail. No focused-window fallback.\nDiscovery keys are connection-local; use exact selectors in later runs.\nAuxiliary discovery does not authorize access; grants require complete reviewed identities.\nThis host does not open apps, clear Calculator, change OS permissions, save documents\nor retry uncertain actions. Source files are limited to 16384 UTF-8 bytes.";
+pub const HELP: &str = "LeseLang macOS Accessibility host\n  --prepare FILE                  Create a new plain-text test document (never overwrite)\n  --check-permission              Check this process's Accessibility access without prompting\n  --document FILE [--run SOURCE]   Drive exactly that already-open TextEdit document\n  --calculator [--run SOURCE]      Drive Calculator's supported basic-mode window\n  --app ABS_APP [--pid PID]       Select an already-running .app executable instance\n  --windows                      List windows of --app without reading controls\n  --window-title TITLE           Match an exact window title\n  --window-id IDENTIFIER         Match an exact window identifier\n  --window-document FILE         Match an exact local document path\n  --controls                     Use the per-control catalog in the selected scope\n  --widgets                      Opt in to common widgets (requires --app and window)\n  --wait-values                  Add gui.wait_value to --widgets --run; CLI schedules explicit steps\n  --wait-states                  Add value/checked/selected/position waits to --widgets --run\n  --auxiliary-processes          Inspect foreign process frontiers of an exact window (read only)\n  --allow-auxiliary PID START_SECONDS START_MICROS EXECUTABLE\n                                 Explicit widget grant; repeat for at most four processes\n  --entry NAME                   Select a task entry with --controls --run\n  --text NAME VALUE              Supply a string task input; repeat up to eight times\n  --discover                     Print bounded metadata (requires --controls or --widgets)\n  --help                         Show usage\nRequires macOS 14+, the selected application already open and Accessibility access.\nTextEdit uses 1000 Fuel; its default program requires the exact initial test text.\nCalculator uses 2000 Fuel; its default program requires display 0 before 1 + 2 =.\nThe legacy Calculator demo supports the observed English basic-mode interface.\nControl mode requires --discover or --run SOURCE and uses 10000 Fuel for source.\nWith --app, use --windows or --controls/--widgets with an exact window field.\nWindow fields combine; missing or multiple matches fail. No focused-window fallback.\nDiscovery keys are connection-local; use exact selectors in later runs.\nAuxiliary discovery does not authorize access; grants require complete reviewed identities.\nThis host does not open apps, clear Calculator, change OS permissions, save documents\nor retry uncertain actions. Source files are limited to 16384 UTF-8 bytes.";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Options {
@@ -59,12 +58,19 @@ pub enum ControlScope {
 pub enum ControlInput {
     Discover,
     Run(PathBuf),
+    Task {
+        source: PathBuf,
+        entry: String,
+        arguments: Vec<(String, ScalarValue)>,
+    },
 }
 impl Options {
     pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Self, String> {
         let mut args = args.into_iter();
         let mut document = None;
         let mut source = None;
+        let mut entry = None;
+        let mut arguments: Vec<(String, ScalarValue)> = Vec::new();
         let mut mode = None;
         let mut calculator = false;
         let mut controls = false;
@@ -81,7 +87,25 @@ impl Options {
         let mut window_identifier = None;
         let mut window_document = None;
         while let Some(arg) = args.next() {
-            if arg == "--app" {
+            if arg == "--entry" {
+                let value = task_name(args.next(), "--entry")?;
+                if entry.replace(value).is_some() {
+                    return Err("duplicate --entry".into());
+                }
+            } else if arg == "--text" {
+                let name = task_name(args.next(), "--text")?;
+                let value = args.next().ok_or("--text requires NAME VALUE")?;
+                let value = value
+                    .into_string()
+                    .map_err(|_| "--text requires UTF-8 text")?;
+                if value.len() > leselang_vm::native::core::MAX_SCALAR_STRING_BYTES {
+                    return Err("--text value exceeds 4096 UTF-8 bytes".into());
+                }
+                if arguments.len() >= 8 || arguments.iter().any(|(key, _)| key == &name) {
+                    return Err("--text has duplicate names or exceeds eight inputs".into());
+                }
+                arguments.push((name, ScalarValue::String(value)));
+            } else if arg == "--app" {
                 let value = args.next().ok_or("--app requires an absolute .app path")?;
                 if application.replace(PathBuf::from(value)).is_some() {
                     return Err("duplicate --app".into());
@@ -208,6 +232,11 @@ impl Options {
                 }
             }
         }
+        if (entry.is_some() || !arguments.is_empty())
+            && (!controls || widgets || discover || source.is_none() || mode.is_some())
+        {
+            return Err("--entry and --text require --controls --run SOURCE".into());
+        }
         if let Some(mode) = mode {
             if document.is_some()
                 || source.is_some()
@@ -291,6 +320,13 @@ impl Options {
             }
             let input = match (discover, source) {
                 (true, None) => ControlInput::Discover,
+                (false, Some(source)) if entry.is_some() || !arguments.is_empty() => {
+                    ControlInput::Task {
+                        source,
+                        entry: entry.unwrap_or_else(|| "main".into()),
+                        arguments,
+                    }
+                }
                 (false, Some(path)) => ControlInput::Run(path),
                 _ => {
                     return Err(
@@ -340,6 +376,13 @@ impl Options {
             };
             let input = match (discover, source) {
                 (true, None) => ControlInput::Discover,
+                (false, Some(source)) if entry.is_some() || !arguments.is_empty() => {
+                    ControlInput::Task {
+                        source,
+                        entry: entry.unwrap_or_else(|| "main".into()),
+                        arguments,
+                    }
+                }
                 (false, Some(path)) => ControlInput::Run(path),
                 _ => {
                     return Err(
@@ -366,6 +409,13 @@ impl Options {
         }
         Ok(Self::Help)
     }
+}
+
+fn task_name(value: Option<OsString>, flag: &str) -> Result<String, String> {
+    value
+        .and_then(|value| value.into_string().ok())
+        .filter(|name| leselang_vm::native::hir::pure_typing::valid_local_name(name))
+        .ok_or_else(|| format!("{flag} requires an ASCII identifier of 1 to 64 bytes"))
 }
 
 fn decimal(value: Option<OsString>, field: &str) -> Result<u64, String> {
@@ -426,6 +476,99 @@ pub fn render_value(value: &ScalarValue) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn task_text_is_admitted_only_for_controls_source() {
+        let parse = |args: &[&str]| Options::parse(args.iter().map(OsString::from));
+        let args = [
+            "--document",
+            "test.txt",
+            "--controls",
+            "--run",
+            "task.lese",
+            "--entry",
+            "fill",
+            "--text",
+            "text",
+            "quoted \" ✓\n",
+        ];
+        let Options::Controls {
+            input:
+                ControlInput::Task {
+                    source,
+                    entry,
+                    arguments,
+                },
+            ..
+        } = parse(&args).unwrap()
+        else {
+            panic!("expected task input");
+        };
+        assert_eq!(source, PathBuf::from("task.lese"));
+        assert_eq!(entry, "fill");
+        assert_eq!(
+            arguments,
+            vec![("text".into(), ScalarValue::String("quoted \" ✓\n".into()))]
+        );
+        for prefix in [
+            vec!["--document", "test.txt", "--run", "task.lese"],
+            vec!["--controls", "--calculator", "--discover"],
+            vec!["--help"],
+        ] {
+            let mut args = prefix;
+            args.extend(["--text", "text", "value"]);
+            assert!(parse(&args).is_err(), "{args:?}");
+        }
+        for suffix in [
+            vec!["--entry", "bad.name"],
+            vec!["--entry", "main", "--entry", "main"],
+            vec!["--text", "text"],
+            vec!["--text", "text", "x", "--text", "text", "y"],
+            vec!["--text", "none", "x"],
+        ] {
+            let mut args = vec!["--controls", "--calculator", "--run", "task"];
+            args.extend(suffix);
+            assert!(parse(&args).is_err(), "{args:?}");
+        }
+        assert!(
+            parse(&[
+                "--controls",
+                "--calculator",
+                "--run",
+                "task",
+                "--text",
+                "text",
+                &"x".repeat(4097)
+            ])
+            .is_err()
+        );
+        let mut args: Vec<OsString> = ["--controls", "--calculator", "--run", "task"]
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for index in 0..9 {
+            args.extend(["--text".into(), format!("arg{index}").into(), "x".into()]);
+        }
+        assert!(Options::parse(args).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn task_text_requires_lossless_utf8() {
+        use std::os::unix::ffi::OsStringExt;
+        let mut args: Vec<OsString> = [
+            "--controls",
+            "--calculator",
+            "--run",
+            "task",
+            "--text",
+            "text",
+        ]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+        args.push(OsString::from_vec(vec![0xff]));
+        assert!(Options::parse(args).is_err());
+    }
     #[test]
     fn auxiliary_discovery_requires_a_window_and_is_not_a_grant() {
         let parse = |args: &[&str]| Options::parse(args.iter().map(OsString::from));

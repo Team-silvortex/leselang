@@ -3,6 +3,9 @@
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 
+mod formatter;
+pub use formatter::format_source;
+
 pub const MAX_SOURCE_BYTES: usize = 256 * 1024;
 pub const MAX_CALL_DEPTH: usize = 16;
 pub const MAX_FUNCTIONS: usize = 32;

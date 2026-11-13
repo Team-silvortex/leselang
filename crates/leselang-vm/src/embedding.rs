@@ -18,7 +18,9 @@ use crate::native::{
         OperationCatalogLimits, OperationSchema, ReplyAuthority,
     },
     hir::{
-        catalog_program::{CatalogProgramLimits, compile_catalog_program},
+        catalog_program::{
+            CatalogProgramLimits, compile_catalog_program, compile_catalog_typed_program,
+        },
         catalog_source::{CatalogSourceError, CatalogSourceLimits},
         control_source::ControlSourceLimits,
         effect_evaluation::EffectEvaluationLimits,
@@ -33,6 +35,9 @@ use crate::native::{
 };
 
 pub mod diagnostics;
+
+mod entry_arguments;
+pub use entry_arguments::{EntryArgumentError, EntryParameter, bind_entry_arguments};
 
 mod environment;
 use environment::Env;
@@ -332,7 +337,26 @@ impl<'a> Host<'a> {
 
     /// Compile `main` and cold-check all declarations using explicit compile-time grants.
     /// This calls the native parser/compiler without invoking any registered callback.
+    /// See [`Self::compile_entry`] to select another parameterless declaration.
     pub fn compile(&self, source: &str, grants: &[&str]) -> Result<Program, CompileError> {
+        self.compile_entry(source, "main", grants)
+    }
+
+    /// Compile the named, parameterless entry using explicit compile-time grants.
+    ///
+    /// Every declaration and cold branch is checked, including unused helpers.
+    /// The selected entry cannot be called by any declaration; an unselected
+    /// `main` is an ordinary helper. Entry selection does not add entry arguments,
+    /// invoke registered callbacks or grant permission to a later session.
+    ///
+    /// The returned program owns its entry name and inferred scalar result type,
+    /// so it does not borrow either input string. It remains tied to this host.
+    pub fn compile_entry(
+        &self,
+        source: &str,
+        entry: &str,
+        grants: &[&str],
+    ) -> Result<Program, CompileError> {
         if source.len() > self.limits.max_source_bytes {
             return Err(CompileError::SourceLimit);
         }
@@ -342,10 +366,10 @@ impl<'a> Host<'a> {
         }
         let declarations: Vec<_> = parsed.function.iter().chain(&parsed.helpers).collect();
         let grants: Vec<String> = grants.iter().map(|s| (*s).into()).collect();
-        let node = self.with_catalog(|catalog| {
+        let (node, result_type) = self.with_catalog(|catalog| {
             compile_catalog_program::<(), _, (), (), _, _, _, _>(
                 &declarations,
-                "main",
+                entry,
                 self.limits.compilation,
                 &SourceCallHost {
                     catalog,
@@ -354,12 +378,65 @@ impl<'a> Host<'a> {
                 },
                 self,
             )
-            .map(|(node, _)| node)
             .map_err(CompileError::Source)
         })?;
+        let result_type = result_type
+            .scalar_type()
+            .expect("scalar embedding compiler returned a non-scalar result type");
         Ok(Program {
             node,
             host: self.identity.clone(),
+            entry_name: entry.into(),
+            result_type,
+            parameters: Vec::new(),
+        })
+    }
+
+    /// Compile a task with required, named scalar entry parameters.
+    ///
+    /// Unlike [`Self::compile_entry`], this explicitly admits parameterized
+    /// entries. All six scalar types are supported without coercion or defaults.
+    /// All declarations and cold branches are checked before producing a program;
+    /// input values are supplied later through [`Self::start_with_arguments`].
+    /// Compilation invokes no registered callback and grants no live authority.
+    pub fn compile_task(
+        &self,
+        source: &str,
+        entry: &str,
+        grants: &[&str],
+    ) -> Result<Program, CompileError> {
+        if source.len() > self.limits.max_source_bytes {
+            return Err(CompileError::SourceLimit);
+        }
+        let parsed = parse(source);
+        if !parsed.diagnostics.is_empty() {
+            return Err(CompileError::Syntax(parsed.diagnostics));
+        }
+        let declarations: Vec<_> = parsed.function.iter().chain(&parsed.helpers).collect();
+        let grants: Vec<String> = grants.iter().map(|grant| (*grant).into()).collect();
+        let compiled = self.with_catalog(|catalog| {
+            compile_catalog_typed_program::<(), _, (), (), _, _, _, _>(
+                &declarations,
+                entry,
+                self.limits.compilation,
+                &SourceCallHost {
+                    catalog,
+                    version: 1,
+                    granted: &grants,
+                },
+                self,
+            )
+            .map_err(CompileError::Source)
+        })?;
+        Ok(Program {
+            node: compiled.node,
+            host: self.identity.clone(),
+            entry_name: entry.into(),
+            result_type: compiled
+                .result_type
+                .scalar_type()
+                .expect("scalar embedding compiler returned a non-scalar result type"),
+            parameters: compiled.entry_parameters,
         })
     }
 
@@ -374,6 +451,47 @@ impl<'a> Host<'a> {
         if !Rc::ptr_eq(&self.identity, &program.host) {
             return Err(Error::ForeignProgram);
         }
+        if !program.parameters.is_empty() {
+            return Err(Error::Execution(
+                "entry arguments required; use start_with_arguments".into(),
+            ));
+        }
+        Ok(self.start_session(program, Vec::new(), grants, fuel))
+    }
+
+    /// Validate owned named inputs and start an independent task session.
+    ///
+    /// Names must match the complete entry signature exactly; order is arbitrary.
+    /// Type/value bounds and the execution binding limit are checked before scope
+    /// creation or callbacks. Inputs move into declaration order without cloning
+    /// scalar payloads or consuming Fuel. Later reads use ordinary VM Fuel costs.
+    /// Each session still receives exactly the supplied live grants and Fuel.
+    pub fn start_with_arguments<'h, 'p>(
+        &'h self,
+        program: &'p Program,
+        arguments: Vec<(String, ScalarValue)>,
+        grants: &[&str],
+        fuel: Fuel,
+    ) -> Result<Session<'p, 'h, 'a>, StartError> {
+        if !Rc::ptr_eq(&self.identity, &program.host) {
+            return Err(StartError::ForeignProgram);
+        }
+        let bindings = bind_entry_arguments(
+            &program.parameters,
+            arguments,
+            self.limits.execution.effects.pure.max_bindings,
+        )
+        .map_err(StartError::Arguments)?;
+        Ok(self.start_session(program, bindings, grants, fuel))
+    }
+
+    fn start_session<'h, 'p>(
+        &'h self,
+        program: &'p Program,
+        bindings: Vec<(String, ScalarValue)>,
+        grants: &[&str],
+        fuel: Fuel,
+    ) -> Session<'p, 'h, 'a> {
         let scope = LocalExecutionScope::new();
         let environment = Env {
             host: self,
@@ -381,25 +499,69 @@ impl<'a> Host<'a> {
             serial: std::cell::Cell::new(0),
             grants: grants.iter().map(|s| (*s).into()).collect(),
         };
-        Ok(Session {
+        Session {
             vm: LocalVm::new(
                 scope,
                 &program.node,
-                Vec::new(),
+                program
+                    .parameters
+                    .iter()
+                    .zip(bindings)
+                    .map(|(parameter, (_, value))| {
+                        (parameter.name.as_str(), PureValue::Scalar(value))
+                    })
+                    .collect(),
                 fuel,
                 self.limits.execution,
             ),
             environment,
             dispatched: None,
-        })
+        }
     }
 }
 
-/// Owned admitted IR, with no source borrow or native side effects.
+/// Owned admitted IR and entry metadata, with no source borrow or native side effects.
 pub struct Program {
     node: Node,
     host: Rc<()>,
+    entry_name: String,
+    result_type: ScalarType,
+    parameters: Vec<EntryParameter>,
 }
+
+impl Program {
+    /// The exact declaration selected when this program was compiled.
+    pub fn entry_name(&self) -> &str {
+        &self.entry_name
+    }
+
+    /// The compiler's inferred scalar type for a successful entry result.
+    /// This does not promise completion or authorize any required host effects.
+    pub fn result_type(&self) -> ScalarType {
+        self.result_type
+    }
+
+    /// Required entry inputs in source declaration order. Empty for legacy entries.
+    pub fn parameters(&self) -> &[EntryParameter] {
+        &self.parameters
+    }
+}
+
+/// Typed task startup refusal. No session, callback or Effect has been created.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StartError {
+    ForeignProgram,
+    Arguments(EntryArgumentError),
+}
+impl fmt::Display for StartError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ForeignProgram => f.write_str("program belongs to another host"),
+            Self::Arguments(error) => error.fmt(f),
+        }
+    }
+}
+impl std::error::Error for StartError {}
 
 /// Declaration-ordered, evaluated scalar operands. Values are read-only to handlers.
 #[derive(Debug)]

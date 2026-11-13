@@ -333,6 +333,17 @@ pub fn run(
     driver::run_profile(&ControlsProfile(backend), source, 10000)
 }
 
+/// Supply scalar task inputs without rewriting source or importing native handles.
+/// Objects are discovered inside the selected scope through the original driver.
+pub fn run_task(
+    backend: &dyn ControlsBackend,
+    source: &str,
+    entry: &str,
+    arguments: Vec<(String, ScalarValue)>,
+) -> Result<driver::ProfileRunSummary<ControlSnapshot>, String> {
+    driver::run_profile_task(&ControlsProfile(backend), source, entry, arguments, 10000)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -591,6 +602,154 @@ mod tests {
             ScalarValue::String("LeseLang discovered controls ✓\n".into())
         );
         assert_eq!(*editor.actions.borrow(), [7]);
+    }
+
+    const TEXT_TASK: &str = include_str!("../examples/controls_text_task.lese");
+    fn text_inputs(expected: &str, text: &str) -> Vec<(String, ScalarValue)> {
+        // Intentionally submitted in a different order from the source signature.
+        [
+            ("text", text),
+            ("expected", expected),
+            ("label", ""),
+            ("identifier", ""),
+            ("role", "AXTextArea"),
+        ]
+        .into_iter()
+        .map(|(name, value)| (name.into(), ScalarValue::String(value.into())))
+        .collect()
+    }
+
+    #[test]
+    fn reusable_task_passes_native_objects_and_snapshots_through_helpers() {
+        for (initial, replacement) in [
+            ("first document", "first replacement ✓"),
+            ("second note", "second replacement"),
+        ] {
+            let fake = Fake::editor();
+            fake.change(|scope| {
+                scope
+                    .controls
+                    .iter_mut()
+                    .find(|control| control.identity == 7)
+                    .unwrap()
+                    .value = Some(initial.into())
+            });
+            let result =
+                run_task(&fake, TEXT_TASK, "main", text_inputs(initial, replacement)).unwrap();
+            assert_eq!(result.value, ScalarValue::Boolean(true));
+            assert_eq!(result.effects, 4);
+            assert_eq!(result.observations.len(), 2);
+            assert_eq!(fake.value(7).as_deref(), Some(replacement));
+            assert_eq!(*fake.actions.borrow(), [7]);
+        }
+    }
+
+    #[test]
+    fn task_input_failures_happen_before_any_effect_or_mutation() {
+        let mut missing = text_inputs("initial", "changed");
+        missing.pop();
+        let mut duplicate = text_inputs("initial", "changed");
+        duplicate.push(duplicate[0].clone());
+        let mut unknown = text_inputs("initial", "changed");
+        unknown[0].0 = "unknown".into();
+        let mut wrong_type = text_inputs("initial", "changed");
+        wrong_type[0].1 = ScalarValue::Integer(42);
+        for arguments in [
+            missing,
+            duplicate,
+            unknown,
+            wrong_type,
+            text_inputs("initial", &"x".repeat(4097)),
+        ] {
+            let fake = Fake::editor();
+            assert!(run_task(&fake, TEXT_TASK, "main", arguments).is_err());
+            assert!(fake.actions.borrow().is_empty());
+            assert_eq!(fake.attempts.get(), 0);
+        }
+        let fake = Fake::editor();
+        assert!(
+            run(&fake, TEXT_TASK).is_err(),
+            "legacy run must still require a parameterless main"
+        );
+        assert!(fake.actions.borrow().is_empty());
+    }
+
+    #[test]
+    fn native_helper_types_are_exact_and_cannot_be_supplied_by_task_inputs() {
+        let fake = Fake::editor();
+        for source in [
+            "fn use(target: object) = gui.observe(target: target)\nfn main() = use(target: \"forged\")",
+            "fn use(target: object) = gui.observe(target: target)\nfn main() = bind(target: gui.select(role: \"AXTextArea\", identifier: \"\", label: \"\"), body: bind(before: gui.observe(target: target), body: use(target: before)))",
+            "fn unused(target: unknown_type) = none\nfn main() = true",
+        ] {
+            assert!(run(&fake, source).is_err(), "{source}");
+        }
+        assert!(
+            run_task(
+                &fake,
+                "fn main(target: object) = gui.observe(target: target)",
+                "main",
+                vec![("target".into(), ScalarValue::String("forged".into()))]
+            )
+            .is_err()
+        );
+        assert!(fake.actions.borrow().is_empty());
+    }
+
+    #[test]
+    fn task_helpers_preserve_guards_postconditions_and_uncertain_partial_writes() {
+        let fake = Fake::editor();
+        let guarded = run_task(
+            &fake,
+            TEXT_TASK,
+            "main",
+            text_inputs("wrong initial", "changed"),
+        )
+        .unwrap();
+        assert_eq!(guarded.value, ScalarValue::Boolean(false));
+        assert_eq!(guarded.effects, 2);
+        assert!(fake.actions.borrow().is_empty());
+        fake.behavior.set(3);
+        let ignored = run_task(
+            &fake,
+            TEXT_TASK,
+            "main",
+            text_inputs(crate::host::INITIAL_TEXT, "changed"),
+        )
+        .unwrap();
+        assert_eq!(ignored.value, ScalarValue::Boolean(false));
+        assert_eq!(ignored.effects, 4);
+        assert_eq!(fake.value(7).as_deref(), Some(crate::host::INITIAL_TEXT));
+        fake.behavior.set(2);
+        assert!(
+            run_task(
+                &fake,
+                TEXT_TASK,
+                "main",
+                text_inputs(crate::host::INITIAL_TEXT, "changed")
+            )
+            .is_err()
+        );
+        assert_eq!(*fake.actions.borrow(), [7]);
+        assert_eq!(fake.value(7).as_deref(), Some("changed"));
+    }
+
+    #[test]
+    fn absent_observation_is_not_an_empty_expected_string() {
+        let fake = Fake::editor();
+        fake.change(|scope| {
+            scope
+                .controls
+                .iter_mut()
+                .find(|control| control.identity == 7)
+                .unwrap()
+                .value = None
+        });
+        let result = run_task(&fake, TEXT_TASK, "main", text_inputs("", "changed")).unwrap();
+        assert_eq!(result.value, ScalarValue::Boolean(false));
+        assert_eq!(result.effects, 2);
+        assert!(fake.actions.borrow().is_empty());
+        assert_eq!(fake.value(7), None);
     }
     #[test]
     fn a_full_inventory_shares_dependencies_within_the_original_controls_fuel() {

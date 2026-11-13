@@ -27,6 +27,8 @@ cargo clippy --manifest-path consumer/Cargo.toml --all-targets --locked --offlin
 cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- check examples/arithmetic.lese
 cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/arithmetic.lese
 cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/two_effects.lese --allow stdio
+cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/entry_points.lese --entry preview --allow stdio
+cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/entry_points.lese --entry report --allow stdio
 cargo run --example embedded_counter --locked --offline --profile lean
 cargo run --manifest-path consumer/Cargo.toml --example embedded_counter --locked --offline --profile lean
 cargo run --example protocol_hosts --locked --offline --profile lean
@@ -63,6 +65,49 @@ turning diagnostic messages into a parsing contract. Verify the API from the
 independent Consumer as well as the CLI. Dotted host operation names are exact
 catalog keys, so parser admission must remain consistent with registration,
 including names with more than two segments.
+
+Explicit entry selection must use the existing catalog compiler without
+synthetic source or an extra runtime wrapper. Keep default `main` behavior,
+complete cold/unused declaration checks and the ban on calling the selected
+entry covered. Test named-entry execution against equivalent `main` source for
+results, original Fuel and partial Effect delivery, including revocation and
+cancellation. Verify owned entry metadata and inferred scalar result types from
+the independent Consumer, and `--entry` parsing and text/JSON failures from the
+CLI. Program metadata is descriptive and must not authorize execution.
+
+Typed task ingress is an explicit `compile_task` / `start_with_arguments` path.
+Keep legacy parameterless admission unchanged, require every named input and
+check types, scalar bounds and binding capacity before session creation. Test
+reordered inputs, all six scalar kinds, foreign programs and malformed inputs
+with no host work. The shared binder must move payloads rather than clone them;
+compare task-local reads against native `LocalVm` initial bindings at every
+Fuel cutoff. Preserve original Fuel through two Effects, captures, revocation,
+cancellation, late replies and partial side effects. The independent
+[`task_inputs` tests](consumer/tests/task_inputs.rs) exercise these contracts.
+For CLI `--text`, cover literal Unicode/quote/backslash/newline values, all
+option and size limits, source stdin, quiet `check`, JSON input diagnostics and
+zero output on rejected inputs.
+
+Native helper type annotations require the typed catalog compiler and explicit
+host type-name resolution. Preserve the old compiler's scalar-only profile and
+default refusal of native type names. Test exact native type matching, cold
+errors, helper hygiene and pure previously bound operands; no helper parameter
+may manufacture an object identity or admit an Effectful argument. GUI adapters
+must retain runtime object/lease/revision/authority checks when a helper receives
+an `object` or `snapshot`. Keep source parameter inputs separate from native
+object values and keep native field projections scalar.
+
+Source formatting uses `leselang_syntax::format_source`, while the older
+AST-based `format` retains its comment-erasing compatibility contract. Keep
+non-whitespace token spellings and order, comment text and neighboring-token
+relationships, string contents and formatting idempotence covered by syntax
+tests. Verify formatted programs through an independent Consumer, including
+their results, Effect order, original Fuel and cold-code admission failures.
+The CLI's `fmt` and `fmt --check` must not write input files or register or run
+host operations. Cover input/output bounds before emitting stdout, formatting
+differences, partial stdout write failures and the existing text/JSON
+diagnostic contracts. Document formatting profile changes in the
+[language guide](docs/language.md#format-source-without-losing-comments).
 
 The `protocol_hosts` example runs both reference adapters against the local host
 protocol. Conformance changes must preserve stale-object/revision rejection,

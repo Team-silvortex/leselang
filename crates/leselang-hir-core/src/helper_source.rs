@@ -9,7 +9,7 @@ use leselang_runtime_core::{
 use leselang_syntax::{Expression, Function, MAX_FUNCTION_PARAMETERS, NamedArgument, Span};
 
 use crate::ir::Computation;
-use crate::pure_typing::{PureTypeError, preflight_with_budget, valid_local_name};
+use crate::pure_typing::{PureType, PureTypeError, preflight_with_budget, valid_local_name};
 use crate::source_call::{
     SourceCallError, SourceCallLimits, SourceShapeError, preflight, valid_limits,
 };
@@ -45,6 +45,26 @@ pub fn helper_parameters(
     function: &Function,
     max_parameters: usize,
 ) -> Result<Vec<HelperParameter<'_>>, HelperParameterError> {
+    helper_parameters_with(function, max_parameters, scalar_type_name)
+}
+
+pub(crate) fn scalar_type_name(name: &str) -> Option<ScalarType> {
+    Some(match name {
+        "integer" => ScalarType::Integer,
+        "boolean" => ScalarType::Boolean,
+        "string" => ScalarType::String,
+        "none" => ScalarType::None,
+        "optional_string" => ScalarType::OptionalString,
+        "string_list" => ScalarType::StringList,
+        _ => return None,
+    })
+}
+
+pub(crate) fn helper_parameters_with<Type>(
+    function: &Function,
+    max_parameters: usize,
+    mut resolve: impl FnMut(&str) -> Option<Type>,
+) -> Result<Vec<NamedParameter<&str, Type>>, HelperParameterError> {
     if max_parameters > MAX_FUNCTION_PARAMETERS {
         return Err(HelperParameterError::InvalidLimits);
     }
@@ -58,19 +78,12 @@ pub fn helper_parameters(
         }
         if parameters
             .iter()
-            .any(|previous: &HelperParameter<'_>| previous.name == parameter.name)
+            .any(|previous: &NamedParameter<&str, Type>| previous.name == parameter.name)
         {
             return Err(HelperParameterError::DuplicateName { index });
         }
-        let ty = match parameter.type_name.as_str() {
-            "integer" => ScalarType::Integer,
-            "boolean" => ScalarType::Boolean,
-            "string" => ScalarType::String,
-            "none" => ScalarType::None,
-            "optional_string" => ScalarType::OptionalString,
-            "string_list" => ScalarType::StringList,
-            _ => return Err(HelperParameterError::UnknownType { index }),
-        };
+        let ty =
+            resolve(&parameter.type_name).ok_or(HelperParameterError::UnknownType { index })?;
         parameters.push(NamedParameter::required(parameter.name.as_str(), ty));
     }
     Ok(parameters)
@@ -212,6 +225,108 @@ pub fn lower_helper_arguments<
         return Err(HelperSourceError::WrongCallee);
     }
     bind_helper_source_arguments(arguments, signature.parameters, limits)?.lower(lower)
+}
+
+// Same named, pure-operand and aggregate-shape contract as scalar helper
+// lowering, with exact native metadata equality instead of a scalar conversion.
+type TypedHelperSourceResult<Node, Error> = Result<Vec<Node>, HelperSourceError<Error>>;
+pub(crate) fn lower_typed_helper_arguments<
+    'source,
+    Field,
+    Operation,
+    HostEffect,
+    IrResult,
+    Type: PartialEq,
+    Error,
+>(
+    expression: &'source Expression,
+    name: &str,
+    parameters: &[NamedParameter<&str, PureType<Type>>],
+    limits: HelperSourceLimits,
+    mut lower: impl FnMut(
+        &'source NamedArgument,
+    ) -> Result<
+        (Node<Field, Operation, HostEffect, IrResult>, PureType<Type>),
+        Error,
+    >,
+) -> TypedHelperSourceResult<Node<Field, Operation, HostEffect, IrResult>, Error> {
+    if !valid_limits(limits.source) || limits.max_parameters > MAX_FUNCTION_PARAMETERS {
+        return Err(HelperSourceError::InvalidLimits);
+    }
+    let Expression::Call {
+        callee, arguments, ..
+    } = expression
+    else {
+        return Err(HelperSourceError::NotCall);
+    };
+    preflight::<Error>(expression, limits.source).map_err(|error| match error {
+        SourceCallError::Shape { span, error } => HelperSourceError::Shape { span, error },
+        _ => HelperSourceError::InvalidLimits,
+    })?;
+    if !valid_local_name(name) {
+        return Err(HelperSourceError::InvalidSignature);
+    }
+    if callee != name {
+        return Err(HelperSourceError::WrongCallee);
+    }
+    if parameters.len() > limits.max_parameters {
+        return Err(HelperSourceError::ParameterLimit);
+    }
+    if arguments.len() > limits.max_parameters || arguments.len() > limits.source.max_arguments {
+        return Err(HelperSourceError::ArgumentLimit);
+    }
+    for (index, parameter) in parameters.iter().enumerate() {
+        if !parameter.required || !valid_local_name(parameter.name) {
+            return Err(HelperSourceError::InvalidParameter { index });
+        }
+    }
+    let mut names = [""; MAX_FUNCTION_PARAMETERS];
+    for (name, argument) in names.iter_mut().zip(arguments) {
+        *name = &argument.name;
+    }
+    let bindings = bind_named_arguments(&names[..arguments.len()], parameters)
+        .map_err(HelperSourceError::Names)?;
+    let mut budget = StructureBudget::new(
+        limits.source.max_lowered_nodes,
+        limits.source.max_lowered_depth,
+    );
+    let mut output = Vec::with_capacity(arguments.len());
+    for (parameter_index, (parameter, argument_index)) in bindings.iter().enumerate() {
+        budget
+            .check_pending(0, arguments.len() - parameter_index)
+            .map_err(|error| HelperSourceError::Output {
+                argument_index,
+                error: PureTypeError::Structure(error),
+            })?;
+        let (value, ty) =
+            lower(&arguments[argument_index]).map_err(|error| HelperSourceError::Lowering {
+                argument_index,
+                error,
+            })?;
+        let failure = |error| HelperSourceError::Argument {
+            parameter_index,
+            argument_index,
+            error,
+        };
+        preflight_with_budget(&value, 0, &mut budget).map_err(|error| match error {
+            PureTypeError::Impure => failure(ArgumentTypeError::Impure),
+            _ => HelperSourceError::Output {
+                argument_index,
+                error,
+            },
+        })?;
+        if let PureType::Scalar(expected) = parameter.domain {
+            check_argument_type(
+                &ScalarTypeSet::only(expected),
+                value.scalar_argument_type(ty.scalar_type()),
+            )
+            .map_err(failure)?;
+        } else if ty != parameter.domain {
+            return Err(failure(ArgumentTypeError::TypeMismatch));
+        }
+        output.push(value);
+    }
+    Ok(output)
 }
 
 /// A checked named-argument alignment, not a physical source or type receipt.

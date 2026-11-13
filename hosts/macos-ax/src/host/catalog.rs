@@ -2,7 +2,9 @@
 //! scheduling belongs here; reply guards remain bound to one execution.
 use super::*;
 use call_evaluation::PreparedValueCall;
-use catalog_program::{CatalogProgramLimits, compile_catalog_program};
+use catalog_program::{
+    CatalogProgramLimits, CompiledCatalogProgram, compile_catalog_typed_program,
+};
 use catalog_source::{CatalogSourceEnvironment, CatalogSourceLimits};
 use control_source::ControlSourceLimits;
 use flow_typing::CallFlowEnvironment;
@@ -195,6 +197,20 @@ impl<'s, S: ProfileSnapshot> Host<'_, 's, S> {
             .map_err(|_| Error::PermissionDenied)
     }
     pub fn compile(&self, source: &str) -> Result<Node, String> {
+        let program = self.compile_task(source, "main")?;
+        if !program.entry_parameters.is_empty() {
+            return Err("default entry cannot have parameters; use compile_task".into());
+        }
+        Ok(program.node)
+    }
+
+    /// Compile a task with scalar ingress and explicitly named native helper types.
+    /// This only describes source; it neither obtains objects nor invokes work.
+    pub fn compile_task(
+        &self,
+        source: &str,
+        entry: &str,
+    ) -> Result<CompiledCatalogProgram<Node, NativeType>, String> {
         if source.len() > 16 * 1024 {
             return Err("source limit".into());
         }
@@ -207,14 +223,13 @@ impl<'s, S: ProfileSnapshot> Host<'_, 's, S> {
         if S::CONTROLS {
             limits.expression.max_calls = 32;
         }
-        compile_catalog_program::<Field, _, (), (), _, _, _, _>(
+        compile_catalog_typed_program::<Field, _, (), (), _, _, _, _>(
             &declarations,
-            "main",
+            entry,
             limits,
             &self.source(),
             self,
         )
-        .map(|(node, _)| node)
         .map_err(|error| error.to_string())
     }
 }
@@ -268,6 +283,13 @@ impl<'source, 's, S: ProfileSnapshot>
     CatalogSourceEnvironment<'source, 's, Field, &'static str, Domain<'s, S>> for Host<'_, 's, S>
 {
     type Error = Error;
+    fn source_type_name(&self, name: &str) -> Option<NativeType> {
+        match name {
+            "object" => Some(NativeType::Object),
+            "snapshot" => Some(NativeType::Snapshot),
+            _ => None,
+        }
+    }
     fn source_operation(&self, operation: &&'static str) -> Result<&'static str, Error> {
         Ok(*operation)
     }

@@ -7,7 +7,7 @@ use leselang_syntax::{Expression, Function, NamedArgument, Span};
 
 use crate::call_typing::{CallTypeHost, CallTypeLimits};
 use crate::catalog_program::{
-    CatalogProgramContext, CatalogProgramGroupProfile, CatalogProgramLimits,
+    CatalogProgramContext, CatalogProgramGroupProfile, CatalogProgramLimits, CatalogProgramProfile,
     compile_catalog_program_with_entry,
 };
 use crate::catalog_source::{
@@ -818,7 +818,7 @@ fn lower_group_catalog_expression<
     limits: CatalogGroupSourceLimits,
     host: &SourceCallHost<'_, 'schema, Operation, Domain, Declaration, Capability>,
     environment: &Environment,
-    program: Option<&CatalogProgramContext<'source>>,
+    program: Option<&CatalogProgramContext<'source, Environment::Result>>,
     locals: Locals,
 ) -> CatalogGroupSourceResult<
     Node<Field, Operation, HostEffect, IrResult>,
@@ -915,11 +915,14 @@ where
         limits.program,
         host,
         environment,
-        Some(CatalogProgramGroupProfile {
-            limits: groups,
-            helper_groups: false,
-            prepared_members: false,
-        }),
+        CatalogProgramProfile {
+            groups: Some(CatalogProgramGroupProfile {
+                limits: groups,
+                helper_groups: false,
+                prepared_members: false,
+            }),
+            typed: false,
+        },
         |program, source, prefix| {
             program.with_expansion(|| {
                 lower_group_catalog_expression(
@@ -937,19 +940,29 @@ where
     )
 }
 
-struct HelperGroups<'a, 'source, Host, Environment> {
-    program: &'a CatalogProgramContext<'source>,
+struct HelperGroups<'a, 'source, Host, Environment, ResultType> {
+    program: &'a CatalogProgramContext<'source, ResultType>,
     host: &'a Host,
     environment: &'a Environment,
     limits: CatalogGroupSourceLimits,
     prepared_members: bool,
 }
-impl<'source, 'schema, Operation, Domain, Declaration, Capability, Environment>
+impl<
+    'source,
+    'schema,
+    Operation,
+    Domain,
+    Declaration,
+    Capability,
+    Environment,
+    ResultType: Clone + PartialEq,
+>
     HelperGroups<
         '_,
         'source,
         SourceCallHost<'_, 'schema, Operation, Domain, Declaration, Capability>,
         Environment,
+        ResultType,
     >
 {
     fn compile<Field, HostEffect, IrResult>(
@@ -965,7 +978,15 @@ impl<'source, 'schema, Operation, Domain, Declaration, Capability, Environment>
         Operation: Borrow<str> + PartialEq,
         Domain: ScalarArgumentDomain,
         Capability: PartialEq,
-        Environment: CatalogGroupSourceEnvironment<'source, 'schema, Field, Operation, Declaration, IrResult>,
+        Environment: CatalogGroupSourceEnvironment<
+                'source,
+                'schema,
+                Field,
+                Operation,
+                Declaration,
+                IrResult,
+                Result = ResultType,
+            >,
     {
         lower_group_catalog_expression(
             source,
@@ -1005,6 +1026,7 @@ impl<
         'source,
         SourceCallHost<'_, 'schema, Operation, Domain, Declaration, Capability>,
         Environment,
+        Environment::Result,
     >
 where
     Operation: Borrow<str> + PartialEq,
@@ -1178,11 +1200,14 @@ where
         limits.program,
         host,
         environment,
-        Some(CatalogProgramGroupProfile {
-            limits: groups,
-            helper_groups: true,
-            prepared_members,
-        }),
+        CatalogProgramProfile {
+            groups: Some(CatalogProgramGroupProfile {
+                limits: groups,
+                helper_groups: true,
+                prepared_members,
+            }),
+            typed: false,
+        },
         |program, source, prefix| {
             HelperGroups {
                 program,

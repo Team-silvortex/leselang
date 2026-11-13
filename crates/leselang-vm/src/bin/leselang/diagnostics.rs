@@ -19,12 +19,23 @@ pub enum Format {
 
 impl Format {
     pub fn compile(self, path: &str, source: &str, error: &CompileError) -> String {
+        self.source(path, source, error, false)
+    }
+
+    pub fn formatting(self, path: &str, source: &str, error: &CompileError) -> String {
+        self.source(path, source, error, true)
+    }
+
+    fn source(self, path: &str, source: &str, error: &CompileError, formatting: bool) -> String {
         if self == Self::Text {
             return render_compile(path, source, error);
         }
         shared::compile(error)
             .iter()
             .map(|diagnostic| {
+                if formatting && diagnostic.code.starts_with("LSE2") {
+                    return json_record(Some(path), source, "format", "format", diagnostic, None);
+                }
                 let phase = if diagnostic.kind == DiagnosticKind::Syntax {
                     "syntax"
                 } else {
@@ -507,5 +518,26 @@ mod tests {
         let rendered = render_runtime(&host);
         assert!(rendered.contains("output may be partial"));
         assert!(rendered.contains("broken pipe"));
+    }
+
+    #[test]
+    fn formatter_output_errors_keep_their_code_and_source_span_in_the_format_phase() {
+        let source = "fn main() = 0";
+        let error = CompileError::Syntax(vec![Diagnostic {
+            code: "LSE2002".into(),
+            message: "formatted source exceeds limit".into(),
+            span: Span {
+                start: 0,
+                end: source.len(),
+            },
+        }]);
+        let rendered = Format::Json.formatting("source.lese", source, &error);
+        let record: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(record["phase"], "format");
+        assert_eq!(record["kind"], "format");
+        assert_eq!(record["code"], "LSE2002");
+        assert_eq!(record["span"]["end"], source.len());
+        assert_eq!(record["range"]["start"]["column"], 1);
+        assert!(record["fuel_remaining"].is_null());
     }
 }

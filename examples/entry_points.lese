@@ -1,0 +1,22 @@
+// Select preview or report with --entry; both share the same helper.
+fn answer() = add(
+  left: 19,
+  right: 23
+)
+
+fn preview() = answer()
+
+// The whole file requires stdio at compilation, including for preview.
+fn report() = bind(
+  first: std.print(
+    message: concat(
+      left: "answer: ",
+      right: to_string(
+        value: answer()
+      )
+    )
+  ),
+  body: std.print(
+    message: "report complete"
+  )
+)

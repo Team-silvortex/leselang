@@ -37,11 +37,19 @@ fn execute() -> Result<(), String> {
             run_calculator(custom_source.as_deref())
         }
         options::Options::Controls { scope, input } => {
-            let source = match input {
-                options::ControlInput::Discover => None,
-                options::ControlInput::Run(path) => Some(options::load_source(&path)?),
+            let (source, task) = match input {
+                options::ControlInput::Discover => (None, None),
+                options::ControlInput::Run(path) => (Some(options::load_source(&path)?), None),
+                options::ControlInput::Task {
+                    source,
+                    entry,
+                    arguments,
+                } => (
+                    Some(options::load_source(&source)?),
+                    Some((entry, arguments)),
+                ),
             };
-            run_controls(scope, source.as_deref())
+            run_controls(scope, source.as_deref(), task)
         }
         options::Options::Widgets {
             application,
@@ -54,6 +62,9 @@ fn execute() -> Result<(), String> {
             let source = match input {
                 options::ControlInput::Discover => None,
                 options::ControlInput::Run(path) => Some(options::load_source(&path)?),
+                options::ControlInput::Task { .. } => {
+                    return Err("task inputs require the controls catalog".into());
+                }
             };
             run_widgets(
                 &application,
@@ -130,8 +141,17 @@ fn run_calculator(_source: Option<&str>) -> Result<(), String> {
     Err("this adapter requires macOS 14+".into())
 }
 
+type TaskInputs = (
+    String,
+    Vec<(String, leselang_vm::native::core::ScalarValue)>,
+);
+
 #[cfg(target_os = "macos")]
-fn run_controls(scope: options::ControlScope, source: Option<&str>) -> Result<(), String> {
+fn run_controls(
+    scope: options::ControlScope,
+    source: Option<&str>,
+    task: Option<TaskInputs>,
+) -> Result<(), String> {
     use leselang_macos_ax_host::{
         controls::{self},
         controls_access::ControlsAccess,
@@ -148,7 +168,11 @@ fn run_controls(scope: options::ControlScope, source: Option<&str>) -> Result<()
     }
     .map_err(|error| error.to_string())?;
     if let Some(source) = source {
-        let summary = controls::run(&backend, source)?;
+        let summary = if let Some((entry, arguments)) = task {
+            controls::run_task(&backend, source, &entry, arguments)?
+        } else {
+            controls::run(&backend, source)?
+        };
         println!(
             "Completed {} Effects; Fuel remaining: {}\nLeseLang result: {}",
             summary.effects,
@@ -182,7 +206,11 @@ fn run_controls(scope: options::ControlScope, source: Option<&str>) -> Result<()
     Ok(())
 }
 #[cfg(not(target_os = "macos"))]
-fn run_controls(_scope: options::ControlScope, _source: Option<&str>) -> Result<(), String> {
+fn run_controls(
+    _scope: options::ControlScope,
+    _source: Option<&str>,
+    _task: Option<TaskInputs>,
+) -> Result<(), String> {
     Err("this adapter requires macOS 14+".into())
 }
 

@@ -71,8 +71,8 @@ Callbacks may borrow local state and use `Cell` or `RefCell`; they need no
 the callback immediately before mutation. Capability labels are host-provided
 permissions, not grants that a script can manufacture.
 
-The built host owns immutable operation metadata. Compilation validates `main`
-and its helpers, including cold branches, before creating an owned `Program`.
+The built host owns immutable operation metadata. `compile` validates `main`
+and every helper, including cold branches, before creating an owned `Program`.
 A program is tied to the host that compiled it. Start multiple sessions from
 that program to reuse IR; each receives an independent scope and Fuel meter.
 Callback state captured by the same host is still shared, so use separate hosts
@@ -85,6 +85,116 @@ object references, dynamic object operands, historical observations and
 revision-checked action attempts, see the
 [local host protocol draft](host-protocol.md). That native HIR opt-in facility
 does not add object values to this scalar convenience layer.
+
+## Select And Inspect A Program
+
+`host.compile(source, grants)` keeps `main` as the default entry. Use
+`host.compile_entry(source, entry, grants)` to select a different parameterless
+function from the same complete source:
+
+```rust
+use leselang_vm::embedding::{HostBuilder, ScalarType};
+
+let host = HostBuilder::new().build();
+let source = "fn answer() = 42\nfn preview() = answer()\nfn report() = to_string(value: answer())";
+let program = host.compile_entry(source, "preview", &[])?;
+assert_eq!(program.entry_name(), "preview");
+assert_eq!(program.result_type(), ScalarType::Integer);
+let report = host.compile_entry(source, "report", &[])?;
+assert_eq!(report.result_type(), ScalarType::String);
+```
+
+Entry names use the same bounded, case-sensitive identifier rules as function
+declarations. Selection does not require a `main` declaration. All other
+declarations, including an unselected `main`, are ordinary helpers. They still
+undergo complete validation even when the selected entry never calls them.
+Their host operations require the same explicit compile-time grants; unknown
+operations, bad types, recursion and exceeded budgets still reject compilation.
+
+The selected entry must take no parameters and cannot be called by itself or
+any helper, including cold or unused code. A `main` that forwards to `report`
+therefore prevents selecting `report`. Put shared work in a separate helper
+called by both task functions. This API does not supply entry arguments or
+change helper parameter binding.
+
+`Program::entry_name()` borrows the owned selected name, and
+`Program::result_type()` returns the compiler's inferred `ScalarType` without
+evaluating source or invoking callbacks. The type describes a successful final
+value; it does not promise termination, successful host work or continued
+authorization. The program still belongs to its original host, and `start`
+takes fresh live grants and Fuel for each independent session. Entry selection
+does not add an execution frame, consume Fuel or change the explicit Effect
+handoff below. The CLI exposes the same choice through
+[`check/run --entry NAME`](language.md#select-an-entry-function).
+
+## Supply Typed Task Inputs
+
+Use `host.compile_task(source, entry, grants)` to admit required scalar entry
+parameters. Compile once, then call `start_with_arguments` with fresh owned
+values, live grants and Fuel for each session:
+
+```rust
+use leselang_vm::embedding::{Fuel, HostBuilder, Poll, ScalarType, ScalarValue};
+
+let host = HostBuilder::new().build();
+let source = r#"
+fn greeting(name: string) = concat(left: "Hello, ", right: name)
+fn task(name: string) = greeting(name: name)
+"#;
+let program = host.compile_task(source, "task", &[])?;
+assert_eq!(program.parameters()[0].name, "name");
+assert_eq!(program.parameters()[0].domain, ScalarType::String);
+assert!(program.parameters()[0].required);
+
+for name in ["Ada", "Lin"] {
+    let mut session = host.start_with_arguments(
+        &program,
+        vec![("name".into(), ScalarValue::String(name.into()))],
+        &[],
+        Fuel::new(1_000),
+    )?;
+    assert_eq!(session.fuel_remaining(), 1_000);
+    let Poll::Value(value) = session.poll()? else {
+        return Err("expected a pure result".into());
+    };
+    assert_eq!(value, ScalarValue::String(format!("Hello, {name}")));
+}
+```
+
+`Program::parameters()` returns immutable `EntryParameter` metadata in source
+declaration order: `NamedParameter<String, ScalarType>`. All six scalar types
+are available: `integer`, `boolean`, `string`, `none`, `optional_string` and
+`string_list`. Every input is required, including a `none` input or an absent
+`optional_string`; there are no defaults, coercions or optional entry parameters.
+The program owns this metadata and does not borrow the source or entry name.
+
+Inputs bind by exact name, so their supplied order may differ from declaration
+order. Startup rejects missing, duplicate, unknown or extra inputs, mismatched
+types, oversized scalar values and an exceeded execution binding limit before
+creating a scope or invoking a callback. Strings and present optional strings
+are at most 4,096 UTF-8 bytes; lists contain at most 64 strings and 4,096 total
+UTF-8 bytes. These checks also apply to inputs the body never reads.
+`StartError::ForeignProgram` preserves host identity; `StartError::Arguments`
+contains an `EntryArgumentError` with named-binding failures or the original
+declaration index and scalar-contract failure. Failure consumes the supplied
+owned input vector and produces no session.
+
+Validated payloads move into the initial VM locals in declaration order. Startup
+does not clone scalar payloads or consume Fuel. Later reads, helper parameter
+bindings, capture and re-entry follow the existing VM accounting. Native
+callers still bound allocation and decoding before constructing owned input
+vectors; this ingress API does not meter that preceding work or native cleanup.
+The shared `bind_entry_arguments` function applies the same scalar binding and
+value checks for native adapters without creating a session or granting authority.
+Its returned data is not a compiled-program or permission certificate.
+
+`compile` and `compile_entry` retain their parameterless-entry contract. The
+original `start` refuses a program requiring inputs; it never fills in defaults.
+`compile_task` also accepts a parameterless entry, which either startup API can
+run with no inputs. All declarations and cold branches still undergo complete
+compilation, and no declaration may call the selected entry. Host Effects use
+the same explicit handoff below, with current grants checked at each boundary.
+The CLI exposes string inputs through [`--text NAME VALUE`](language.md#supply-text-inputs).
 
 ## Drive Every Effect Explicitly
 
@@ -257,7 +367,19 @@ discovers an object, binds the native reply and passes it to observation and
 action operations. Actual object/lease validation and live authority stay with
 the adapter; the shared compiler and VM still own language execution. See the
 [native object operand contract](host-protocol.md#native-object-operands) for
-the remaining helper and projection limits.
+the runtime admission requirements.
+
+`compile_catalog_typed_program` additionally admits exact host-declared helper
+parameter types through `CatalogSourceEnvironment::source_type_name`; the
+default hook rejects unknown type names. The AppKit and macOS AX controls hosts
+map `object` and `snapshot` to their own native metadata. A helper can receive
+a previously bound native result while scalar task inputs arrive separately
+from Rust or the host CLI. Native values cannot be passed in through task entry
+arguments, and snapshot field projections still return scalar values. The
+[AppKit task](../hosts/appkit/examples/text_task.lese) and
+[AX controls task](../hosts/macos-ax/examples/controls_text_task.lese) show this
+combination. Application scope, native identity, observation freshness and
+live authorization remain the adapter's responsibility.
 
 The high-level failure suite runs both inside the library workspace and from
 the independent consumer:

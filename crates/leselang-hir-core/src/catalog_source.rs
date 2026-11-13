@@ -51,6 +51,14 @@ pub trait CatalogSourceEnvironment<'source, 'schema, Field, Operation, Declarati
 {
     type Error;
 
+    /// Resolve an exact host-owned helper parameter type in the explicit typed
+    /// program profile. The six scalar names always retain their language types.
+    /// The default refuses native annotations. Returned metadata must preserve
+    /// exact type identity; this query grants no object, lease or authority.
+    fn source_type_name(&self, _name: &str) -> Option<Self::Result> {
+        None
+    }
+
     fn source_operation(&self, original: &Operation) -> Result<Operation, Self::Error>;
     fn source_field(
         &self,
@@ -240,12 +248,13 @@ pub(crate) struct Compiler<
     Declaration,
     Capability,
     Environment,
+    ResultType,
     Locals = (),
 > {
     host: &'a SourceCallHost<'host, 'schema, Operation, Domain, Declaration, Capability>,
     environment: &'a Environment,
     limits: CatalogSourceLimits,
-    program: Option<&'a CatalogProgramContext<'source>>,
+    program: Option<&'a CatalogProgramContext<'source, ResultType>>,
     locals: Locals,
 }
 
@@ -315,7 +324,17 @@ where
     }
 }
 
-impl<'source, 'schema, Operation, Domain, Declaration, Capability, Environment, Locals>
+impl<
+    'source,
+    'schema,
+    Operation,
+    Domain,
+    Declaration,
+    Capability,
+    Environment,
+    ResultType: Clone + PartialEq,
+    Locals,
+>
     Compiler<
         '_,
         'source,
@@ -326,6 +345,7 @@ impl<'source, 'schema, Operation, Domain, Declaration, Capability, Environment, 
         Declaration,
         Capability,
         Environment,
+        ResultType,
         Locals,
     >
 {
@@ -342,7 +362,14 @@ impl<'source, 'schema, Operation, Domain, Declaration, Capability, Environment, 
         Operation: Borrow<str> + PartialEq,
         Domain: ScalarArgumentDomain,
         Capability: PartialEq,
-        Environment: CatalogSourceEnvironment<'source, 'schema, Field, Operation, Declaration>,
+        Environment: CatalogSourceEnvironment<
+                'source,
+                'schema,
+                Field,
+                Operation,
+                Declaration,
+                Result = ResultType,
+            >,
         Locals: CatalogLocalSource<
                 'source,
                 Field,
@@ -421,7 +448,14 @@ impl<'source, 'schema, Operation, Domain, Declaration, Capability, Environment, 
         Operation: Borrow<str> + PartialEq,
         Domain: ScalarArgumentDomain,
         Capability: PartialEq,
-        Environment: CatalogSourceEnvironment<'source, 'schema, Field, Operation, Declaration>,
+        Environment: CatalogSourceEnvironment<
+                'source,
+                'schema,
+                Field,
+                Operation,
+                Declaration,
+                Result = ResultType,
+            >,
         Locals: CatalogLocalSource<
                 'source,
                 Field,
@@ -485,7 +519,14 @@ impl<'source, 'schema, Operation, Domain, Declaration, Capability, Environment, 
         Operation: Borrow<str> + PartialEq,
         Domain: ScalarArgumentDomain,
         Capability: PartialEq,
-        Environment: CatalogSourceEnvironment<'source, 'schema, Field, Operation, Declaration>,
+        Environment: CatalogSourceEnvironment<
+                'source,
+                'schema,
+                Field,
+                Operation,
+                Declaration,
+                Result = ResultType,
+            >,
         Locals: CatalogLocalSource<
                 'source,
                 Field,
@@ -549,8 +590,30 @@ impl<'source, 'schema, Operation, Domain, Declaration, Capability, Environment, 
     }
 }
 
-impl<'a, 'source, 'host, 'schema, Operation, Domain, Declaration, Capability, Environment>
-    Compiler<'a, 'source, 'host, 'schema, Operation, Domain, Declaration, Capability, Environment>
+impl<
+    'a,
+    'source,
+    'host,
+    'schema,
+    Operation,
+    Domain,
+    Declaration,
+    Capability,
+    Environment,
+    ResultType: Clone + PartialEq,
+>
+    Compiler<
+        'a,
+        'source,
+        'host,
+        'schema,
+        Operation,
+        Domain,
+        Declaration,
+        Capability,
+        Environment,
+        ResultType,
+    >
 {
     pub(crate) fn new(
         host: &'a SourceCallHost<'host, 'schema, Operation, Domain, Declaration, Capability>,
@@ -568,14 +631,26 @@ impl<'a, 'source, 'host, 'schema, Operation, Domain, Declaration, Capability, En
 
     pub(crate) fn with_program(
         mut self,
-        program: Option<&'a CatalogProgramContext<'source>>,
+        program: Option<&'a CatalogProgramContext<'source, ResultType>>,
     ) -> Self {
         self.program = program;
         self
     }
 }
 
-impl<'a, 'source, 'host, 'schema, Operation, Domain, Declaration, Capability, Environment, Locals>
+impl<
+    'a,
+    'source,
+    'host,
+    'schema,
+    Operation,
+    Domain,
+    Declaration,
+    Capability,
+    Environment,
+    ResultType: Clone + PartialEq,
+    Locals,
+>
     Compiler<
         'a,
         'source,
@@ -586,6 +661,7 @@ impl<'a, 'source, 'host, 'schema, Operation, Domain, Declaration, Capability, En
         Declaration,
         Capability,
         Environment,
+        ResultType,
         Locals,
     >
 {
@@ -602,6 +678,7 @@ impl<'a, 'source, 'host, 'schema, Operation, Domain, Declaration, Capability, En
         Declaration,
         Capability,
         Environment,
+        ResultType,
         Next,
     > {
         Compiler {
@@ -625,6 +702,7 @@ impl<
     Declaration,
     Capability,
     Environment,
+    ResultType: Clone + PartialEq,
     Locals,
 > ControlSourceAdapter<'source, Field, Operation, HostEffect, IrResult>
     for Compiler<
@@ -637,13 +715,21 @@ impl<
         Declaration,
         Capability,
         Environment,
+        ResultType,
         Locals,
     >
 where
     Operation: Borrow<str> + PartialEq,
     Domain: ScalarArgumentDomain,
     Capability: PartialEq,
-    Environment: CatalogSourceEnvironment<'source, 'schema, Field, Operation, Declaration>,
+    Environment: CatalogSourceEnvironment<
+            'source,
+            'schema,
+            Field,
+            Operation,
+            Declaration,
+            Result = ResultType,
+        >,
     Locals: CatalogLocalSource<
             'source,
             Field,
@@ -895,7 +981,7 @@ pub(crate) fn lower_catalog_expression<
     prefix: &[(&'source str, &PureType<Environment::Result>)],
     host: &SourceCallHost<'_, 'schema, Operation, Domain, Declaration, Capability>,
     environment: &Environment,
-    program: &CatalogProgramContext<'source>,
+    program: &CatalogProgramContext<'source, Environment::Result>,
 ) -> CatalogSourceResult<
     Node<Field, Operation, HostEffect, IrResult>,
     Environment::Result,

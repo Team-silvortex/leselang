@@ -5,7 +5,9 @@ use std::{collections::HashSet, fmt};
 use leselang_runtime_core::{StructureBudget, StructureError};
 use leselang_syntax::{Expression, Function, MAX_FUNCTION_PARAMETERS, MAX_FUNCTIONS, Span};
 
-use crate::helper_source::{HelperParameterError, helper_parameters};
+use crate::helper_source::{
+    HelperParameterError, helper_parameters, helper_parameters_with, scalar_type_name,
+};
 use crate::pure_typing::{MAX_TYPE_INFERENCE_DEPTH, MAX_TYPE_INFERENCE_NODES, valid_local_name};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -267,7 +269,19 @@ pub fn accept_helper_declarations<'source, Error>(
     declarations: &[&'source Function],
     entry: &str,
     limits: HelperDeclarationLimits,
+    reserved: impl FnMut(&str) -> Result<bool, Error>,
+) -> Result<HelperDeclarations<'source>, HelperDeclarationError<Error>> {
+    accept_helper_declarations_profile(declarations, entry, limits, reserved, false)
+}
+
+// The typed compiler still resolves every native type after this complete
+// physical/header gate. This private switch is not a public type certificate.
+pub(crate) fn accept_helper_declarations_profile<'source, Error>(
+    declarations: &[&'source Function],
+    entry: &str,
+    limits: HelperDeclarationLimits,
     mut reserved: impl FnMut(&str) -> Result<bool, Error>,
+    typed: bool,
 ) -> Result<HelperDeclarations<'source>, HelperDeclarationError<Error>> {
     if limits.max_functions > MAX_FUNCTIONS
         || limits.max_parameters > MAX_FUNCTION_PARAMETERS
@@ -310,7 +324,15 @@ pub fn accept_helper_declarations<'source, Error>(
                 span,
             });
         }
-        helper_parameters(function, limits.max_parameters).map_err(|error| {
+        let parameters = if typed && function.name != entry {
+            helper_parameters_with(function, limits.max_parameters, |name| {
+                (scalar_type_name(name).is_some() || valid_local_name(name)).then_some(())
+            })
+            .map(|_| ())
+        } else {
+            helper_parameters(function, limits.max_parameters).map(|_| ())
+        };
+        parameters.map_err(|error| {
             let span = match error {
                 HelperParameterError::InvalidName { index }
                 | HelperParameterError::DuplicateName { index }
@@ -347,7 +369,7 @@ pub fn accept_helper_declarations<'source, Error>(
                 .unwrap_or(Span { start: 0, end: 0 }),
         })?;
     let entry = declarations[entry_index];
-    if !entry.parameters.is_empty() {
+    if !typed && !entry.parameters.is_empty() {
         return Err(HelperDeclarationError::EntryParameters {
             declaration_index: entry_index,
             span: entry.span,

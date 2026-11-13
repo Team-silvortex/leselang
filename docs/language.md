@@ -1,8 +1,12 @@
 # LeseLang Scalar Language And CLI
 
-The `leselang` executable checks and runs the current scalar language profile.
-It uses the same compiler and session engine as Rust embedding. Programs are
-UTF-8 source files containing `fn` declarations and a parameterless `main`.
+The `leselang` executable formats, checks and runs source. Checking and running
+use the current scalar language profile and the same compiler and session
+engine as Rust embedding. Executable programs are UTF-8 source files containing
+`fn` declarations and a selected entry function. The default entry is `main`;
+`check` and `run` can select another function with `--entry NAME`. Entries are
+parameterless by default; `--text NAME VALUE` explicitly supplies string task
+inputs.
 The `.lese` extension is a convention; the CLI accepts any file path.
 
 ## Run A Program
@@ -21,8 +25,9 @@ The arithmetic program prints `42`. The Effect program prints `first` and
 it is then available at `target/lean/leselang`.
 
 ```text
-leselang check FILE [--allow stdio] [--diagnostic-format text|json]
-leselang run FILE [--allow stdio] [--fuel N] [--diagnostic-format text|json]
+leselang check FILE [--entry NAME] [--text NAME VALUE]... [--allow stdio] [--diagnostic-format text|json]
+leselang run FILE [--entry NAME] [--text NAME VALUE]... [--allow stdio] [--fuel N] [--diagnostic-format text|json]
+leselang fmt FILE [--check] [--diagnostic-format text|json]
 leselang --help
 leselang --version
 ```
@@ -39,7 +44,150 @@ extra line. String results are escaped and quoted; lists use JSON arrays. An
 absent `optional_string` prints `null`, while a present one prints its quoted
 string. `std.print` writes its text directly, without result-value quoting. Diagnostics go to
 standard error. Exit status is `0` for success, `2` for command-line usage
-errors, and `1` for input, compilation or execution failures.
+errors, and `1` for input, formatting, compilation or execution failures.
+
+## Select An Entry Function
+
+Use an explicit entry to keep several tasks in one source file. For example,
+[the named-entry example](../examples/entry_points.lese) has `preview` and
+`report` tasks that share an `answer` helper; it has no `main`:
+
+```sh
+target/lean/leselang check examples/entry_points.lese --entry preview --allow stdio
+target/lean/leselang run examples/entry_points.lese --entry preview --allow stdio
+target/lean/leselang run examples/entry_points.lese --entry report --allow stdio
+```
+
+`preview` returns `42`. `report` delivers two Effects, printing `answer: 42`
+and `report complete`. Even `preview` requires `--allow stdio` at compilation:
+the compiler validates every declaration and branch, including unselected
+functions and unused helpers. Selecting an entry does not remove other source
+or exempt it from operation, permission, type or resource checks.
+
+The selected function must exist and, without `--text`, take no parameters. No function may call
+the selected entry, including an unused helper or a cold branch. In particular,
+`fn main() = report()` prevents selecting `report`: `main` would call the
+entry. Have independent task functions call a shared helper instead. When a
+different function is selected, `main` is an ordinary helper and may itself be
+called. Without `--entry`, `main` is selected.
+
+`--entry` may appear before or after the file, at most once per `check` or
+`run`. Names are case-sensitive ASCII identifiers of 1–64 bytes, starting with
+a letter or underscore and continuing with letters, digits or underscores;
+`body`, `fn`, `true`, `false` and `none` are reserved. Invalid option values are
+usage errors (exit 2). A missing declaration, a parameterized entry without
+`--text`, or a violation of the entry-call rules is a compilation failure
+(exit 1). The option terminator
+`--` still makes subsequent arguments file names. Entry selection is a
+compilation choice; it adds no dispatch, retry or Fuel charge.
+
+Rust hosts use [`Host::compile_entry`](embedding.md#select-and-inspect-a-program)
+and can inspect the selected name and inferred scalar result type before
+starting a session.
+
+## Supply Text Inputs
+
+Use `--text NAME VALUE` to supply a required string parameter without editing
+the source. The value is data: LeseLang does not parse it as an expression,
+expand source text or interpret escape sequences. Shell quoting still controls
+which bytes reach the executable. This example supplies a name to a reusable
+task and prints `"Hello, Ada"`:
+
+```sh
+printf '%s\n' 'fn greet(name: string) = concat(left: "Hello, ", right: name)' |
+  target/lean/leselang run - --entry greet --text name 'Ada'
+```
+
+`check` accepts the same inputs and validates their complete named signature
+and scalar bounds without creating a session or invoking a host operation:
+
+```sh
+printf '%s\n' 'fn greet(name: string) = concat(left: "Hello, ", right: name)' |
+  target/lean/leselang check - --entry greet --text name 'Ada'
+```
+
+Supply each declared input exactly once. Inputs may appear in any order,
+before or after the file; the host binds them in declaration order. The CLI
+accepts at most eight `--text` options, with unique parameter names following
+the same 1–64 byte identifier rules as `--entry`. Each value must be UTF-8 and
+at most 4,096 bytes. An empty string is valid. The next argument is always the
+value, even when it starts with `-`; quote values containing spaces or newlines.
+`--` ends option parsing as usual, so put task options before that terminator.
+
+Malformed options, duplicate input names and oversized values are usage
+errors (exit 2). Missing or unknown parameters and a string supplied to another
+declared type are input failures (exit 1, code `LSI0002`, phase `input`), with
+no source span or session Fuel value. If no `--text` is present, the original
+parameterless compilation path applies; a parameterized entry is still a
+compilation error. `--text` cannot be used with `fmt`.
+
+All declarations remain checked, including unused helpers and cold Effects;
+text inputs cannot grant capabilities or exempt a branch from validation.
+Starting with validated inputs consumes no Fuel; reading them during execution
+uses the existing VM costs. Rust hosts can supply all six scalar types through
+[`Host::compile_task` and `start_with_arguments`](embedding.md#supply-typed-task-inputs).
+The standalone CLI deliberately exposes string ingress through this option.
+
+## Format Source Without Losing Comments
+
+`fmt` writes formatted source to standard output. It never modifies the input
+file. `fmt --check` writes no formatted source and succeeds only when the input
+already matches the formatter's output byte for byte. A difference, including
+line endings or a missing final newline, exits with status 1 and a diagnostic.
+This makes the same command usable with an editor or a CI check:
+
+```sh
+target/lean/leselang fmt examples/arithmetic.lese
+target/lean/leselang fmt examples/arithmetic.lese | target/lean/leselang fmt --check -
+printf '%s\n' 'fn main() = 42' | target/lean/leselang fmt --check --diagnostic-format json -
+```
+
+Formatting is a syntax operation. It accepts syntactically valid declarations
+without requiring a `main`, registered host operations, capability grants or
+successful type checking. For example, an external GUI host's source can be
+formatted by this CLI even though its operations are absent from the CLI's
+catalog. Formatting neither invokes callbacks nor establishes that the program
+can execute. Use `check` separately for the current scalar CLI profile.
+
+The formatter preserves the spelling and order of every non-whitespace token,
+including strings and existing commas. It retains `//` comment text, order and
+placement between the same neighboring tokens; a line comment remains a line
+comment. String contents such as `//`, escapes and literal CRLF are not treated
+as layout. Layout whitespace uses LF, two-space indentation and a blank line
+between declarations. Original CR bytes inside comment or string tokens remain
+unchanged, so a preserved comment line can still end in CRLF; the formatter
+does not promise to convert every line ending in the file. Nonempty calls use
+multiple lines; empty calls without internal comments stay compact. Function
+parameter signatures stay compact unless a comment requires a line break.
+Commas are neither added nor removed.
+Formatting already formatted source produces the same bytes.
+
+The CLI applies its 16 KiB limit to both input and formatted output. Syntax
+errors and oversized output are rejected before writing any formatted source;
+an operating-system write failure can still leave partial stdout and is not
+retried. `--check` can be supplied once and only to `fmt`; `--entry`, `--text`, `--allow`
+and `--fuel` do not apply to formatting. Input `-`, the `--` option terminator and diagnostic
+format selection behave as for the other commands.
+
+Rust callers can use the independent syntax API directly:
+
+```rust
+use leselang_syntax::format_source;
+
+fn main() {
+    let source = "// Keep this note.\nfn helper()=host.window.find()";
+    let formatted = format_source(source).expect("valid syntax");
+    assert!(formatted.contains("// Keep this note."));
+    assert_eq!(format_source(&formatted).unwrap(), formatted);
+}
+```
+
+`format_source(&str)` returns `Result<String, Vec<Diagnostic>>` and starts from
+the original source. It applies the syntax crate's 256 KiB input/output budget;
+hosts with a smaller source budget must also check the formatted size. The
+older `format(&SyntaxTree)` API keeps its existing AST-based, comment-erasing
+behavior and may produce different layout. Use `format_source` for source
+editing that must retain comments.
 
 ## Diagnostics For Editors And Agents
 
@@ -61,11 +209,11 @@ printf '%s\n' 'fn main() = div(left: 1, right: 0)' | target/lean/leselang run --
 The last two commands intentionally exit with status 1. Parse standard error
 one line at a time; it is a stream of records, not one JSON array. Standard
 output remains a separate stream and may contain an earlier committed Effect
-even when execution later fails. The format option applies only to `check` and
-`run`, may be supplied once, and accepts exactly `text` or `json`.
+even when execution later fails. The format option applies to `check`, `run`
+and `fmt`, may be supplied once, and accepts exactly `text` or `json`.
 
 Arguments are processed in order. Put `--diagnostic-format json` immediately
-after `check` or `run` in an agent invocation so subsequent usage errors also
+after `check`, `run` or `fmt` in an agent invocation so subsequent usage errors also
 use JSON. An error before that option has been successfully parsed uses the
 default text format; an unknown command or malformed format value cannot opt
 into JSON retroactively. `--` still ends option parsing.
@@ -76,9 +224,9 @@ The version 1 diagnostic record has these fields:
 | --- | --- |
 | `schema_version` | Integer `1`, identifying this CLI diagnostic presentation schema. |
 | `severity` | `"error"`. |
-| `phase` | `"syntax"`, `"compile"`, `"runtime"`, `"input"` or `"usage"`. |
-| `code` | Original parser `LSE...` code, or `LSC0001` for compilation, `LSR0001` for runtime, `LSI0001` for input and `LSU0001` for usage failures. |
-| `kind` | Public diagnostic category: `syntax`, `compilation`, `unknown_operation`, `capability_denied`, `runtime` or `host_uncertain`; CLI ingress adds `input` and `usage`. |
+| `phase` | `"syntax"`, `"compile"`, `"runtime"`, `"input"`, `"usage"` or `"format"`. |
+| `code` | Original parser `LSE...` code, or `LSC0001` for compilation, `LSR0001` for runtime, `LSI0001` for source input, `LSI0002` for task-input binding and `LSU0001` for usage failures. Formatting uses `LSF0001` for a `--check` difference, `LSF0002` for output exceeding the CLI limit and `LSF0003` for an output write failure; the syntax formatter's `LSE2002` output-limit error also has phase `format`. |
+| `kind` | Public diagnostic category: `syntax`, `compilation`, `unknown_operation`, `capability_denied`, `runtime` or `host_uncertain`; CLI presentation adds `input`, `usage` and `format`. |
 | `message` | Descriptive text, bounded to 512 Unicode scalar values. Wording is not a parsing contract. |
 | `path` | Input path display text, or `null` when no path applies. Non-UTF-8 operating-system paths use a lossy UTF-8 display; this is not a round-trippable file identifier. Standard input uses `"-"`. |
 | `path_truncated` | Whether the displayed path was shortened to 256 Unicode scalar values. |
@@ -92,6 +240,9 @@ UTF-16 offsets nor terminal display widths; an editor using another coordinate
 system must convert them against the original source. Invalid or unavailable
 locations have both `span` and `range` set to `null`. Runtime IR retains no
 source spans, so runtime records do not claim a failing source line.
+Formatting diagnostics do not consume Fuel. Parser failures during `fmt` retain
+their syntax category and original source spans; a formatting difference is
+not reported as a syntax or type error.
 
 Consumers should check `schema_version`, use `phase`/`kind`/`code` for
 classification and tolerate unknown fields and future categories. JSON object

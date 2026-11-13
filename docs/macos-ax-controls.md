@@ -86,6 +86,54 @@ Source files must be UTF-8 and at most 16 KiB. Controls executions start with
 cannot escape as the final result. Rejecting a final result does not roll back
 previously delivered actions.
 
+## Reuse A Task With Typed Inputs
+
+The [text task](../hosts/macos-ax/examples/controls_text_task.lese) separates
+application selection, task inputs and GUI logic. The same source discovers a
+control, passes its native `object` reference into `replace_text`, observes it,
+checks the expected text, submits a revision-checked edit and verifies a fresh
+observation. A separate helper accepts the historical `snapshot` and projects
+its optional text value. An unavailable value stays distinct from an empty
+string.
+
+For a fresh disposable TextEdit document prepared by this host:
+
+```sh
+target/lean/leselang-macos-ax-host --document /tmp/leselang-ax-demo.txt --controls \
+  --run hosts/macos-ax/examples/controls_text_task.lese --entry main \
+  --text role AXTextArea --text identifier '' --text label '' \
+  --text expected $'LeseLang AX initial\n' --text text $'LeseLang reusable task ✓\n'
+```
+
+With an already-open application selected through `--app` and exact window
+fields, the same file can target another supported text control. Supply the
+role, identifier, label and initial value observed in that application. No
+application name or document content is rewritten into the source. A successful
+run returns `true` after four Effects. An initial-value mismatch returns `false`
+after discovery and observation, with no edit. A successful submission followed
+by a different value also returns `false`; treat only a final `true` as verified
+success. Native errors and uncertain writes still fail without retry or rollback.
+
+`--entry NAME` and repeatable `--text NAME VALUE` apply only to `--controls --run`.
+Either option opts into task compilation; `--text` alone keeps the entry name
+`main`. Without them, `--run` retains its parameterless `main` contract. At most
+eight distinct input names are admitted, each a valid function-parameter name;
+text is UTF-8 and at most 4,096 bytes per value. `--text` supplies a `string`,
+with no parsing, interpolation or implicit conversion to another type. Missing,
+extra, duplicate or incorrectly typed inputs fail before the first Effect.
+The source compiler continues to validate all functions and cold branches.
+
+Rust callers can use `controls::run_task(backend, source, entry, arguments)`
+with an owned `Vec<(String, ScalarValue)>` for all six scalar types. Within an
+explicit `with_host` scope, `Host::compile_task` exposes the compiled node,
+inferred result type and required scalar entry parameters for direct VM
+driving. `controls::run_task` uses the shared `embedding::bind_entry_arguments` validation and
+the same original Fuel and explicit `poll → authorize → dispatch → accept`
+driver as ordinary controls execution. Native `object` and `snapshot` types
+are accepted only for helpers; they cannot be supplied as task inputs. Their
+values still come from authenticated replies inside the selected session,
+with the original object, revision and live-permission checks.
+
 ## Catalog And State
 
 | Operation | Inputs | Result |
@@ -301,3 +349,39 @@ to an explicitly selected running macOS bundle and window while preserving
 the original scope shortcuts. Actual compatibility depends on each
 application's Accessibility projection and bounds. Other platforms, complex
 widget operations and a stable remote wire format remain separate work.
+
+### One Typed Task Across TextEdit And Stickies
+
+On 2026-11-13, both applications ran the same unchanged
+[`controls_text_task.lese`](../hosts/macos-ax/examples/controls_text_task.lese)
+with scalar inputs supplied through `--text`. The source SHA-256 was
+`b067212732a0242ea32f576b12c9785da82a76afdc68525f0dda047362bee7a8`.
+Both runs selected `AXTextArea` with an empty label; the application/window
+scope, observed identifier, expected text and replacement text were host inputs.
+
+| Application and target | Initial text | Verified replacement | Effects | Final value | Fuel remaining |
+| --- | --- | --- | --- | --- | --- |
+| TextEdit, dedicated `/tmp/leselang-task-inputs-textedit-20261113.txt`, identifier `First Text View` | `LeseLang AX initial\n` | `LeseLang reusable task: TextEdit ✓\n` | 4 | `true` | 9,555 / 10,000 |
+| Stickies, dedicated note, identifier `_NS:153` | `LeseLang task initial 20261113\n` | `LeseLang reusable task: Stickies ✓\n` | 4 | `true` | 9,568 / 10,000 |
+
+The Stickies scope was selected by its exact `.rtfd` document path. Its title
+changed with the edited first line without changing the pinned scope. The note
+was created through the application's UI: attempting to open a plain-text file
+had produced an unsupported-document dialog, which was closed before creating
+the dedicated note. Opening that plain-text file was not a successful fixture
+preparation step.
+
+A subsequent Stickies run supplied the old expected text and requested
+`This must not be written\n`. It completed only the two read Effects, returned
+`false`, retained 9,812 Fuel and performed no mutation. Its process exit status
+was zero because evaluation completed; the `false` result correctly signaled
+that the task's condition was not satisfied.
+
+After execution, new native connections independently discovered both final
+text values, and a separate desktop inspection read the text in each actual
+application. Stickies still contained its verified replacement after the
+negative run. The sandboxed permission check reported no Accessibility access;
+a non-prompting check outside that sandbox found existing access.
+The verification did not change system permissions. These runs establish the
+observed TextEdit and Stickies workflows, including native helper parameters
+and scalar task inputs; they do not establish arbitrary application support.

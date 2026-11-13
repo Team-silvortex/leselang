@@ -60,6 +60,33 @@ than a wire format. The selected host operations still act only on this
 application's registered controls. The scalar `leselang` CLI does not register
 these GUI operations.
 
+For reusable tasks, `--entry NAME` selects a function and repeatable
+`--text NAME VALUE` supplies string parameters without rewriting source. Both
+flags require `--run`; `--text` alone selects `main`. Without either flag, the
+existing parameterless `main` contract is preserved. The
+[typed text task](../hosts/appkit/examples/text_task.lese) passes native `object`
+and `snapshot` values through helpers, edits the selected text field and returns
+`true` only after a fresh observation matches the input:
+
+```sh
+cargo run --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean -- \
+  --run hosts/appkit/examples/text_task.lese --entry main \
+  --text name input --text text 'LeseLang typed task ✓'
+```
+
+Task ingress accepts at most eight distinct input names and 4,096 UTF-8 bytes
+per string. Missing, extra, duplicate or incorrectly typed inputs are rejected
+before an Effect; `--text` performs no conversion to integer, boolean, optional
+string or list. The native Rust `Host::compile_task` result exposes the compiled
+node, inferred type and scalar entry parameters for callers using the shared
+`embedding::bind_entry_arguments` validator and their own explicit VM loop.
+Native helper types are host-owned declarations: a task cannot import an object
+or snapshot from external input. The same driver preserves revision checks,
+main-thread ownership, cancellation, Fuel and partial side effects.
+The AppKit and Accessibility catalogs have different operation signatures;
+the AX controls task can be reused across supported applications through its
+[application-scoped adapter](macos-ax-controls.md#reuse-a-task-with-typed-inputs).
+
 For a Finder-launchable local demo, run `hosts/appkit/bundle-demo.sh`. It builds
 `target/LeseLang AppKit Host.app`; opening that bundle runs the form demo with
 `--hold`. The bundle is a local development artifact, not an installed or signed
@@ -191,6 +218,7 @@ button compatibility checks and the form workflow:
 | Group | Evidence |
 | --- | --- |
 | Native controls and source routing | Registered identifiers resolve to distinct instances; source selects the intended control and leaves unrelated controls unchanged. |
+| Typed task inputs and native helpers | The same source accepts different scalar inputs, passes native objects and snapshots through helpers, and verifies the actual edited value; malformed inputs and forged native types are rejected. |
 | Submission, pump, acceptance and observation | Queue acknowledgement leaves native state unchanged; explicit pumps perform text replacement and target/action; new observations verify edited and submitted values. |
 | Live state and authority | External changes, A→B→A changes, host-controlled and externally detected replacement, revocation and disabled/editability state are checked before native mutation. Save also tracks relevant input changes. |
 | Cancellation and late replies | Cancellation prevents queued delivery; cancellation after delivery retains the real widget change and rejects the late reply. |
@@ -203,7 +231,7 @@ button compatibility checks and the form workflow:
 The retained button demo completes four Effects and returns `ready`; its button
 changes from `draft`/zero clicks to `ready`/one click. The form demo completes nine
 Effects and returns `LeseLang ✓`, after verifying the input edit and the value
-copied by Save. The main-thread self-test covers 15 groups, including 32
+copied by Save. The main-thread self-test covers 16 groups, including 32
 stale-state, authority and dependency cases. The separate native bridge test
 covers four groups, including real edit-notification delivery and bounded native
 view traversal. Keep these state assertions separate from submission receipts.
@@ -215,6 +243,15 @@ tree on 2026-11-13: input and saved values were both `LeseLang ✓`, Save showed
 `ready` with one callback, and Other remained `draft` with zero callbacks. That
 run reported nine Effects and 508 Fuel remaining. This desktop inspection
 complements the native state assertions and failure tests.
+
+On 2026-11-13, the updated main-thread `--self-test` passed all 16 groups,
+including the typed-input/native-helper group. That group executed the same
+text-task source twice, first with `typed native helper ✓` and then with
+`second task input`. Each run returned `true` after four Effects, and fresh
+observations plus direct native assertions confirmed the actual text field's
+value. The group's invalid-input and forged-native-type rejection checks also
+passed; the existing 32 stale-state, authority and dependency cases remained
+part of the successful run.
 
 CI checks the isolated host's formatting, builds and lints its native code, and
 runs its non-GUI package tests on macOS. It does not claim desktop execution

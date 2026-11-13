@@ -1,0 +1,26 @@
+// Reuse this task across explicitly selected application/window scopes.
+fn text_value(observed: snapshot) = field(value: observed, name: "value")
+
+fn replace_text(target: object, expected: string, text: string) = bind(
+  before: gui.observe(target: target),
+  body: choose(
+    when: eq(left: text_value(observed: before), right: optional_string(value: expected)),
+    then: bind(
+      submitted: gui.set_text(
+        target: target,
+        expected_revision: field(value: before, name: "revision"),
+        text: text
+      ),
+      body: bind(
+        after: gui.observe(target: target),
+        body: eq(left: text_value(observed: after), right: optional_string(value: text))
+      )
+    ),
+    otherwise: false
+  )
+)
+
+fn main(role: string, identifier: string, label: string, expected: string, text: string) = bind(
+  target: gui.select(role: role, identifier: identifier, label: label),
+  body: replace_text(target: target, expected: expected, text: text)
+)

@@ -7,7 +7,7 @@ use std::{
 };
 
 pub const MAX_SOURCE_BYTES: usize = 16 * 1024;
-pub const HELP: &str = "LeseLang AppKit host\n  --demo [--hold]         Discover controls, fill input, submit and verify (default)\n  --button-demo [--hold]  Run the original button-only demo\n  --run FILE [--hold]     Run a bounded UTF-8 LeseLang source file\n  --self-test            Run real GUI conformance on the main thread\nRequires macOS 14+ and a logged-in graphical desktop.";
+pub const HELP: &str = "LeseLang AppKit host\n  --demo [--hold]         Discover controls, fill input, submit and verify (default)\n  --button-demo [--hold]  Run the original button-only demo\n  --run FILE [--hold]     Run a bounded UTF-8 LeseLang source file\n  --entry NAME           Select a task entry with --run\n  --text NAME VALUE      Supply a string task input; repeat up to eight times\n  --self-test            Run real GUI conformance on the main thread\nRequires macOS 14+ and a logged-in graphical desktop.";
 #[derive(Debug, Eq, PartialEq)]
 pub enum Mode {
     Form,
@@ -20,13 +20,39 @@ pub enum Mode {
 pub struct Options {
     pub mode: Mode,
     pub hold: bool,
+    pub entry: Option<String>,
+    pub arguments: Vec<(String, ScalarValue)>,
 }
 impl Options {
     pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Self, String> {
         let mut args = args.into_iter();
         let mut mode = None;
         let mut hold = false;
+        let mut entry = None;
+        let mut arguments: Vec<(String, ScalarValue)> = Vec::new();
         while let Some(arg) = args.next() {
+            if arg == "--entry" {
+                let value = task_name(args.next(), "--entry")?;
+                if entry.replace(value).is_some() {
+                    return Err("duplicate --entry".into());
+                }
+                continue;
+            }
+            if arg == "--text" {
+                let name = task_name(args.next(), "--text")?;
+                let value = args.next().ok_or("--text requires NAME VALUE")?;
+                let value = value
+                    .into_string()
+                    .map_err(|_| "--text requires UTF-8 text")?;
+                if value.len() > leselang_vm::native::core::MAX_SCALAR_STRING_BYTES {
+                    return Err("--text value exceeds 4096 UTF-8 bytes".into());
+                }
+                if arguments.len() >= 8 || arguments.iter().any(|(key, _)| key == &name) {
+                    return Err("--text has duplicate names or exceeds eight inputs".into());
+                }
+                arguments.push((name, ScalarValue::String(value)));
+                continue;
+            }
             if arg == "--hold" {
                 if hold {
                     return Err("duplicate --hold".into());
@@ -57,8 +83,23 @@ impl Options {
         if hold && matches!(mode, Mode::Help | Mode::SelfTest) {
             return Err("--hold is only available for a program run".into());
         }
-        Ok(Self { mode, hold })
+        if (entry.is_some() || !arguments.is_empty()) && !matches!(mode, Mode::Run(_)) {
+            return Err("--entry and --text require --run FILE".into());
+        }
+        Ok(Self {
+            mode,
+            hold,
+            entry,
+            arguments,
+        })
     }
+}
+
+fn task_name(value: Option<OsString>, flag: &str) -> Result<String, String> {
+    value
+        .and_then(|value| value.into_string().ok())
+        .filter(|name| leselang_vm::native::hir::pure_typing::valid_local_name(name))
+        .ok_or_else(|| format!("{flag} requires an ASCII identifier of 1 to 64 bytes"))
 }
 pub fn load_source(path: &Path) -> Result<String, String> {
     let file = std::fs::File::open(path).map_err(|e| format!("cannot open {path:?}: {e}"))?;
@@ -103,7 +144,9 @@ mod tests {
             parse(&["--hold", "--run", "form.lese"]).unwrap(),
             Options {
                 mode: Mode::Run("form.lese".into()),
-                hold: true
+                hold: true,
+                entry: None,
+                arguments: Vec::new(),
             }
         );
         for args in [
@@ -115,6 +158,56 @@ mod tests {
             &["--invalid"],
         ] {
             assert!(parse(args).is_err(), "{args:?}");
+        }
+    }
+    #[test]
+    fn task_inputs_are_explicit_bounded_and_do_not_rewrite_source() {
+        let parsed = parse(&[
+            "--text",
+            "text",
+            "quoted \" ✓\n",
+            "--run",
+            "task.lese",
+            "--entry",
+            "fill",
+        ])
+        .unwrap();
+        assert_eq!(parsed.entry.as_deref(), Some("fill"));
+        assert_eq!(
+            parsed.arguments,
+            vec![("text".into(), ScalarValue::String("quoted \" ✓\n".into()))]
+        );
+        for args in [
+            vec!["--text", "text", "x"],
+            vec!["--entry", "fill", "--demo"],
+            vec!["--run", "task", "--entry", "bad.name"],
+            vec!["--run", "task", "--entry", "main", "--entry", "main"],
+            vec!["--run", "task", "--text", "text"],
+            vec![
+                "--run", "task", "--text", "text", "x", "--text", "text", "y",
+            ],
+        ] {
+            assert!(parse(&args).is_err(), "{args:?}");
+        }
+        assert!(parse(&["--run", "task", "--text", "text", &"x".repeat(4097)]).is_err());
+        let mut args = vec![OsString::from("--run"), OsString::from("task")];
+        for index in 0..9 {
+            args.extend(["--text".into(), format!("arg{index}").into(), "x".into()]);
+        }
+        assert!(Options::parse(args).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn task_text_and_names_require_lossless_utf8() {
+        use std::os::unix::ffi::OsStringExt;
+        for prefix in [
+            vec!["--run", "task", "--entry"],
+            vec!["--run", "task", "--text", "text"],
+        ] {
+            let mut args: Vec<_> = prefix.into_iter().map(OsString::from).collect();
+            args.push(OsString::from_vec(vec![0xff]));
+            assert!(Options::parse(args).is_err());
         }
     }
     #[test]

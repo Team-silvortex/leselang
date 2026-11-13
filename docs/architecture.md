@@ -30,6 +30,26 @@ The `leselang` executable lives in `leselang-vm` and consumes its public
 CLI permissions and diagnostics. `std.print` is a host registration, not a new
 language primitive; the library remains usable without this executable.
 
+The scalar embedding layer forwards an explicit entry name through
+`Host::compile_entry` to the existing catalog program compiler; `compile`
+continues to select `main`. The complete declaration forest is checked for
+either path. The resulting `Program` retains its selected name and the scalar
+result type already inferred by compilation. These read-only facts neither
+grant authority nor create an additional evaluator or entry wrapper. CLI
+`check/run --entry NAME` uses this same API; session startup and Effect driving
+stay unchanged.
+
+The separate `Host::compile_task` path admits required scalar entry inputs and
+retains their owned declaration-ordered signature. `start_with_arguments` uses
+the shared `bind_entry_arguments` ingress gate to validate the complete names,
+types, scalar bounds and execution binding capacity before creating a scope.
+Values move into initial VM locals; the session borrows their names from its
+immutable `Program`. Startup adds no Fuel charge or wrapper computation, and
+later reads use the original evaluator's accounting. CLI `--text NAME VALUE`
+supplies bounded string data through this path; `check` performs the same input
+binding without starting a session. Legacy compilation and startup APIs retain
+their parameterless contract.
+
 `embedding::diagnostics` extracts host-neutral categories, bounded messages
 and available source spans from the original typed errors. It leaves source
 storage, rendering and serialization with the caller and never drives a
@@ -38,6 +58,15 @@ optional version 1 JSON Lines diagnostic records, adding only its own path,
 phase, help and known remaining Fuel. Runtime locations remain absent because
 the runtime IR does not retain source spans. The JSON schema is a diagnostic
 presentation contract, separate from an Effect or checkpoint wire format.
+
+The syntax crate's `format_source` operates on parsed original tokens, retaining
+comments and non-whitespace token spelling and order. It is separate from the
+legacy AST formatter, whose comment-erasing behavior remains compatible. The
+CLI's `fmt` path uses this source formatter before host registration or semantic
+compilation, applies its own smaller input/output budget, and either writes
+source to stdout or checks exact formatting with `--check`. Neither mode writes
+the input file or invokes an Effect. Syntax validity, formatting conformance and
+host-specific semantic admission remain separate checks.
 
 `serde` is the only registry dependency of production library code.
 `serde_json` supports tests and host-owned checkpoint fixtures. Neither implies
@@ -64,6 +93,16 @@ scope and helper hygiene remain in force. Runtime `PreparedValueCall` preparatio
 reuses the pure evaluator and original Fuel while requiring native adapter
 validation. Scalar `PreparedCall` and the high-level scalar embedding API remain
 available with their existing contracts.
+
+`compile_catalog_typed_program` also permits helper parameter annotations
+resolved by `CatalogSourceEnvironment::source_type_name`. The default is refusal;
+the six scalar names retain their fixed meanings. Host-declared native metadata
+is resolved after physical/header admission and retained as exact
+`PureType::Result` parameter types. Helper operands still pass pure-IR checks,
+named binding, hygiene and existing compilation budgets. The AppKit and AX
+controls adapters explicitly map `object` and `snapshot`; scalar task entry
+inputs remain separate from those execution-local values. Neither this type
+mapping nor helper passing authorizes native work or serializes an object.
 
 ## Ownership
 
@@ -127,9 +166,10 @@ models with explicit queues and event pumping, distinguishing an action's
 submission from its observed postcondition. The source discovers one of multiple
 native objects, binds its typed result and passes it to observation/action calls.
 This tests actual dynamic identity rather than a fixed object hidden behind an
-operation key. Native helper parameter annotations and native-valued field
-projections remain outside this milestone; scalar embedding remains a separate
-convenience profile.
+operation key. Typed task inputs reuse ordinary initial locals, and native
+helper parameters retain exact host type metadata through the same lowering
+and hygiene pipeline. Native-valued field projections remain outside the
+profile; scalar embedding remains a separate convenience API.
 
 The separate [`hosts/appkit`](appkit-host.md) workspace adds a concrete macOS
 adapter for application-owned `NSButton` and `NSTextField` controls, with bounded

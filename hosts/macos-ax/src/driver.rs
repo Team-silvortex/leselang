@@ -93,6 +93,32 @@ pub(crate) fn run_profile<S: ProfileSnapshot>(
     .map_err(|e| e.to_string())?
 }
 
+pub(crate) fn run_profile_task<S: ProfileSnapshot>(
+    backend: &dyn Profile<Snapshot = S>,
+    source: &str,
+    entry: &str,
+    arguments: Vec<(String, ScalarValue)>,
+    fuel: u64,
+) -> Result<ProfileRunSummary<S>, String> {
+    host::with_profile(backend, |host, scope| {
+        let program = host.compile_task(source, entry)?;
+        let arguments = leselang_vm::embedding::bind_entry_arguments(
+            &program.entry_parameters,
+            arguments,
+            STACK.effects.pure.max_bindings,
+        )
+        .map_err(|error| error.to_string())?;
+        let bindings = program
+            .entry_parameters
+            .iter()
+            .zip(arguments)
+            .map(|(parameter, (_, value))| (parameter.name.as_str(), PureValue::Scalar(value)))
+            .collect();
+        drive_node(host, scope, &program.node, bindings, fuel, None)
+    })
+    .map_err(|e| e.to_string())?
+}
+
 pub(crate) fn run_profile_with_waits<S: ProfileSnapshot>(
     backend: &dyn Profile<Snapshot = S>,
     source: &str,
@@ -126,10 +152,21 @@ fn drive<S: ProfileSnapshot>(
     scope: LocalExecutionScope,
     source: &str,
     budget: u64,
-    mut waiting: Option<WaitCallbacks<'_>>,
+    waiting: Option<WaitCallbacks<'_>>,
 ) -> Result<ProfileRunSummary<S>, String> {
     let node = host.compile(source)?;
-    let mut vm = LocalVm::new(scope, &node, Vec::new(), Fuel::new(budget), STACK);
+    drive_node(host, scope, &node, Vec::new(), budget, waiting)
+}
+
+fn drive_node<'ir, S: ProfileSnapshot>(
+    host: &Host<'_, '_, S>,
+    scope: LocalExecutionScope,
+    node: &'ir Node,
+    bindings: RestoredEffectBindings<'ir, ProfileNativeValue<S>>,
+    budget: u64,
+    mut waiting: Option<WaitCallbacks<'_>>,
+) -> Result<ProfileRunSummary<S>, String> {
+    let mut vm = LocalVm::new(scope, node, bindings, Fuel::new(budget), STACK);
     let mut effects = 0;
     let mut observations = Vec::new();
     loop {

@@ -60,9 +60,38 @@ pub struct RunSummary {
 
 /// Execute caller-provided source. Demo postconditions do not constrain programs.
 pub fn run(gui: &Gui, source: &str) -> Result<RunSummary, String> {
+    drive(gui, source, None)
+}
+
+/// Run scalar task inputs through the same explicit AppKit Effect driver.
+pub fn run_task(
+    gui: &Gui,
+    source: &str,
+    entry: &str,
+    arguments: Vec<(String, ScalarValue)>,
+) -> Result<RunSummary, String> {
+    drive(gui, source, Some((entry, arguments)))
+}
+
+type TaskInputs<'a> = (&'a str, Vec<(String, ScalarValue)>);
+
+fn drive(gui: &Gui, source: &str, task: Option<TaskInputs<'_>>) -> Result<RunSummary, String> {
     host::with_host(gui, |host, scope| {
-        let node = host.compile(source)?;
-        let mut vm = LocalVm::new(scope, &node, Vec::new(), Fuel::new(1000), STACK);
+        let (node, parameters, arguments) = if let Some((entry, arguments)) = task {
+            let program = host.compile_task(source, entry)?;
+            let arguments = leselang_vm::embedding::bind_entry_arguments(
+                &program.entry_parameters,
+                arguments,
+                STACK.effects.pure.max_bindings,
+            ).map_err(|error| error.to_string())?;
+            (program.node, program.entry_parameters, arguments)
+        } else {
+            (host.compile(source)?, Vec::new(), Vec::new())
+        };
+        let bindings = parameters.iter().zip(arguments)
+            .map(|(parameter, (_, value))| (parameter.name.as_str(), PureValue::Scalar(value)))
+            .collect();
+        let mut vm = LocalVm::new(scope, &node, bindings, Fuel::new(1000), STACK);
         let mut effects = 0;
         let mut observations = Vec::new();
         loop {
@@ -122,7 +151,16 @@ pub fn main() -> Result<(), String> {
         }
     }
     let other_before = gui.snapshot(1).map_err(|e| e.to_string())?;
-    let result = run(&gui, &source)?;
+    let result = if options.entry.is_some() || !options.arguments.is_empty() {
+        run_task(
+            &gui,
+            &source,
+            options.entry.as_deref().unwrap_or("main"),
+            options.arguments,
+        )?
+    } else {
+        run(&gui, &source)?
+    };
     let status = match options.mode {
         Mode::Form => {
             let input = gui.snapshot(2).map_err(|e| e.to_string())?;

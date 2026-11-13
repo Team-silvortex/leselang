@@ -13,7 +13,9 @@ use call_evaluation::{
     CallEvaluationError, CallEvaluationLimits, PreparedValueCall, ValueCallEvaluationError,
     evaluate_value_call_arguments_in_scope,
 };
-use catalog_program::{CatalogProgramLimits, compile_catalog_program};
+use catalog_program::{
+    CatalogProgramLimits, CompiledCatalogProgram, compile_catalog_typed_program,
+};
 use catalog_source::{CatalogSourceEnvironment, CatalogSourceLimits};
 use control_source::ControlSourceLimits;
 use effect_evaluation::{EffectEvaluationEnvironment, EffectEvaluationLimits};
@@ -535,6 +537,20 @@ impl<'s> Host<'_, 's> {
             .map_err(|_| Error::Native("operation denied"))
     }
     pub fn compile(&self, source: &str) -> Result<Node, String> {
+        let program = self.compile_task(source, "main")?;
+        if !program.entry_parameters.is_empty() {
+            return Err("default entry cannot have parameters; use compile_task".into());
+        }
+        Ok(program.node)
+    }
+
+    /// Compile a task with scalar ingress and explicitly named native helper types.
+    /// Native values still originate only from authenticated session replies.
+    pub fn compile_task(
+        &self,
+        source: &str,
+        entry: &str,
+    ) -> Result<CompiledCatalogProgram<Node, NativeType>, String> {
         if source.len() > 16 * 1024 {
             return Err("source limit".into());
         }
@@ -543,14 +559,13 @@ impl<'s> Host<'_, 's> {
             return Err("syntax rejected".into());
         }
         let declarations: Vec<_> = parsed.function.iter().chain(&parsed.helpers).collect();
-        compile_catalog_program::<Field, _, (), (), _, _, _, _>(
+        compile_catalog_typed_program::<Field, _, (), (), _, _, _, _>(
             &declarations,
-            "main",
+            entry,
             COMPILATION,
             &self.source(),
             self,
         )
-        .map(|(node, _)| node)
         .map_err(|error| error.to_string())
     }
     pub fn dispatch(
@@ -821,6 +836,13 @@ impl<'source, 's> CatalogSourceEnvironment<'source, 's, Field, &'static str, Dom
     for Host<'_, 's>
 {
     type Error = Error;
+    fn source_type_name(&self, name: &str) -> Option<NativeType> {
+        match name {
+            "object" => Some(NativeType::Object),
+            "snapshot" => Some(NativeType::Snapshot),
+            _ => None,
+        }
+    }
     fn source_operation(&self, operation: &&'static str) -> Result<&'static str, Error> {
         Ok(*operation)
     }

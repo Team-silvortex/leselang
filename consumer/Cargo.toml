@@ -195,6 +195,18 @@ name = "namespaced_operations"
 path = "tests/namespaced_operations.rs"
 
 [[test]]
+name = "source_formatting"
+path = "tests/source_formatting.rs"
+
+[[test]]
+name = "entry_points"
+path = "tests/entry_points.rs"
+
+[[test]]
+name = "task_inputs"
+path = "tests/task_inputs.rs"
+
+[[test]]
 name = "host_protocol"
 path = "tests/host_protocol.rs"
 
