@@ -32,6 +32,8 @@ use crate::native::{
     syntax::{Diagnostic, parse},
 };
 
+pub mod diagnostics;
+
 mod environment;
 use environment::Env;
 

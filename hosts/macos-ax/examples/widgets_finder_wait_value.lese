@@ -1,0 +1,17 @@
+// Requires the optional wait-values catalog. The source declares the postcondition.
+fn text_size() = bind(owner: gui.select(role: "AXPopUpButton", identifier: "Text size:", label: ""), body:
+    bind(before: gui.observe(target: owner), body:
+        choose(when: eq(left: value_or(left: field(value: before, name: "value"), right: ""), right: "13"), then:
+            bind(opened: gui.open_menu(target: owner, expected_revision: field(value: before, name: "revision")), body:
+                bind(current: gui.observe(target: owner), body:
+                    bind(cancelled: gui.cancel_menu(target: owner, expected_revision: field(value: current, name: "revision")), body:
+                        bind(cancel_state: gui.observe(target: owner), body:
+                            choose(when: eq(left: value_or(left: field(value: cancel_state, name: "value"), right: ""), right: "13"), then:
+                                bind(reopened: gui.open_menu(target: owner, expected_revision: field(value: cancel_state, name: "revision")), body:
+                                    bind(item: gui.select(role: "AXMenuItem", identifier: "", label: "16"), body:
+                                        bind(ready: gui.observe(target: owner), body:
+                                            bind(chosen: gui.choose_menu_item(target: owner, expected_revision: field(value: ready, name: "revision"), item: item), body:
+                                                bind(after: gui.wait_value(target: owner, expected: optional_string(value: "16"), max_attempts: 16, interval_ms: 50, timeout_ms: 2000), body:
+                                                    eq(left: value_or(left: field(value: after, name: "value"), right: ""), right: "16")))))), otherwise: false))))), otherwise: false)))
+
+fn main() = text_size()

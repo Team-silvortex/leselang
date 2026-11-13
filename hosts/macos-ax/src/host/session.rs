@@ -21,6 +21,36 @@ fn scalar_string<'a, S: ProfileSnapshot>(
         _ => Err(Error::Invalid("missing string argument")),
     }
 }
+fn source_wait_parameters<S: ProfileSnapshot>(
+    call: &Prepared<'_, S>,
+    fuel: &mut Fuel,
+) -> Result<SourceWaitParameters, Error> {
+    let scalar = |index: usize| match call.arguments().get(index).map(|arg| &arg.value) {
+        Some(PureValue::Scalar(value)) => Ok(value),
+        _ => Err(Error::Invalid("missing source wait argument")),
+    };
+    let kind = SourceWaitKind::from_operation(call.schema().key)
+        .ok_or(Error::Invalid("unknown source wait operation"))?;
+    let expected = scalar(1)?;
+    if expected.scalar_type() != kind.expected_type() || !expected.is_bounded() {
+        return Err(Error::Invalid(
+            "source wait requires its declared bounded expected type",
+        ));
+    }
+    let integer = |index| match scalar(index)? {
+        ScalarValue::Integer(value) => Ok(*value),
+        _ => Err(Error::Invalid("source wait budget must be an integer")),
+    };
+    fuel.charge(1 + scalar_copy_cost(expected))
+        .map_err(|_| Error::Fuel)?;
+    Ok(SourceWaitParameters {
+        kind,
+        expected: expected.clone(),
+        max_attempts: integer(2)?,
+        interval_ms: integer(3)?,
+        timeout_ms: integer(4)?,
+    })
+}
 impl<'s, S: ProfileSnapshot> Host<'_, 's, S> {
     pub fn owner(&self) -> &LocalObjectOwner {
         &self.tracked.owners[0]
@@ -43,6 +73,279 @@ impl<'s, S: ProfileSnapshot> Host<'_, 's, S> {
     fn resolve(&self, target: &ObjectRef) -> Result<usize, Error> {
         self.tracked.resolve(target, &self.lease)
     }
+    pub(crate) fn observation_wait_scope_matches(
+        &self,
+        receipt: &ProfileReceipt<S>,
+        lease: &LocalExecutionLease,
+    ) -> bool {
+        self.lease.same_scope(lease) && receipt.identity.lease.same_scope(lease)
+    }
+    pub(crate) fn source_wait_scope_matches(
+        &self,
+        work: &Work<'_, S>,
+        lease: &LocalExecutionLease,
+    ) -> bool {
+        self.lease.same_scope(lease) && work.identity.lease.same_scope(lease)
+    }
+    pub(crate) fn source_wait_arguments(
+        &self,
+        work: &Work<'_, S>,
+        fuel: &mut Fuel,
+    ) -> Result<SourceWaitParameters, Error> {
+        if !self.source_waits.contains(work.operation())
+            || work.identity.serial != self.serial.get()
+            || self.dispatched.get() == work.identity.serial
+            || !std::ptr::eq(self.schema(work.operation())?, work.call.schema())
+        {
+            return Err(Error::Invalid(
+                "source wait requires its original undispatched request",
+            ));
+        }
+        let request = work.call.schema().result.source_wait.borrow();
+        let request = request
+            .as_ref()
+            .filter(|request| request.serial == work.identity.serial)
+            .ok_or(Error::Invalid("source wait request is no longer current"))?;
+        let parameters = &request.parameters;
+        fuel.charge(1 + scalar_copy_cost(&parameters.expected))
+            .map_err(|_| Error::Fuel)?;
+        Ok(SourceWaitParameters {
+            kind: parameters.kind,
+            expected: parameters.expected.clone(),
+            max_attempts: parameters.max_attempts,
+            interval_ms: parameters.interval_ms,
+            timeout_ms: parameters.timeout_ms,
+        })
+    }
+    pub(crate) fn begin_source_observation(
+        &self,
+        work: Work<'_, S>,
+        fuel: &mut Fuel,
+    ) -> Result<ProfileReceipt<S>, Error> {
+        self.authorize(&work.identity)?;
+        if !self.source_waits.contains(work.operation())
+            || self.dispatched.get() == work.identity.serial
+            || !std::ptr::eq(self.schema(work.operation())?, work.call.schema())
+        {
+            return Err(Error::Invalid("stale or foreign source wait dispatch"));
+        }
+        self.dispatched.set(work.identity.serial);
+        let reply = self.observation_reply(&work.identity, fuel)?;
+        Ok(ProfileReceipt {
+            identity: work.identity,
+            reply,
+        })
+    }
+    pub(crate) fn validate_source_wait_receipt(
+        &self,
+        receipt: &ProfileReceipt<S>,
+        fuel: &mut Fuel,
+    ) -> Result<(), Error> {
+        if !self.source_waits.contains(receipt.identity.operation)
+            || self.dispatched.get() != receipt.identity.serial
+        {
+            return Err(Error::Invalid(
+                "source wait requires a dispatched wait request",
+            ));
+        }
+        let ProfileReply::Snapshot(observed) = &receipt.reply else {
+            return Err(Error::Invalid("source wait requires an observation"));
+        };
+        self.authorize(&receipt.identity)?;
+        let domain = &self.schema(receipt.identity.operation)?.result;
+        if !domain.source_wait.borrow().as_ref().is_some_and(|request| {
+            request.serial == receipt.identity.serial && request.ready.is_none()
+        }) {
+            return Err(Error::Invalid("source wait is no longer pending"));
+        }
+        // Pending samples are private to the move-only wait. Public reply
+        // admission additionally requires the completion proof below.
+        domain.validate_snapshot(observed)?;
+        if receipt.identity.operation != SourceWaitKind::Value.operation() {
+            // State availability and the selection owner are live requirements
+            // while Waiting, including before the next scheduled attempt.
+            // A Ready reply still admits its historical payload in Domain.
+            let slot = self.resolve(observed.object())?;
+            let current = self.tracked.refresh_slot(slot)?;
+            self.project_source_wait(&receipt.identity, &current, fuel)?;
+        }
+        Ok(())
+    }
+    fn project_source_wait(
+        &self,
+        identity: &Identity,
+        snapshot: &S,
+        fuel: &mut Fuel,
+    ) -> Result<Option<ScalarValue>, Error> {
+        let domain = &self.schema(identity.operation)?.result;
+        let request = domain.source_wait.borrow();
+        let request = request
+            .as_ref()
+            .filter(|request| request.serial == identity.serial && request.ready.is_none())
+            .ok_or(Error::Invalid("source wait is no longer pending"))?;
+        fuel.charge(snapshot.copy_cost().checked_add(1).ok_or(Error::Bounds)?)
+            .map_err(|_| Error::Fuel)?;
+        let state = self
+            .tracked
+            .backend
+            .source_wait_state(snapshot, request.parameters.kind)?;
+        if request.parameters.kind == SourceWaitKind::Selected {
+            let (identity, key) = state
+                .selection_parent
+                .ok_or(Error::Invalid("selected state has no collection owner"))?;
+            fuel.charge(1 + key.len() as u64).map_err(|_| Error::Fuel)?;
+            match &request.selection_parent {
+                Some((original_identity, original_key))
+                    if *original_identity == identity && original_key == key => {}
+                _ => return Err(Error::Stale),
+            }
+        }
+        if state
+            .value
+            .as_ref()
+            .is_some_and(|value| !request.parameters.kind.admits_expected(value))
+        {
+            return Err(Error::Invalid("source wait returned an incompatible state"));
+        }
+        Ok(state.value)
+    }
+    fn source_wait_parent(
+        &self,
+        slot: usize,
+        fuel: &mut Fuel,
+    ) -> Result<Option<(u64, String)>, Error> {
+        // resolve already refreshed this entry while correlating the request.
+        // Pin the collection here without an extra native read, so moving the
+        // item between poll and begin_source cannot establish a new owner.
+        let entries = self.tracked.entries.borrow();
+        let snapshot = entries
+            .get(slot)
+            .and_then(|entry| entry.previous.as_ref())
+            .ok_or(Error::Stale)?;
+        fuel.charge(snapshot.copy_cost().checked_add(1).ok_or(Error::Bounds)?)
+            .map_err(|_| Error::Fuel)?;
+        let state = match self
+            .tracked
+            .backend
+            .source_wait_state(snapshot, SourceWaitKind::Selected)
+        {
+            Ok(state) => state,
+            // Preserve dispatch as the state-availability failure boundary;
+            // an unavailable initial relation never grants a new owner later.
+            Err(Error::Invalid(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let Some((identity, key)) = state.selection_parent else {
+            return Ok(None);
+        };
+        fuel.charge(1 + key.len() as u64).map_err(|_| Error::Fuel)?;
+        Ok(Some((identity, key.to_owned())))
+    }
+    pub(crate) fn source_wait_state(
+        &self,
+        receipt: &ProfileReceipt<S>,
+        fuel: &mut Fuel,
+    ) -> Result<Option<ScalarValue>, Error> {
+        let ProfileReply::Snapshot(observed) = &receipt.reply else {
+            return Err(Error::Invalid("source wait requires an observation"));
+        };
+        self.project_source_wait(&receipt.identity, observed.data(), fuel)
+    }
+    pub(crate) fn refresh_source_wait_receipt(
+        &self,
+        receipt: ProfileReceipt<S>,
+        fuel: &mut Fuel,
+    ) -> Result<ProfileReceipt<S>, Error> {
+        self.validate_source_wait_receipt(&receipt, fuel)?;
+        let reply = self.observation_reply(&receipt.identity, fuel)?;
+        Ok(ProfileReceipt {
+            identity: receipt.identity,
+            reply,
+        })
+    }
+    pub(crate) fn complete_source_wait(&self, receipt: &ProfileReceipt<S>) -> Result<(), Error> {
+        if !self.source_waits.contains(receipt.identity.operation)
+            || receipt.identity.serial != self.serial.get()
+            || receipt.identity.serial != self.dispatched.get()
+        {
+            return Err(Error::Invalid(
+                "source wait completion is no longer current",
+            ));
+        }
+        let ProfileReply::Snapshot(observed) = &receipt.reply else {
+            return Err(Error::Invalid("source wait requires an observation"));
+        };
+        let mut request = self
+            .schema(receipt.identity.operation)?
+            .result
+            .source_wait
+            .borrow_mut();
+        let request = request
+            .as_mut()
+            .filter(|request| request.serial == receipt.identity.serial && request.ready.is_none())
+            .ok_or(Error::Invalid("source wait completion already published"))?;
+        request.ready = Some(Rc::clone(observed));
+        Ok(())
+    }
+    pub(crate) fn validate_observation_receipt(
+        &self,
+        receipt: &ProfileReceipt<S>,
+    ) -> Result<(), Error> {
+        if receipt.identity.operation != "gui.observe"
+            || self.dispatched.get() != receipt.identity.serial
+            || !matches!(receipt.reply, ProfileReply::Snapshot(_))
+        {
+            return Err(Error::Invalid(
+                "observation wait requires a dispatched observe receipt",
+            ));
+        }
+        self.authorize(&receipt.identity)?;
+        self.schema("gui.observe")?
+            .result
+            .validate_value(&receipt.reply)
+    }
+    pub(crate) fn claim_observation_receipt(
+        &self,
+        receipt: &ProfileReceipt<S>,
+    ) -> Result<(), Error> {
+        if self.observation_wait_serial.get() == receipt.identity.serial {
+            return Err(Error::Invalid(
+                "this observation request already had a wait",
+            ));
+        }
+        self.validate_observation_receipt(receipt)?;
+        self.observation_wait_serial.set(receipt.identity.serial);
+        Ok(())
+    }
+    pub(crate) fn refresh_observation_receipt(
+        &self,
+        receipt: ProfileReceipt<S>,
+        fuel: &mut Fuel,
+    ) -> Result<ProfileReceipt<S>, Error> {
+        self.validate_observation_receipt(&receipt)?;
+        let reply = self.observation_reply(&receipt.identity, fuel)?;
+        Ok(ProfileReceipt {
+            identity: receipt.identity,
+            reply,
+        })
+    }
+    fn observation_reply(
+        &self,
+        identity: &Identity,
+        fuel: &mut Fuel,
+    ) -> Result<ProfileReply<S>, Error> {
+        let target = identity
+            .target
+            .as_ref()
+            .ok_or(Error::Invalid("missing target"))?;
+        fuel.charge(1).map_err(|_| Error::Fuel)?;
+        let slot = self.resolve(target)?;
+        let data = self.tracked.refresh_slot(slot)?;
+        fuel.charge(data.copy_cost()).map_err(|_| Error::Fuel)?;
+        Ok(ProfileReply::Snapshot(Rc::new(
+            self.tracked.owners[slot].observe(target, &self.lease, data)?,
+        )))
+    }
     pub fn dispatch(
         &self,
         work: Work<'s, S>,
@@ -54,6 +357,11 @@ impl<'s, S: ProfileSnapshot> Host<'_, 's, S> {
         }
     }
     fn invoke(&self, work: Work<'s, S>, fuel: &mut Fuel) -> Result<ProfileReceipt<S>, Error> {
+        if work.is_source_wait() {
+            return Err(Error::Invalid(
+                "source waits require observation_wait::begin_source",
+            ));
+        }
         self.authorize(&work.identity)?;
         if self.dispatched.get() == work.identity.serial
             || !std::ptr::eq(self.schema(work.operation())?, work.call.schema())
@@ -132,22 +440,7 @@ impl<'s, S: ProfileSnapshot> Host<'_, 's, S> {
                 *work.call.schema().result.expected.borrow_mut() = Some(object.clone());
                 ProfileReply::Object(object)
             }
-            "gui.observe" => {
-                let target = work
-                    .identity
-                    .target
-                    .as_ref()
-                    .ok_or(Error::Invalid("missing target"))?;
-                fuel.charge(1).map_err(|_| Error::Fuel)?;
-                let slot = self.resolve(target)?;
-                let data = self.tracked.refresh_slot(slot)?;
-                fuel.charge(data.copy_cost()).map_err(|_| Error::Fuel)?;
-                ProfileReply::Snapshot(Rc::new(self.tracked.owners[slot].observe(
-                    target,
-                    &self.lease,
-                    data,
-                )?))
-            }
+            "gui.observe" => self.observation_reply(&work.identity, fuel)?,
             operation if S::is_mutation(operation) => {
                 let target = work
                     .identity
@@ -489,25 +782,25 @@ impl<'ir, 's, S: ProfileSnapshot> EffectSessionEnvironment<'ir, 's, Field, &'sta
     fn correlate_request(
         &self,
         request: Self::Request,
-        _: &mut Fuel,
+        fuel: &mut Fuel,
     ) -> EffectCorrelation<'s, Identity, Domain<'s, S>, Work<'s, S>, Error> {
         let schema = self.schema(request.schema().key)?;
         if !std::ptr::eq(schema, request.schema()) {
             return Err(Error::Invalid("foreign schema").into());
         }
-        let target = if matches!(
+        let (target, target_slot) = if matches!(
             schema.key,
             "gui.find" | "gui.list" | "gui.select" | "gui.select_value"
         ) {
-            None
+            (None, None)
         } else {
             let Some(PureValue::Result(ProfileNativeValue::Object(target))) =
                 request.arguments().first().map(|arg| &arg.value)
             else {
                 return Err(Error::Invalid("missing target").into());
             };
-            self.resolve(target)?;
-            Some(target.clone())
+            let slot = self.resolve(target)?;
+            (Some(target.clone()), Some(slot))
         };
         *schema.result.expected.borrow_mut() = target.clone();
         let serial = self
@@ -515,6 +808,30 @@ impl<'ir, 's, S: ProfileSnapshot> EffectSessionEnvironment<'ir, 's, Field, &'sta
             .get()
             .checked_add(1)
             .ok_or(Error::Invalid("identity exhausted"))?;
+        for kind in self.source_waits.kinds() {
+            self.schema(kind.operation())?
+                .result
+                .source_wait
+                .borrow_mut()
+                .take();
+        }
+        if self.source_waits.contains(schema.key) {
+            let parameters = source_wait_parameters(&request, fuel)?;
+            let selection_parent = if parameters.kind == SourceWaitKind::Selected {
+                self.source_wait_parent(
+                    target_slot.ok_or(Error::Invalid("missing wait target"))?,
+                    fuel,
+                )?
+            } else {
+                None
+            };
+            *schema.result.source_wait.borrow_mut() = Some(SourceWaitRequest {
+                serial,
+                parameters,
+                ready: None,
+                selection_parent,
+            });
+        }
         self.serial.set(serial);
         let identity = Identity {
             lease: self.lease.clone(),

@@ -30,6 +30,15 @@ The `leselang` executable lives in `leselang-vm` and consumes its public
 CLI permissions and diagnostics. `std.print` is a host registration, not a new
 language primitive; the library remains usable without this executable.
 
+`embedding::diagnostics` extracts host-neutral categories, bounded messages
+and available source spans from the original typed errors. It leaves source
+storage, rendering and serialization with the caller and never drives a
+session. The CLI consumes this shared view for its default text output and
+optional version 1 JSON Lines diagnostic records, adding only its own path,
+phase, help and known remaining Fuel. Runtime locations remain absent because
+the runtime IR does not retain source spans. The JSON schema is a diagnostic
+presentation contract, separate from an Effect or checkpoint wire format.
+
 `serde` is the only registry dependency of production library code.
 `serde_json` supports tests and host-owned checkpoint fixtures. Neither implies
 a built-in journal, authentic storage or replay protection.
@@ -95,6 +104,19 @@ points. Sharing code does not merge profile catalogs, remove native validation
 or introduce a scheduler. The driver still follows explicit
 `poll → authorize → dispatch → accept`, with a host-controlled pump for queued
 delivery and a separate observation to verify a submitted action's result.
+An optional [observation wait](macos-ax-observation-wait.md) occupies the host-side
+interval before accepting a chosen `gui.observe` reply. Its explicit steps use
+the original VM Fuel and fixed target identity, while the embedding host owns
+the clock and scheduling. Existing catalogs and source syntax remain unchanged.
+The separate [source wait catalog](macos-ax-source-waits.md) adds
+`gui.wait_value` only through explicit widget opt-in. Source declares its value
+condition and budgets using existing argument types; the same host-side wait
+engine performs the steps. This keeps application-specific expectations out of
+the generic driver while preserving the original 13-operation widget catalog.
+An independent [state-wait catalog](macos-ax-state-waits.md) adds typed checked,
+selected and position conditions through the same engine. State availability
+is part of those conditions; missing state cannot satisfy a boolean or numeric
+fallback. The 13- and 14-operation entry points keep their original schemas.
 
 ## Acceptance Limits
 

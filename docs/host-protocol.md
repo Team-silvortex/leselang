@@ -258,6 +258,26 @@ or add that process's other windows. Process and grant checks also run when
 accepting targetless discovery replies. This is native transport policy and
 introduces no source-language operation.
 
+The Accessibility adapter also offers an explicit host-side
+[bounded observation wait](macos-ax-observation-wait.md). A Rust driver can defer
+accepting one selected `gui.observe` request while it checks later observations
+against a typed predicate. Each step retains the original execution, target and
+Fuel; the host supplies the clock and decides when to advance. Matching a later
+snapshot does not retry the preceding action or turn that historical snapshot
+into an atomic guarantee. This adapter policy adds no generic protocol
+scheduler, new operation or source syntax.
+An independently enabled [widget wait catalog](macos-ax-source-waits.md)
+exposes `gui.wait_value` when the source itself should declare the expected
+optional value and limited attempts and duration. It reuses that host-side
+engine, without a new protocol primitive or language syntax. The old catalog
+does not accept the new operation, and a successful reply remains a historical,
+execution-bound snapshot of the originally requested object.
+The separate [state-wait catalog](macos-ax-state-waits.md) extends this adapter
+policy to checked, selected and normalized position states. These conditions
+require an available native state; `mixed` is not an unchecked checkbox, and
+missing selection or position cannot match `false` or `0`. The shared wait
+engine preserves the same execution, object, Fuel and reply-admission boundaries.
+
 This external adapter advances revisions for observed changes and admitted
 attempts. It cannot observe all intervening remote mutations: an A→B→A change
 entirely between reads may be missed, and either application can change after

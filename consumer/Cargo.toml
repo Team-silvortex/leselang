@@ -187,6 +187,14 @@ name = "embedding"
 path = "tests/embedding.rs"
 
 [[test]]
+name = "embedding_diagnostics"
+path = "tests/embedding_diagnostics.rs"
+
+[[test]]
+name = "namespaced_operations"
+path = "tests/namespaced_operations.rs"
+
+[[test]]
 name = "host_protocol"
 path = "tests/host_protocol.rs"
 

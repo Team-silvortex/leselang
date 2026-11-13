@@ -21,8 +21,8 @@ The arithmetic program prints `42`. The Effect program prints `first` and
 it is then available at `target/lean/leselang`.
 
 ```text
-leselang check FILE [--allow stdio]
-leselang run FILE [--allow stdio] [--fuel N]
+leselang check FILE [--allow stdio] [--diagnostic-format text|json]
+leselang run FILE [--allow stdio] [--fuel N] [--diagnostic-format text|json]
 leselang --help
 leselang --version
 ```
@@ -41,6 +41,67 @@ string. `std.print` writes its text directly, without result-value quoting. Diag
 standard error. Exit status is `0` for success, `2` for command-line usage
 errors, and `1` for input, compilation or execution failures.
 
+## Diagnostics For Editors And Agents
+
+The default `text` diagnostics retain file/line information and readable source
+excerpts where available. Select `--diagnostic-format json` for one JSON object
+per diagnostic line on standard error. Success still leaves standard error
+empty; this option does not change result values, `std.print` output, Fuel,
+permissions or Effect driving. `check` continues to invoke no host callbacks.
+
+After building the executable, these commands exercise successful checking,
+a compilation failure and a runtime failure respectively:
+
+```sh
+target/lean/leselang check --diagnostic-format json examples/arithmetic.lese
+printf '%s\n' 'fn main() = missing()' | target/lean/leselang check --diagnostic-format json -
+printf '%s\n' 'fn main() = div(left: 1, right: 0)' | target/lean/leselang run --diagnostic-format json -
+```
+
+The last two commands intentionally exit with status 1. Parse standard error
+one line at a time; it is a stream of records, not one JSON array. Standard
+output remains a separate stream and may contain an earlier committed Effect
+even when execution later fails. The format option applies only to `check` and
+`run`, may be supplied once, and accepts exactly `text` or `json`.
+
+Arguments are processed in order. Put `--diagnostic-format json` immediately
+after `check` or `run` in an agent invocation so subsequent usage errors also
+use JSON. An error before that option has been successfully parsed uses the
+default text format; an unknown command or malformed format value cannot opt
+into JSON retroactively. `--` still ends option parsing.
+
+The version 1 diagnostic record has these fields:
+
+| Field | Contract |
+| --- | --- |
+| `schema_version` | Integer `1`, identifying this CLI diagnostic presentation schema. |
+| `severity` | `"error"`. |
+| `phase` | `"syntax"`, `"compile"`, `"runtime"`, `"input"` or `"usage"`. |
+| `code` | Original parser `LSE...` code, or `LSC0001` for compilation, `LSR0001` for runtime, `LSI0001` for input and `LSU0001` for usage failures. |
+| `kind` | Public diagnostic category: `syntax`, `compilation`, `unknown_operation`, `capability_denied`, `runtime` or `host_uncertain`; CLI ingress adds `input` and `usage`. |
+| `message` | Descriptive text, bounded to 512 Unicode scalar values. Wording is not a parsing contract. |
+| `path` | Input path display text, or `null` when no path applies. Non-UTF-8 operating-system paths use a lossy UTF-8 display; this is not a round-trippable file identifier. Standard input uses `"-"`. |
+| `path_truncated` | Whether the displayed path was shortened to 256 Unicode scalar values. |
+| `span` | `null`, or `{ "start": N, "end": N }` describing a half-open UTF-8 byte interval in the original source. |
+| `range` | `null`, or `{ "start": { "line": N, "column": N }, "end": { "line": N, "column": N } }` for the same interval, with an exclusive end. Lines and columns start at 1; columns count Unicode scalar values. |
+| `help` | CLI-specific advice, or `null`. It does not grant permission or authorize retry. |
+| `fuel_remaining` | Remaining original session Fuel when known for a runtime failure; otherwise `null`. |
+
+LF separates source lines, with CRLF advancing once at LF. Columns are neither
+UTF-16 offsets nor terminal display widths; an editor using another coordinate
+system must convert them against the original source. Invalid or unavailable
+locations have both `span` and `range` set to `null`. Runtime IR retains no
+source spans, so runtime records do not claim a failing source line.
+
+Consumers should check `schema_version`, use `phase`/`kind`/`code` for
+classification and tolerate unknown fields and future categories. JSON object
+field order and exact `message`/`help` wording are not stable interfaces. Strings
+are JSON-escaped, not terminal-rendered; decoded text still needs the escaping
+appropriate to its destination. This schema describes diagnostic presentation,
+not an Effect transport, VM checkpoint or general stable FFI ABI. Rust hosts
+can use the same [public diagnostic views](embedding.md#structured-diagnostics)
+without depending on the CLI or its serialization.
+
 ## Expressions, Names And Helpers
 
 Every function body is one expression. Calls use named arguments, including
@@ -48,6 +109,11 @@ arithmetic; there are no infix `+` or `*` operators. Argument labels must match
 the declaration and may be written in a different order. Comments start with
 `//`; line breaks and indentation are whitespace, and a trailing comma is
 allowed in a call.
+
+Host operation names may contain multiple dot-separated identifiers, such as
+`gui.window.find`. The full name is one catalog key, matched exactly by the
+host; dots do not import modules, discover objects or grant capabilities.
+The CLI still registers only `std.print`.
 
 ```text
 fn double(n: integer) = mul(left: n, right: 2)

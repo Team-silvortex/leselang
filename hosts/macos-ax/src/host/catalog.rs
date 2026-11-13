@@ -44,6 +44,7 @@ pub(super) type Prepared<'s, S> =
 pub(super) fn with_catalog<S: ProfileSnapshot, T>(
     tracked: &TrackedDocument<'_, S>,
     lease: LocalExecutionLease,
+    source_waits: SourceWaitCatalog,
     use_catalog: impl FnOnce(&Catalog<'_, S>) -> T,
 ) -> Result<T, Error> {
     let scalar = |name, kind| {
@@ -62,6 +63,19 @@ pub(super) fn with_catalog<S: ProfileSnapshot, T>(
         ScalarType::String,
     )];
     let observe_parameters = [target()];
+    let wait_parameters: Vec<_> = source_waits
+        .kinds()
+        .iter()
+        .map(|kind| {
+            [
+                target(),
+                scalar("expected", kind.expected_type()),
+                scalar("max_attempts", ScalarType::Integer),
+                scalar("interval_ms", ScalarType::Integer),
+                scalar("timeout_ms", ScalarType::Integer),
+            ]
+        })
+        .collect();
     let set_text_parameters = mutation(scalar(S::ARGUMENT, ScalarType::String));
     let list_parameters = [scalar("role", ScalarType::String)];
     let select_parameters =
@@ -86,6 +100,7 @@ pub(super) fn with_catalog<S: ProfileSnapshot, T>(
             lease: lease.clone(),
             kind,
             expected: RefCell::new(None),
+            source_wait: RefCell::new(None),
         },
     };
     let mut schemas = vec![
@@ -133,18 +148,29 @@ pub(super) fn with_catalog<S: ProfileSnapshot, T>(
             schemas.push(schema(key, parameters, ResultKind::Submitted));
         }
     }
+    for (kind, parameters) in source_waits.kinds().iter().zip(&wait_parameters) {
+        schemas.push(schema(
+            kind.operation(),
+            parameters.as_slice(),
+            ResultKind::WaitSnapshot,
+        ));
+    }
     let catalog = OperationCatalog::new(
         CATALOG_VERSION,
         &schemas,
         OperationCatalogLimits {
             max_operations: if S::WIDGETS {
-                13
+                13 + source_waits.kinds().len()
             } else if S::CONTROLS {
                 6
             } else {
                 3
             },
-            max_parameters_per_operation: 3,
+            max_parameters_per_operation: if source_waits != SourceWaitCatalog::None {
+                5
+            } else {
+                3
+            },
         },
     )
     .map_err(|_| Error::Invalid("invalid AX catalog"))?;
@@ -215,7 +241,9 @@ impl<'s, S: ProfileSnapshot> CallFlowEnvironment<'s, Field, &'static str, Domain
         result: &NativeType,
     ) -> bool {
         *result == NativeType::Object
-            && (((*operation == "gui.observe" || S::is_mutation(operation))
+            && (((*operation == "gui.observe"
+                || self.source_waits.contains(operation)
+                || S::is_mutation(operation))
                 && parameter_name == "target")
                 || (S::WIDGETS
                     && matches!(*operation, "gui.choose_menu_item" | "gui.select_item")
@@ -229,7 +257,9 @@ impl<'s, S: ProfileSnapshot> CallFlowEnvironment<'s, Field, &'static str, Domain
         Some(match domain.kind {
             ResultKind::Keys => PureType::Scalar(ScalarType::StringList),
             ResultKind::Object => PureType::Result(NativeType::Object),
-            ResultKind::Snapshot => PureType::Result(NativeType::Snapshot),
+            ResultKind::Snapshot | ResultKind::WaitSnapshot => {
+                PureType::Result(NativeType::Snapshot)
+            }
             ResultKind::Submitted => PureType::Scalar(ScalarType::Boolean),
         })
     }

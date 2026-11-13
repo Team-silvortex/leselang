@@ -4,7 +4,7 @@ use crate::{
     Error,
     controls::{ControlInfo, ControlsScalarReply, MAX_CONTROLS, MAX_SCOPE_BYTES},
     driver,
-    host::{ActionArgument, Field, Profile, ProfileSnapshot},
+    host::{ActionArgument, Field, Profile, ProfileSnapshot, SourceWaitKind, SourceWaitState},
 };
 use leselang_vm::native::core::{
     MAX_SCALAR_STRING_BYTES, OptionalStringValue, ScalarType, ScalarValue, StringListValue,
@@ -316,6 +316,55 @@ impl Profile for WidgetsProfile<'_> {
             .next()
             .ok_or(Error::Unavailable("the scope has no widgets"))
     }
+    fn source_wait_state<'a>(
+        &self,
+        snapshot: &'a WidgetSnapshot,
+        kind: SourceWaitKind,
+    ) -> Result<SourceWaitState<'a>, Error> {
+        let widget = snapshot.widget()?;
+        let mut selection_parent = None;
+        let value = match kind {
+            SourceWaitKind::Checked if widget.control.role == "AXCheckBox" => {
+                match widget.checked {
+                    Some(CheckState::Checked) => Some(ScalarValue::Boolean(true)),
+                    Some(CheckState::Unchecked) => Some(ScalarValue::Boolean(false)),
+                    Some(CheckState::Mixed) => None,
+                    None => return Err(Error::Invalid("checkbox state is unavailable")),
+                }
+            }
+            SourceWaitKind::Selected => {
+                let selected = widget
+                    .selected
+                    .ok_or(Error::Invalid("selected state is unavailable"))?;
+                let parent = snapshot.scope.widget(
+                    widget
+                        .parent
+                        .ok_or(Error::Invalid("selected state has no collection owner"))?,
+                )?;
+                if !collection(&parent.control.role) {
+                    return Err(Error::Invalid(
+                        "selected state has an unsupported collection owner",
+                    ));
+                }
+                selection_parent = Some((parent.control.identity, parent.control.key.as_str()));
+                Some(ScalarValue::Boolean(selected))
+            }
+            SourceWaitKind::Position if widget.control.role == "AXScrollBar" => {
+                let position = widget
+                    .position
+                    .ok_or(Error::Invalid("scroll position is unavailable"))?;
+                if position > 1000 {
+                    return Err(Error::Bounds);
+                }
+                Some(ScalarValue::Integer(u64::from(position)))
+            }
+            _ => return Err(Error::Invalid("typed wait is unsupported for this widget")),
+        };
+        Ok(SourceWaitState {
+            value,
+            selection_parent,
+        })
+    }
     fn snapshots(&self) -> Result<Vec<WidgetSnapshot>, Error> {
         let scope = Rc::new(self.0.snapshot()?.normalize()?);
         Ok(scope
@@ -544,11 +593,55 @@ pub fn with_host<T>(
 ) -> Result<T, Error> {
     crate::host::with_profile(&WidgetsProfile(backend), use_host)
 }
+/// Opt in to the fourteen-operation catalog, adding source-declared
+/// `gui.wait_value`. Drive that request through `observation_wait::begin_source`
+/// and `step`, then explicitly accept its Ready receipt.
+pub fn with_wait_host<T>(
+    backend: &dyn WidgetsBackend,
+    use_host: impl FnOnce(
+        &crate::host::Host<'_, '_, WidgetSnapshot>,
+        leselang_vm::native::core::LocalExecutionScope,
+    ) -> T,
+) -> Result<T, Error> {
+    crate::host::with_profile_waits(&WidgetsProfile(backend), use_host)
+}
+/// Opt in to seventeen operations, including typed waits for checkbox state,
+/// collection-item selection and scrollbar position as well as text values.
+pub fn with_state_wait_host<T>(
+    backend: &dyn WidgetsBackend,
+    use_host: impl FnOnce(
+        &crate::host::Host<'_, '_, WidgetSnapshot>,
+        leselang_vm::native::core::LocalExecutionScope,
+    ) -> T,
+) -> Result<T, Error> {
+    crate::host::with_profile_state_waits(&WidgetsProfile(backend), use_host)
+}
 pub fn run(
     backend: &dyn WidgetsBackend,
     source: &str,
 ) -> Result<driver::ProfileRunSummary<WidgetSnapshot>, String> {
     driver::run_profile(&WidgetsProfile(backend), source, 10000)
+}
+/// Run with source waits using a caller-owned monotonic clock and explicit
+/// scheduling callback. `wait_until` receives an absolute time in that clock's
+/// origin; no scheduler or sleep is installed by the library.
+pub fn run_with_waits(
+    backend: &dyn WidgetsBackend,
+    source: &str,
+    clock: &mut impl FnMut() -> std::time::Duration,
+    wait_until: &mut impl FnMut(std::time::Duration),
+) -> Result<driver::ProfileRunSummary<WidgetSnapshot>, String> {
+    driver::run_profile_with_waits(&WidgetsProfile(backend), source, 10000, clock, wait_until)
+}
+/// Run the seventeen-operation catalog with an explicit host clock and
+/// scheduling callback; source waits never retry a mutation.
+pub fn run_with_state_waits(
+    backend: &dyn WidgetsBackend,
+    source: &str,
+    clock: &mut impl FnMut() -> std::time::Duration,
+    wait_until: &mut impl FnMut(std::time::Duration),
+) -> Result<driver::ProfileRunSummary<WidgetSnapshot>, String> {
+    driver::run_profile_with_state_waits(&WidgetsProfile(backend), source, 10000, clock, wait_until)
 }
 
 #[cfg(test)]
@@ -782,6 +875,70 @@ mod tests {
                 Ok(())
             }
         }
+    }
+    #[test]
+    fn typed_wait_projection_distinguishes_missing_mixed_and_legitimate_zero_values() {
+        let fake = Fake::new();
+        let profile = WidgetsProfile(&fake);
+        let sample = |target| WidgetSnapshot {
+            scope: Rc::new(fake.snapshot().unwrap()),
+            target,
+        };
+        assert_eq!(
+            profile
+                .source_wait_state(&sample(2), SourceWaitKind::Checked)
+                .unwrap()
+                .value,
+            Some(ScalarValue::Boolean(false))
+        );
+        assert_eq!(
+            profile
+                .source_wait_state(&sample(5), SourceWaitKind::Selected)
+                .unwrap()
+                .value,
+            Some(ScalarValue::Boolean(false))
+        );
+        assert_eq!(
+            profile
+                .source_wait_state(&sample(6), SourceWaitKind::Position)
+                .unwrap()
+                .value,
+            Some(ScalarValue::Integer(0))
+        );
+        fake.change(|scope| scope.widgets[1].checked = Some(CheckState::Mixed));
+        assert_eq!(
+            profile
+                .source_wait_state(&sample(2), SourceWaitKind::Checked)
+                .unwrap()
+                .value,
+            None
+        );
+        fake.change(|scope| {
+            scope.widgets[1].checked = None;
+            scope.widgets[4].selected = None;
+            scope.widgets[5].position = None;
+        });
+        // Historical field getters intentionally keep their existing defaults;
+        // source waits must instead reject unavailable raw state.
+        assert_eq!(
+            sample(5).field(Field::Selected).unwrap(),
+            ScalarValue::Boolean(false)
+        );
+        assert_eq!(
+            sample(6).field(Field::Position).unwrap(),
+            ScalarValue::Integer(0)
+        );
+        for (target, kind) in [
+            (2, SourceWaitKind::Checked),
+            (5, SourceWaitKind::Selected),
+            (6, SourceWaitKind::Position),
+        ] {
+            assert!(matches!(
+                profile.source_wait_state(&sample(target), kind),
+                Err(Error::Invalid(_))
+            ));
+        }
+        assert!(fake.calls.borrow().is_empty());
     }
     const CHECK: &str = r#"fn main() = bind(target: gui.select(role: "AXCheckBox", identifier: "enabled", label: ""), body: bind(before: gui.observe(target: target), body: bind(sent: gui.set_checked(target: target, expected_revision: field(value: before, name: "revision"), checked: true), body: bind(after: gui.observe(target: target), body: field(value: after, name: "check_state")))))"#;
     const SELECT: &str = r#"fn main() = bind(target: gui.select(role: "AXList", identifier: "items", label: ""), body: bind(item: gui.select(role: "AXRow", identifier: "second", label: ""), body: bind(before: gui.observe(target: target), body: bind(sent: gui.select_item(target: target, expected_revision: field(value: before, name: "revision"), item: item), body: bind(after: gui.observe(target: target), body: field(value: after, name: "selected_keys"))))))"#;

@@ -24,15 +24,14 @@ one scalar result type, a required capability label, and a Rust callback.
 omission supplies no value or implicit default. The callback can read arguments
 by name through `Arguments::get`.
 
-Operation names use dotted ASCII identifier segments and are bounded to 128
-bytes total; parameter names are ASCII identifiers bounded to 64 bytes. Lexical
-keywords and unqualified built-in/control names are reserved, so an operation
-such as `counter.add` cannot be silently replaced by the language's `add`.
-
 Operation names use ASCII identifier segments separated by dots, up to 128
 bytes in total; parameter names are single identifiers up to 64 bytes. Lexer
 keywords and unqualified language builtins/control names are rejected at
 registration. Prefer names such as `counter.add` to make host ownership clear.
+Multiple segments, such as `counter.state.add`, are valid in registration and
+source calls. The full name is one catalog key; dots do not introduce modules,
+object traversal or extra permissions. Native syntax retains its own source
+budget; the 128-byte registration bound belongs to this embedding profile.
 
 ```rust
 use leselang_vm::embedding::{
@@ -160,6 +159,71 @@ None of these outcomes roll back earlier mutations. A callback that mutates
 state and then returns `Failed` retains that partial effect. Check conditions
 before mutation where possible, and choose `Uncertain` when delivery cannot be
 determined. There is no automatic replay after a failure or rejected receipt.
+
+## Structured Diagnostics
+
+`leselang_vm::embedding::diagnostics` provides read-only views of the existing
+compiler and runtime errors:
+
+- `compile(&CompileError) -> Vec<Diagnostic>` preserves all syntax diagnostics
+  in parser order, or reports the compiler's single admission failure.
+- `runtime(&Error) -> Diagnostic` describes the runtime cause without inventing
+  a source position.
+- Each `Diagnostic` contains `code`, `kind`, `message` and optional `span`.
+  `location(original_source)` resolves a valid span to `Option<SourceRange>`.
+
+This complete example inspects an unknown operation without invoking callbacks:
+
+```rust
+use leselang_vm::embedding::{
+    HostBuilder,
+    diagnostics::{self, DiagnosticKind},
+};
+
+fn main() {
+    let host = HostBuilder::new().build();
+    let source = "// 示例\nfn main() = example.counter.add(amount: 1)";
+    let error = match host.compile(source, &[]) {
+        Ok(_) => panic!("an unregistered operation must be rejected"),
+        Err(error) => error,
+    };
+    let reports = diagnostics::compile(&error);
+    let report = &reports[0];
+    assert_eq!(report.kind, DiagnosticKind::UnknownOperation);
+    let range = report.location(source).expect("this call has a source span");
+    assert_eq!((range.start.line, range.start.column), (2, 13));
+    let span = report.span.unwrap();
+    assert_eq!(&source[span.start..span.end], "example.counter.add(amount: 1)");
+    // Keep `error` when the host also needs the original typed HIR details.
+}
+```
+
+`DiagnosticKind` is non-exhaustive. Its current categories are `Syntax`,
+`Compilation`, `UnknownOperation`, `CapabilityDenied`, `Runtime` and
+`HostUncertain`; `as_str()` exposes their snake-case names. Match with a
+fallback for future variants. Parser codes remain unchanged; compilation uses
+`LSC0001` and runtime uses `LSR0001`. Classification belongs in `kind` and the
+original error, rather than comparisons of message wording.
+
+Messages contain at most 512 Unicode scalar values, including a truncation
+marker when needed. They are host-neutral and unescaped: the library does not
+recommend the CLI's stdio grant for a custom operation or choose terminal,
+JSON or HTML escaping. A host owns rendering, serialization and local help.
+The reference CLI's optional [versioned JSON diagnostics](language.md#diagnostics-for-editors-and-agents)
+are a presentation format separate from these Rust types.
+
+Spans are half-open UTF-8 byte intervals. `SourceRange` has one-based `line` and
+`column` values for its start and exclusive end; columns count Unicode scalar
+values, not UTF-16 code units, graphemes or display cells. LF separates lines;
+CRLF advances to the next line once at LF. `location` returns `None` for missing,
+reversed, out-of-bounds or non-character-boundary spans. Supply the exact source
+that produced the error: the diagnostic neither retains nor authenticates it.
+
+Diagnostics leave the original errors, Fuel and session state intact. A host
+may attach its own `Session::fuel_remaining()` value to a runtime report.
+Converting an uncertain outcome does not authorize another dispatch, cancel
+the session or undo earlier Effects. The low-level HIR errors and existing
+`CompileError`/`Error` interfaces remain available.
 
 ## Budgets And Supported Values
 

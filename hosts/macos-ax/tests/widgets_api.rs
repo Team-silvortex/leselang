@@ -466,6 +466,194 @@ fn finder_reference_stops_before_scroll_when_its_initial_position_is_wrong() {
 
 const FINDER_OPTIONS: &str = include_str!("../examples/widgets_finder_options.lese");
 const FINDER_COLUMNS: &str = include_str!("../examples/widgets_finder_columns.lese");
+const FINDER_SOURCE_WAIT: &str = include_str!("../examples/widgets_finder_wait_value.lese");
+const FINDER_WAIT_TIMEOUT: &str = include_str!("../examples/widgets_wait_value_timeout.lese");
+const FINDER_WAIT_COLUMNS: &str = include_str!("../examples/widgets_finder_wait_columns.lese");
+const FINDER_WAIT_SELECTION: &str = include_str!("../examples/widgets_finder_wait_selection.lese");
+
+#[test]
+fn typed_finder_checkboxes_wait_for_delayed_states_without_repeating_writes() {
+    use std::time::Duration;
+    let mut backend = finder_options_backend();
+    backend.state.borrow_mut().widgets[0].control.value = Some("16".into());
+    backend.unchanged_check = true;
+    let now = Cell::new(Duration::ZERO);
+    let schedules = Cell::new(0);
+    let result = widgets::run_with_state_waits(
+        &backend,
+        FINDER_WAIT_COLUMNS,
+        &mut || now.get(),
+        &mut |due| {
+            now.set(due);
+            schedules.set(schedules.get() + 1);
+            let mut state = backend.state.borrow_mut();
+            let next = state
+                .widgets
+                .iter_mut()
+                .find(|w| w.checked == Some(CheckState::Checked))
+                .unwrap();
+            next.checked = Some(CheckState::Unchecked);
+            state.revision += 1;
+        },
+    )
+    .unwrap();
+    assert_eq!(result.value, ScalarValue::Boolean(true));
+    assert_eq!(result.effects, 10);
+    assert_eq!(schedules.get(), 2);
+    assert_eq!(
+        *backend.delivered.borrow(),
+        [
+            WidgetAction::SetChecked(false),
+            WidgetAction::SetChecked(false)
+        ]
+    );
+}
+
+#[test]
+fn typed_finder_selection_wait_preserves_independent_unique_selection_and_scroll_checks() {
+    use std::time::Duration;
+    let backend = finder_backend();
+    let result = widgets::run_with_state_waits(
+        &backend,
+        FINDER_WAIT_SELECTION,
+        &mut || Duration::ZERO,
+        &mut |_| panic!("fixture publishes its state immediately"),
+    )
+    .unwrap();
+    assert_eq!(result.value, ScalarValue::Boolean(true));
+    assert_eq!(result.effects, 15);
+    assert_eq!(
+        *backend.delivered.borrow(),
+        [
+            WidgetAction::SelectItem { item: 42 },
+            WidgetAction::Scroll(1000)
+        ]
+    );
+    assert_eq!(
+        backend.state.borrow().widget(42).unwrap().selected,
+        Some(true)
+    );
+    assert_eq!(
+        backend.state.borrow().widget(45).unwrap().position,
+        Some(1000)
+    );
+}
+
+#[test]
+fn state_samples_refuse_in_both_older_catalogs_before_actions() {
+    use std::time::Duration;
+    for source in [FINDER_WAIT_COLUMNS, FINDER_WAIT_SELECTION] {
+        let backend = finder_options_backend();
+        assert!(widgets::run(&backend, source).is_err());
+        assert!(
+            widgets::run_with_waits(&backend, source, &mut || Duration::ZERO, &mut |_| panic!(
+                "unavailable operations must be rejected before scheduling"
+            ))
+            .is_err()
+        );
+        assert!(backend.delivered.borrow().is_empty());
+    }
+}
+
+#[test]
+fn state_catalog_retains_the_value_wait_reference() {
+    use std::time::Duration;
+    let backend = finder_options_backend();
+    let result = widgets::run_with_state_waits(
+        &backend,
+        FINDER_SOURCE_WAIT,
+        &mut || Duration::ZERO,
+        &mut |_| panic!("immediate value publication"),
+    )
+    .unwrap();
+    assert_eq!(result.value, ScalarValue::Boolean(true));
+    assert_eq!(result.effects, 11);
+    assert_eq!(backend.delivered.borrow().len(), 4);
+}
+
+#[test]
+fn source_declared_finder_wait_uses_generic_host_callbacks_and_delivers_choice_once() {
+    use std::time::Duration;
+    for delayed in [false, true] {
+        let mut backend = finder_options_backend();
+        backend.defer_menu_value = delayed;
+        let now = Cell::new(Duration::ZERO);
+        let schedules = Cell::new(0);
+        let result = widgets::run_with_waits(
+            &backend,
+            FINDER_SOURCE_WAIT,
+            &mut || now.get(),
+            &mut |next_at| {
+                schedules.set(schedules.get() + 1);
+                now.set(next_at);
+                let mut state = backend.state.borrow_mut();
+                state.widgets[0].control.value = Some("16".into());
+                state.revision += 1;
+            },
+        )
+        .unwrap();
+        assert_eq!(result.value, ScalarValue::Boolean(true));
+        assert_eq!(result.effects, 11);
+        assert_eq!(schedules.get(), usize::from(delayed));
+        assert_eq!(
+            *backend.delivered.borrow(),
+            [
+                WidgetAction::OpenMenu,
+                WidgetAction::CancelMenu,
+                WidgetAction::OpenMenu,
+                WidgetAction::ChooseMenuItem { item: 23 }
+            ]
+        );
+        assert_eq!(
+            backend.state.borrow().widget(3).unwrap().checked,
+            Some(CheckState::Checked)
+        );
+        assert_eq!(
+            backend.state.borrow().widget(4).unwrap().checked,
+            Some(CheckState::Checked)
+        );
+    }
+}
+
+#[test]
+fn old_widget_catalog_refuses_source_wait_before_any_finder_action() {
+    let backend = finder_options_backend();
+    assert!(widgets::run(&backend, FINDER_SOURCE_WAIT).is_err());
+    assert!(backend.delivered.borrow().is_empty());
+    assert_eq!(
+        backend
+            .state
+            .borrow()
+            .widget(2)
+            .unwrap()
+            .control
+            .value
+            .as_deref(),
+        Some("13")
+    );
+}
+
+#[test]
+fn source_wait_timeout_example_is_read_only_and_never_returns_success() {
+    use std::time::Duration;
+    let backend = finder_options_backend();
+    let now = Cell::new(Duration::ZERO);
+    let schedules = Cell::new(0);
+    let error = widgets::run_with_waits(
+        &backend,
+        FINDER_WAIT_TIMEOUT,
+        &mut || now.get(),
+        &mut |next_at| {
+            schedules.set(schedules.get() + 1);
+            now.set(next_at);
+        },
+    )
+    .unwrap_err();
+    assert!(error.contains("deadline"), "{error}");
+    assert_eq!(now.get(), Duration::from_millis(250));
+    assert_eq!(schedules.get(), 5);
+    assert!(backend.delivered.borrow().is_empty());
+}
 
 fn finder_options_backend() -> WindowBackend {
     let mut backend = WindowBackend::new();

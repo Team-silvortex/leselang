@@ -47,13 +47,22 @@ fn execute() -> Result<(), String> {
             application,
             window,
             auxiliaries,
+            wait_values,
+            wait_states,
             input,
         } => {
             let source = match input {
                 options::ControlInput::Discover => None,
                 options::ControlInput::Run(path) => Some(options::load_source(&path)?),
             };
-            run_widgets(&application, &window, auxiliaries, source.as_deref())
+            run_widgets(
+                &application,
+                &window,
+                auxiliaries,
+                wait_values,
+                wait_states,
+                source.as_deref(),
+            )
         }
     }
 }
@@ -245,6 +254,8 @@ fn run_widgets(
     spec: &leselang_macos_ax_host::scope::ApplicationSpec,
     window: &leselang_macos_ax_host::scope::WindowSelector,
     auxiliaries: Vec<leselang_macos_ax_host::scope::AuxiliaryProcessSpec>,
+    wait_values: bool,
+    wait_states: bool,
     source: Option<&str>,
 ) -> Result<(), String> {
     use leselang_macos_ax_host::{scope::AuxiliaryGrant, scope_access::ApplicationAccess, widgets};
@@ -257,7 +268,22 @@ fn run_widgets(
     }
     .map_err(|error| error.to_string())?;
     if let Some(source) = source {
-        let summary = widgets::run(&backend, source)?;
+        let summary = if wait_values || wait_states {
+            let origin = std::time::Instant::now();
+            let mut clock = || origin.elapsed();
+            // Scheduling is an explicit CLI policy. Interactive embedders can
+            // retain Waiting and return to their own event loop instead.
+            let mut wait_until = |next_at: std::time::Duration| {
+                std::thread::sleep(next_at.saturating_sub(origin.elapsed()));
+            };
+            if wait_states {
+                widgets::run_with_state_waits(&backend, source, &mut clock, &mut wait_until)?
+            } else {
+                widgets::run_with_waits(&backend, source, &mut clock, &mut wait_until)?
+            }
+        } else {
+            widgets::run(&backend, source)?
+        };
         println!(
             "Completed {} Effects; Fuel remaining: {}\nLeseLang result: {}",
             summary.effects,
@@ -308,6 +334,8 @@ fn run_widgets(
     _spec: &leselang_macos_ax_host::scope::ApplicationSpec,
     _window: &leselang_macos_ax_host::scope::WindowSelector,
     _auxiliaries: Vec<leselang_macos_ax_host::scope::AuxiliaryProcessSpec>,
+    _wait_values: bool,
+    _wait_states: bool,
     _source: Option<&str>,
 ) -> Result<(), String> {
     Err("this adapter requires macOS 14+".into())

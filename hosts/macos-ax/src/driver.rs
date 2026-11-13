@@ -4,6 +4,7 @@ use crate::{
         self, Domain, Host, Identity, Node, Profile, ProfileNativeValue, ProfileReceipt,
         ProfileReply, ProfileSnapshot, STACK, Work,
     },
+    observation_wait::{self, WaitStep},
 };
 use leselang_vm::native::{
     LocalVm,
@@ -13,6 +14,7 @@ use leselang_vm::native::{
         pure_evaluation::PureValue,
     },
 };
+use std::time::Duration;
 
 pub type Vm<'ir, 's, S = Snapshot> = LocalVm<
     'ir,
@@ -75,22 +77,56 @@ pub struct ProfileRunSummary<S: ProfileSnapshot> {
 
 /// Execute caller-provided source. Demo postconditions do not constrain programs.
 pub fn run(backend: &dyn Backend, source: &str) -> Result<RunSummary, String> {
-    host::with_host(backend, |host, scope| drive(host, scope, source, 1000))
-        .map_err(|e| e.to_string())?
+    host::with_host(backend, |host, scope| {
+        drive(host, scope, source, 1000, None)
+    })
+    .map_err(|e| e.to_string())?
 }
 pub(crate) fn run_profile<S: ProfileSnapshot>(
     backend: &dyn Profile<Snapshot = S>,
     source: &str,
     fuel: u64,
 ) -> Result<ProfileRunSummary<S>, String> {
-    host::with_profile(backend, |host, scope| drive(host, scope, source, fuel))
-        .map_err(|e| e.to_string())?
+    host::with_profile(backend, |host, scope| {
+        drive(host, scope, source, fuel, None)
+    })
+    .map_err(|e| e.to_string())?
 }
+
+pub(crate) fn run_profile_with_waits<S: ProfileSnapshot>(
+    backend: &dyn Profile<Snapshot = S>,
+    source: &str,
+    fuel: u64,
+    clock: &mut impl FnMut() -> Duration,
+    wait_until: &mut impl FnMut(Duration),
+) -> Result<ProfileRunSummary<S>, String> {
+    host::with_profile_waits(backend, |host, scope| {
+        drive(host, scope, source, fuel, Some((clock, wait_until)))
+    })
+    .map_err(|e| e.to_string())?
+}
+
+pub(crate) fn run_profile_with_state_waits<S: ProfileSnapshot>(
+    backend: &dyn Profile<Snapshot = S>,
+    source: &str,
+    fuel: u64,
+    clock: &mut impl FnMut() -> Duration,
+    wait_until: &mut impl FnMut(Duration),
+) -> Result<ProfileRunSummary<S>, String> {
+    host::with_profile_state_waits(backend, |host, scope| {
+        drive(host, scope, source, fuel, Some((clock, wait_until)))
+    })
+    .map_err(|e| e.to_string())?
+}
+
+type WaitCallbacks<'a> = (&'a mut dyn FnMut() -> Duration, &'a mut dyn FnMut(Duration));
+
 fn drive<S: ProfileSnapshot>(
     host: &Host<'_, '_, S>,
     scope: LocalExecutionScope,
     source: &str,
     budget: u64,
+    mut waiting: Option<WaitCallbacks<'_>>,
 ) -> Result<ProfileRunSummary<S>, String> {
     let node = host.compile(source)?;
     let mut vm = LocalVm::new(scope, &node, Vec::new(), Fuel::new(budget), STACK);
@@ -105,7 +141,32 @@ fn drive<S: ProfileSnapshot>(
                 effects += 1;
                 let operation = work.operation();
                 println!("poll -> authorize -> dispatch: {operation}");
-                let receipt = dispatch(&mut vm, host, work).map_err(|e| e.to_string())?;
+                let receipt = if work.is_source_wait() {
+                    let (clock, wait_until) = waiting.as_mut().ok_or(
+                        "source wait requires explicit host clock and scheduling callbacks",
+                    )?;
+                    let mut now = || clock();
+                    let mut progress =
+                        observation_wait::begin_source(&mut vm, host, work, &mut now)
+                            .map_err(|error| error.to_string())?;
+                    loop {
+                        match progress {
+                            WaitStep::Ready(receipt) => break receipt,
+                            WaitStep::Waiting(wait) => {
+                                let status = wait.status();
+                                println!(
+                                    "wait: attempts={}, next_at={:?}, deadline={:?}",
+                                    status.attempts, status.next_at, status.deadline
+                                );
+                                wait_until(status.next_at);
+                                progress = observation_wait::step(&mut vm, host, wait, &mut now)
+                                    .map_err(|error| error.to_string())?;
+                            }
+                        }
+                    }
+                } else {
+                    dispatch(&mut vm, host, work).map_err(|e| e.to_string())?
+                };
                 if let ProfileReply::Snapshot(snapshot) = &receipt.reply {
                     println!(
                         "observe: {}, revision={}",

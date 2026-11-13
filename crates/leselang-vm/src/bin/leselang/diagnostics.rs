@@ -1,355 +1,183 @@
-//! CLI-only, bounded rendering of the public compiler and runtime errors.
+//! CLI presentation of the public, host-neutral diagnostic view.
 
-use leselang_vm::{
-    embedding::{CompileError, Error, HostFailure},
-    native::{
-        core::{CalculationFailure, OperationCatalogError, ReplyAcceptanceError},
-        hir::{
-            bound_projection_source::BoundProjectionSourceError,
-            catalog_group_source::CatalogGroupSourceError, catalog_program::CatalogProgramError,
-            catalog_source::CatalogSourceError, choice_source::ChoiceSourceError,
-            control_source::ControlSourceError, effect_evaluation::EffectEvaluationFault,
-            effect_session::EffectSessionReplyError, effect_stack::EffectStackFault,
-            helper_declarations::HelperDeclarationError,
-            helper_dependencies::HelperDependencyError, helper_hygiene::HelperHygieneError,
-            helper_source::HelperSourceError, projection_source::ProjectionSourceError,
-            pure_evaluation::PureEvaluationFault, scalar_source::ScalarSourceError,
-            source_call::SourceCallError,
-        },
-        syntax::Span,
-    },
+use leselang_vm::embedding::{
+    CompileError,
+    diagnostics::{self as shared, Diagnostic as StructuredDiagnostic, DiagnosticKind},
 };
+#[cfg(test)]
+use leselang_vm::{embedding::Error, native::syntax::Span};
 
-const MAX_DEPTH: usize = 64;
 const MAX_MESSAGE: usize = 512;
 const EXCERPT_CHARS: usize = 120;
 
-struct Note {
-    message: String,
-    span: Option<Span>,
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Format {
+    #[default]
+    Text,
+    Json,
 }
 
-impl Note {
-    fn new(message: impl ToString, span: Option<Span>) -> Self {
-        Self {
-            message: message.to_string(),
-            span,
+impl Format {
+    pub fn compile(self, path: &str, source: &str, error: &CompileError) -> String {
+        if self == Self::Text {
+            return render_compile(path, source, error);
         }
+        shared::compile(error)
+            .iter()
+            .map(|diagnostic| {
+                let phase = if diagnostic.kind == DiagnosticKind::Syntax {
+                    "syntax"
+                } else {
+                    "compile"
+                };
+                json_diagnostic(Some(path), source, phase, diagnostic, None)
+            })
+            .collect()
     }
-}
 
-/// Syntax codes come from the parser; LSC0001 covers compiler admission failures.
-pub fn render_compile(path: &str, source: &str, error: &CompileError) -> String {
-    match error {
-        CompileError::Syntax(diagnostics) => {
-            let mut rendered = String::new();
-            for diagnostic in diagnostics {
-                rendered.push_str(&render_note(
-                    path,
-                    source,
-                    &diagnostic.code,
-                    Note::new(&diagnostic.message, Some(diagnostic.span)),
-                ));
-            }
-            rendered
+    pub fn runtime(
+        self,
+        path: &str,
+        diagnostic: &StructuredDiagnostic,
+        fuel: Option<u64>,
+    ) -> String {
+        if self == Self::Json {
+            return json_diagnostic(Some(path), "", "runtime", diagnostic, fuel);
         }
-        CompileError::Source(error) => render_note(path, source, "LSC0001", catalog(error, 0)),
-        CompileError::SourceLimit => render_note(path, source, "LSC0001", Note::new(error, None)),
-    }
-}
-
-fn catalog(error: &CatalogSourceError<Error>, depth: usize) -> Note {
-    if depth >= MAX_DEPTH {
-        return Note::new(error, None);
-    }
-    match error {
-        CatalogSourceError::Control(error) => control(error, catalog, depth + 1),
-        CatalogSourceError::Scalar { span, error } => {
-            scalar(error, Some(*span), catalog, depth + 1)
+        let mut result = render_note(path, "", diagnostic);
+        if let Some(fuel) = fuel {
+            result.push_str(&format!("note: execution stopped with {fuel} fuel remaining; completed output is not rolled back\n"));
         }
-        CatalogSourceError::Call { span, error } => call(error, Some(*span), catalog, depth + 1),
-        CatalogSourceError::Projection(error) => match error.as_ref() {
-            BoundProjectionSourceError::Projection(error) => {
-                projection(error, runtime_note, depth + 1)
-            }
-            BoundProjectionSourceError::Scope { span, error } => Note::new(error, Some(*span)),
-            BoundProjectionSourceError::BoundReference { span }
-            | BoundProjectionSourceError::Unbound { span } => Note::new(error, Some(*span)),
-        },
-        CatalogSourceError::ComputedProjection(error) => projection(error, catalog, depth + 1),
-        CatalogSourceError::Mapping { span, error } => {
-            Note::new(runtime(error, depth + 1), Some(*span))
+        result
+    }
+
+    pub fn other(self, path: Option<&str>, phase: &str, code: &str, message: &str) -> String {
+        let diagnostic = StructuredDiagnostic {
+            code: code.into(),
+            kind: DiagnosticKind::Runtime,
+            message: message.into(),
+            span: None,
+        };
+        if self == Self::Json {
+            return json_record(path, "", phase, phase, &diagnostic, None);
         }
-        CatalogSourceError::OperationIdentity { span }
-        | CatalogSourceError::UnknownLocal { span }
-        | CatalogSourceError::NonScalar { span }
-        | CatalogSourceError::ResultType { span }
-        | CatalogSourceError::UnsupportedSource { span } => Note::new(error, Some(*span)),
-        CatalogSourceError::Type(error) => Note::new(error, None),
-        CatalogSourceError::Program(error) => program(error, depth + 1),
-        CatalogSourceError::Group(error) => match error.as_ref() {
-            CatalogGroupSourceError::Source(error) => catalog(error, depth + 1),
-            CatalogGroupSourceError::GroupLimit { span }
-            | CatalogGroupSourceError::NestedGroup { span }
-            | CatalogGroupSourceError::NonAtomic { span, .. }
-            | CatalogGroupSourceError::PreparedMember { span, .. }
-            | CatalogGroupSourceError::BranchMapping { span, .. }
-            | CatalogGroupSourceError::BranchType { span, .. } => Note::new(error, Some(*span)),
-            CatalogGroupSourceError::Catalog { span, error } => catalog_error(error, Some(*span)),
-            CatalogGroupSourceError::Type(error) => Note::new(error, None),
-            _ => Note::new(error, None),
-        },
-        CatalogSourceError::InconsistentType => Note::new(error, None),
+        let prefix = path
+            .map(|path| format!("{}: ", display_path(path)))
+            .unwrap_or_default();
+        format!("{prefix}error: {}\n", bounded(message, MAX_MESSAGE))
     }
 }
 
-fn catalog_error(error: &OperationCatalogError, span: Option<Span>) -> Note {
-    match error {
-        OperationCatalogError::CapabilityDenied => {
-            Note::new("capability denied; std.print requires --allow stdio", span)
+fn hint(diagnostic: &StructuredDiagnostic) -> Option<&'static str> {
+    match diagnostic.kind {
+        DiagnosticKind::CapabilityDenied => Some("std.print requires --allow stdio"),
+        DiagnosticKind::UnknownOperation => Some("this CLI provides std.print(message: string)"),
+        DiagnosticKind::HostUncertain => {
+            Some("output may be partial; completed output is not rolled back")
         }
-        OperationCatalogError::UnknownOperation => Note::new(
-            "unknown operation; this CLI provides std.print(message: string)",
-            span,
-        ),
-        _ => Note::new(error, span),
+        _ => None,
     }
 }
 
-fn call<E>(
-    error: &SourceCallError<E>,
-    span: Option<Span>,
-    inner: fn(&E, usize) -> Note,
-    depth: usize,
-) -> Note {
-    if depth >= MAX_DEPTH {
-        return Note::new(error, span);
-    }
-    match error {
-        SourceCallError::Catalog(error) => catalog_error(error, span),
-        SourceCallError::Names(error) => Note::new(error, span),
-        SourceCallError::Shape { span, error } => {
-            Note::new(format!("invalid source shape: {error:?}"), Some(*span))
-        }
-        SourceCallError::Lowering { error, .. } => inner(error, depth + 1),
-        SourceCallError::Output { error, .. } => Note::new(error, None),
-        SourceCallError::Argument { error, .. } => Note::new(error, span),
-        _ => Note::new(error, span),
+fn text_message(diagnostic: &StructuredDiagnostic) -> String {
+    match hint(diagnostic) {
+        Some(hint) => format!("{}; {hint}", bounded(&diagnostic.message, MAX_MESSAGE)),
+        None => bounded(&diagnostic.message, MAX_MESSAGE),
     }
 }
 
-fn control<E>(error: &ControlSourceError<E>, inner: fn(&E, usize) -> Note, depth: usize) -> Note {
-    if depth >= MAX_DEPTH {
-        return Note::new(error, None);
-    }
-    match error {
-        ControlSourceError::Source(error) => call(error, None, inner, depth + 1),
-        ControlSourceError::Lexical(error) => scalar(error, None, inner, depth + 1),
-        ControlSourceError::Choice(error) => match error {
-            ChoiceSourceError::Source(error) => call(error, None, inner, depth + 1),
-            ChoiceSourceError::Native { error, .. } => inner(error, depth + 1),
-            ChoiceSourceError::Names { span }
-            | ChoiceSourceError::Condition { span }
-            | ChoiceSourceError::BranchTypes { span }
-            | ChoiceSourceError::ProducedWhen { span, .. } => Note::new(error, Some(*span)),
-            ChoiceSourceError::Output { error, .. } => Note::new(error, None),
-        },
-        ControlSourceError::Projection(error) => projection(error, inner, depth + 1),
-        ControlSourceError::Native { error, .. } => inner(error, depth + 1),
-        ControlSourceError::Output { span, error } => Note::new(error, Some(*span)),
-        ControlSourceError::ProducedCondition { span, error } => Note::new(error, Some(*span)),
-        ControlSourceError::Condition { span } | ControlSourceError::BranchTypes { span } => {
-            Note::new(error, Some(*span))
-        }
-    }
+fn render_compile(path: &str, source: &str, error: &CompileError) -> String {
+    shared::compile(error)
+        .iter()
+        .map(|diagnostic| render_note(path, source, diagnostic))
+        .collect()
 }
 
-fn scalar<E>(
-    error: &ScalarSourceError<E>,
-    context: Option<Span>,
-    inner: fn(&E, usize) -> Note,
-    depth: usize,
-) -> Note {
-    if depth >= MAX_DEPTH {
-        return Note::new(error, context);
-    }
-    match error {
-        ScalarSourceError::Source(error) => call(error, context, inner, depth + 1),
-        ScalarSourceError::Native { error, .. } => inner(error, depth + 1),
-        ScalarSourceError::Names { span, expected } => Note::new(
-            format!("invalid named operands; expected {}", expected.join(", ")),
-            Some(*span),
-        ),
-        ScalarSourceError::Binary {
-            span,
-            operator,
-            left,
-            right,
-        } => Note::new(
-            format!(
-                "{} does not accept {left:?} and {right:?} operands",
-                operator.name()
-            ),
-            Some(*span),
-        ),
-        ScalarSourceError::Unary { span, operator } => Note::new(
-            format!("{} expects {}", operator.name(), operator.expected_input()),
-            Some(*span),
-        ),
-        ScalarSourceError::Bindings { span, error }
-        | ScalarSourceError::FoldBindings { span, error }
-        | ScalarSourceError::Produced { span, error } => Note::new(error, Some(*span)),
-        ScalarSourceError::Generation { span, error } => Note::new(error, Some(*span)),
-        ScalarSourceError::LiteralLimit { span }
-        | ScalarSourceError::NonScalar { span }
-        | ScalarSourceError::InconsistentLiteral { span }
-        | ScalarSourceError::Condition { span }
-        | ScalarSourceError::BranchTypes { span }
-        | ScalarSourceError::RecoveryTypes { span }
-        | ScalarSourceError::StringCount { span }
-        | ScalarSourceError::StringLabels { span }
-        | ScalarSourceError::StringItem { span }
-        | ScalarSourceError::StringBytes { span }
-        | ScalarSourceError::BindingShape { span }
-        | ScalarSourceError::LoopShape { span, .. }
-        | ScalarSourceError::LoopLimit { span, .. }
-        | ScalarSourceError::LoopCondition { span }
-        | ScalarSourceError::LoopState { span }
-        | ScalarSourceError::FoldShape { span, .. }
-        | ScalarSourceError::FoldItem { span }
-        | ScalarSourceError::FoldLimit { span, .. }
-        | ScalarSourceError::FoldItems { span }
-        | ScalarSourceError::FoldState { span } => Note::new(error, Some(*span)),
-    }
+#[cfg(test)]
+fn render_runtime(error: &Error) -> String {
+    Format::Text.runtime("test.lese", &shared::runtime(error), None)
 }
 
-fn projection<E>(
-    error: &ProjectionSourceError<E>,
-    inner: fn(&E, usize) -> Note,
-    depth: usize,
-) -> Note {
-    if depth >= MAX_DEPTH {
-        return Note::new(error, None);
-    }
-    match error {
-        ProjectionSourceError::Source(error) => call(error, None, inner, depth + 1),
-        ProjectionSourceError::Native { error, .. } => inner(error, depth + 1),
-        ProjectionSourceError::Generation { span, error } => Note::new(error, Some(*span)),
-        ProjectionSourceError::Produced { span, error } => Note::new(error, Some(*span)),
-        ProjectionSourceError::NotProjection { span }
-        | ProjectionSourceError::Names { span }
-        | ProjectionSourceError::FieldName { span }
-        | ProjectionSourceError::MemberShape { span }
-        | ProjectionSourceError::MemberNames { span }
-        | ProjectionSourceError::NonResult { span }
-        | ProjectionSourceError::FieldNotExported { span }
-        | ProjectionSourceError::MemberNotExported { span } => Note::new(error, Some(*span)),
-    }
-}
-
-fn program(error: &CatalogProgramError<CatalogSourceError<Error>>, depth: usize) -> Note {
-    if depth >= MAX_DEPTH {
-        return Note::new(error, None);
-    }
-    match error {
-        CatalogProgramError::Declarations(error) => declaration(error),
-        CatalogProgramError::Dependencies(error) => match error {
-            HelperDependencyError::InvalidName { span, .. }
-            | HelperDependencyError::DuplicateName { span, .. }
-            | HelperDependencyError::EntryConflict { span, .. }
-            | HelperDependencyError::Source { span, .. }
-            | HelperDependencyError::EntryCall { span, .. } => Note::new(error, Some(*span)),
-            _ => Note::new(error, None),
-        },
-        CatalogProgramError::EntryCall { span } => Note::new(error, Some(*span)),
-        CatalogProgramError::Names { span, error } => Note::new(error, Some(*span)),
-        CatalogProgramError::Arguments { span, error } => match error.as_ref() {
-            HelperSourceError::Lowering { error, .. } => catalog(error, depth + 1),
-            HelperSourceError::Names(error) => Note::new(error, Some(*span)),
-            HelperSourceError::Shape { span, error } => {
-                Note::new(format!("invalid helper call shape: {error:?}"), Some(*span))
-            }
-            HelperSourceError::Argument { error, .. } => Note::new(error, Some(*span)),
-            HelperSourceError::Output { error, .. } => Note::new(error, None),
-            _ => Note::new(error, Some(*span)),
-        },
-        CatalogProgramError::Hygiene { span, error } => match error.as_ref() {
-            HelperHygieneError::Native(error) => catalog(error, depth + 1),
-            _ => Note::new(error, Some(*span)),
-        },
-        CatalogProgramError::Bindings { span, error } => Note::new(error, Some(*span)),
-        _ => Note::new(error, None),
-    }
-}
-
-fn declaration<E>(error: &HelperDeclarationError<E>) -> Note {
-    match error {
-        HelperDeclarationError::Parameters { span, error, .. } => Note::new(error, Some(*span)),
-        HelperDeclarationError::Source { span, error, .. } => Note::new(error, Some(*span)),
-        HelperDeclarationError::InvalidName { span, .. }
-        | HelperDeclarationError::ReservedName { span, .. }
-        | HelperDeclarationError::DuplicateName { span, .. }
-        | HelperDeclarationError::Policy { span, .. }
-        | HelperDeclarationError::MissingEntry { span }
-        | HelperDeclarationError::EntryParameters { span, .. } => Note::new(error, Some(*span)),
-        _ => Note::new(error, None),
-    }
-}
-
-/// Runtime IR has no retained source spans; do not invent a line number.
-pub fn render_runtime(error: &Error) -> String {
-    format!(
-        "error[LSR0001]: {}\n",
-        bounded(&runtime(error, 0), MAX_MESSAGE)
+// JSON Lines is a diagnostic presentation contract, not a VM checkpoint or
+// Effect wire format. No serde dependency is added to the executable/library.
+fn json_diagnostic(
+    path: Option<&str>,
+    source: &str,
+    phase: &str,
+    diagnostic: &StructuredDiagnostic,
+    fuel: Option<u64>,
+) -> String {
+    json_record(
+        path,
+        source,
+        phase,
+        diagnostic.kind.as_str(),
+        diagnostic,
+        fuel,
     )
 }
 
-fn runtime_note(error: &Error, depth: usize) -> Note {
-    Note::new(runtime(error, depth), None)
+fn json_record(
+    path: Option<&str>,
+    source: &str,
+    phase: &str,
+    kind: &str,
+    diagnostic: &StructuredDiagnostic,
+    fuel: Option<u64>,
+) -> String {
+    let location = diagnostic.location(source);
+    let (span, range) = match (diagnostic.span, location) {
+        (Some(span), Some(range)) => (
+            format!("{{\"start\":{},\"end\":{}}}", span.start, span.end),
+            format!(
+                "{{\"start\":{{\"line\":{},\"column\":{}}},\"end\":{{\"line\":{},\"column\":{}}}}}",
+                range.start.line, range.start.column, range.end.line, range.end.column
+            ),
+        ),
+        _ => ("null".into(), "null".into()),
+    };
+    let path_truncated = path.is_some_and(|path| path.chars().count() > 256);
+    let path = path
+        .map(|path| json_string(&path.chars().take(256).collect::<String>()))
+        .unwrap_or_else(|| "null".into());
+    let help = hint(diagnostic)
+        .map(json_string)
+        .unwrap_or_else(|| "null".into());
+    let fuel = fuel
+        .map(|fuel| fuel.to_string())
+        .unwrap_or_else(|| "null".into());
+    format!(
+        "{{\"schema_version\":1,\"severity\":\"error\",\"phase\":{},\"code\":{},\"kind\":{},\"message\":{},\"path\":{path},\"path_truncated\":{path_truncated},\"span\":{span},\"range\":{range},\"help\":{help},\"fuel_remaining\":{fuel}}}\n",
+        json_string(phase),
+        json_string(&diagnostic.code.chars().take(64).collect::<String>()),
+        json_string(kind),
+        json_string(
+            &diagnostic
+                .message
+                .chars()
+                .take(MAX_MESSAGE)
+                .collect::<String>()
+        )
+    )
 }
 
-fn runtime(error: &Error, depth: usize) -> String {
-    if depth >= MAX_DEPTH {
-        return "nested runtime failure".into();
-    }
-    match error {
-        Error::Evaluation(failure) => match failure.as_ref() {
-            CalculationFailure::Scalar(error) => error.to_string(),
-            CalculationFailure::External(EffectStackFault::Control(error)) => match error {
-                EffectEvaluationFault::Native(error) => runtime(error, depth + 1),
-                EffectEvaluationFault::Pure(PureEvaluationFault::Native(error)) => {
-                    runtime(error, depth + 1)
-                }
-                EffectEvaluationFault::Pure(PureEvaluationFault::Loop(error)) => error.to_string(),
-                EffectEvaluationFault::Pure(PureEvaluationFault::Fold(error)) => error.to_string(),
-                EffectEvaluationFault::Pure(PureEvaluationFault::Preflight(error)) => {
-                    error.to_string()
-                }
-                EffectEvaluationFault::Pure(error) => error.to_string(),
-                EffectEvaluationFault::CallShape(error) => error.to_string(),
-                _ => error.to_string(),
-            },
-            CalculationFailure::External(error) => error.to_string(),
-        },
-        Error::Acceptance(error) => match error.as_ref() {
-            EffectSessionReplyError::Reply(ReplyAcceptanceError::Authority(error)) => {
-                runtime(error, depth + 1)
+fn json_string(value: &str) -> String {
+    use std::fmt::Write;
+    let mut output = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '"' => output.push_str("\\\""),
+            '\\' => output.push_str("\\\\"),
+            ch if ch.is_control()
+                || matches!(ch, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') =>
+            {
+                write!(output, "\\u{:04x}", ch as u32).expect("writing to String");
             }
-            _ => error.to_string(),
-        },
-        Error::Host(HostFailure::Failed(message)) => {
-            format!("host operation failed: {}", bounded(message, MAX_MESSAGE))
+            ch => output.push(ch),
         }
-        Error::Host(HostFailure::Uncertain(message)) => format!(
-            "host outcome uncertain (output may be partial): {}",
-            bounded(message, MAX_MESSAGE)
-        ),
-        Error::Host(HostFailure::Cancelled) => "host cancelled execution".into(),
-        Error::Denied => "capability denied; std.print requires --allow stdio".into(),
-        Error::Capture => "capture failed (capture bounds or fuel exhausted)".into(),
-        Error::Execution(message) => bounded(message, MAX_MESSAGE),
-        _ => error.to_string(),
     }
+    output.push('"');
+    output
 }
 
 // Escape terminal controls, and cap user-controlled path/message text by characters.
@@ -380,20 +208,16 @@ pub fn display_path(path: &str) -> String {
     bounded(path, 256)
 }
 
-fn render_note(path: &str, source: &str, code: &str, note: Note) -> String {
+fn render_note(path: &str, source: &str, note: &StructuredDiagnostic) -> String {
     let path = display_path(path);
-    let code = bounded(code, 64);
-    let message = bounded(&note.message, MAX_MESSAGE);
-    let Some(span) = note.span.filter(|span| {
-        span.start <= span.end
-            && span.end <= source.len()
-            && source.is_char_boundary(span.start)
-            && source.is_char_boundary(span.end)
-    }) else {
+    let code = bounded(&note.code, 64);
+    let message = text_message(note);
+    let Some(location) = note.location(source) else {
         return format!("{path}: error[{code}]: {message}\n");
     };
+    let span = note.span.expect("validated source location has a span");
     let prefix = &source[..span.start];
-    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
+    let line = location.start.line;
     let line_start = prefix.rfind('\n').map_or(0, |index| index + 1);
     let line_end = source[span.start..]
         .find('\n')
@@ -401,7 +225,7 @@ fn render_note(path: &str, source: &str, code: &str, note: Note) -> String {
     let content = source[line_start..line_end]
         .strip_suffix('\r')
         .unwrap_or(&source[line_start..line_end]);
-    let column = source[line_start..span.start].chars().count();
+    let column = location.start.column - 1;
     let skip = column.saturating_sub(EXCERPT_CHARS / 2);
     let mut excerpt = if skip > 0 {
         "...".into()
@@ -447,8 +271,15 @@ fn render_note(path: &str, source: &str, code: &str, note: Note) -> String {
 mod tests {
     use super::*;
     use leselang_vm::{
-        embedding::{HostBuilder, ScalarType, ScalarValue, parameter},
-        native::syntax::Diagnostic,
+        embedding::{HostBuilder, HostFailure, ScalarType, ScalarValue, parameter},
+        native::{
+            core::CalculationFailure,
+            hir::{
+                catalog_source::CatalogSourceError, effect_evaluation::EffectEvaluationFault,
+                effect_stack::EffectStackFault, pure_evaluation::PureEvaluationFault,
+            },
+            syntax::Diagnostic,
+        },
     };
 
     #[test]
@@ -637,6 +468,31 @@ mod tests {
         assert!(!displayed.contains('\u{1b}'));
         assert!(displayed.ends_with("..."));
         assert!(displayed.chars().count() < 300);
+    }
+
+    #[test]
+    fn json_fields_are_bounded_escaped_and_invalid_locations_remain_absent() {
+        let path = "字".repeat(1000);
+        let diagnostic = StructuredDiagnostic {
+            code: "code".repeat(100),
+            kind: DiagnosticKind::Compilation,
+            message: format!("\u{1b}\n\t\u{7f}\u{85}\u{202e}{}", "🦀".repeat(1000)),
+            span: Some(Span { start: 1, end: 2 }),
+        };
+        let rendered = json_diagnostic(Some(&path), "é", "compile", &diagnostic, None);
+        let record: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+        assert_eq!(record["path_truncated"], true);
+        assert_eq!(record["path"].as_str().unwrap().chars().count(), 256);
+        assert_eq!(record["code"].as_str().unwrap().chars().count(), 64);
+        assert_eq!(
+            record["message"].as_str().unwrap().chars().count(),
+            MAX_MESSAGE
+        );
+        assert!(record["span"].is_null());
+        assert!(record["range"].is_null());
+        assert_eq!(rendered.lines().count(), 1);
+        assert!(!rendered.contains('\u{1b}'));
+        assert!(!rendered.contains('\u{202e}'));
     }
 
     #[test]

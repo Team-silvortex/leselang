@@ -53,6 +53,17 @@ stdout Effects. Keep the examples in `examples/` executable when changing the
 scalar language or CLI host; document profile changes in
 [the language guide](docs/language.md).
 
+Keep `embedding::diagnostics` host-neutral. Structured categories and source
+locations must come from the public error view, while terminal escaping, CLI
+capability hints and JSON Lines presentation belong to the executable. Cover
+both default text and opt-in JSON for syntax, compilation, input, usage and
+runtime failures; preserve stdout and previously delivered Effects. Test
+Unicode scalar columns, UTF-8 byte spans and absent runtime locations without
+turning diagnostic messages into a parsing contract. Verify the API from the
+independent Consumer as well as the CLI. Dotted host operation names are exact
+catalog keys, so parser admission must remain consistent with registration,
+including names with more than two segments.
+
 The `protocol_hosts` example runs both reference adapters against the local host
 protocol. Conformance changes must preserve stale-object/revision rejection,
 VM-scope revocation and the distinction between submitted actions and observed

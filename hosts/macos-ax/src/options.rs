@@ -14,7 +14,7 @@ pub const INITIAL: &str = "LeseLang AX initial\n";
 #[cfg(target_os = "macos")]
 pub const EXPECTED: &str = "LeseLang cross-process ✓\n";
 pub const MAX_SOURCE_BYTES: usize = 16 * 1024;
-pub const HELP: &str = "LeseLang macOS Accessibility host\n  --prepare FILE                  Create a new plain-text test document (never overwrite)\n  --check-permission              Check this process's Accessibility access without prompting\n  --document FILE [--run SOURCE]   Drive exactly that already-open TextEdit document\n  --calculator [--run SOURCE]      Drive Calculator's supported basic-mode window\n  --app ABS_APP [--pid PID]       Select an already-running .app executable instance\n  --windows                      List windows of --app without reading controls\n  --window-title TITLE           Match an exact window title\n  --window-id IDENTIFIER         Match an exact window identifier\n  --window-document FILE         Match an exact local document path\n  --controls                     Use the per-control catalog in the selected scope\n  --widgets                      Opt in to common widgets (requires --app and window)\n  --auxiliary-processes          Inspect foreign process frontiers of an exact window (read only)\n  --allow-auxiliary PID START_SECONDS START_MICROS EXECUTABLE\n                                 Explicit widget grant; repeat for at most four processes\n  --discover                     Print bounded metadata (requires --controls or --widgets)\n  --help                         Show usage\nRequires macOS 14+, the selected application already open and Accessibility access.\nTextEdit uses 1000 Fuel; its default program requires the exact initial test text.\nCalculator uses 2000 Fuel; its default program requires display 0 before 1 + 2 =.\nThe legacy Calculator demo supports the observed English basic-mode interface.\nControl mode requires --discover or --run SOURCE and uses 10000 Fuel for source.\nWith --app, use --windows or --controls/--widgets with an exact window field.\nWindow fields combine; missing or multiple matches fail. No focused-window fallback.\nDiscovery keys are connection-local; use exact selectors in later runs.\nAuxiliary discovery does not authorize access; grants require complete reviewed identities.\nThis host does not open apps, clear Calculator, change OS permissions, save documents\nor retry uncertain actions. Source files are limited to 16384 UTF-8 bytes.";
+pub const HELP: &str = "LeseLang macOS Accessibility host\n  --prepare FILE                  Create a new plain-text test document (never overwrite)\n  --check-permission              Check this process's Accessibility access without prompting\n  --document FILE [--run SOURCE]   Drive exactly that already-open TextEdit document\n  --calculator [--run SOURCE]      Drive Calculator's supported basic-mode window\n  --app ABS_APP [--pid PID]       Select an already-running .app executable instance\n  --windows                      List windows of --app without reading controls\n  --window-title TITLE           Match an exact window title\n  --window-id IDENTIFIER         Match an exact window identifier\n  --window-document FILE         Match an exact local document path\n  --controls                     Use the per-control catalog in the selected scope\n  --widgets                      Opt in to common widgets (requires --app and window)\n  --wait-values                  Add gui.wait_value to --widgets --run; CLI schedules explicit steps\n  --wait-states                  Add value/checked/selected/position waits to --widgets --run\n  --auxiliary-processes          Inspect foreign process frontiers of an exact window (read only)\n  --allow-auxiliary PID START_SECONDS START_MICROS EXECUTABLE\n                                 Explicit widget grant; repeat for at most four processes\n  --discover                     Print bounded metadata (requires --controls or --widgets)\n  --help                         Show usage\nRequires macOS 14+, the selected application already open and Accessibility access.\nTextEdit uses 1000 Fuel; its default program requires the exact initial test text.\nCalculator uses 2000 Fuel; its default program requires display 0 before 1 + 2 =.\nThe legacy Calculator demo supports the observed English basic-mode interface.\nControl mode requires --discover or --run SOURCE and uses 10000 Fuel for source.\nWith --app, use --windows or --controls/--widgets with an exact window field.\nWindow fields combine; missing or multiple matches fail. No focused-window fallback.\nDiscovery keys are connection-local; use exact selectors in later runs.\nAuxiliary discovery does not authorize access; grants require complete reviewed identities.\nThis host does not open apps, clear Calculator, change OS permissions, save documents\nor retry uncertain actions. Source files are limited to 16384 UTF-8 bytes.";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Options {
@@ -41,6 +41,8 @@ pub enum Options {
         application: ApplicationSpec,
         window: WindowSelector,
         auxiliaries: Vec<AuxiliaryProcessSpec>,
+        wait_values: bool,
+        wait_states: bool,
         input: ControlInput,
     },
 }
@@ -67,6 +69,8 @@ impl Options {
         let mut calculator = false;
         let mut controls = false;
         let mut widgets = false;
+        let mut wait_values = false;
+        let mut wait_states = false;
         let mut discover = false;
         let mut application = None;
         let mut pid = None;
@@ -169,6 +173,16 @@ impl Options {
                     return Err("duplicate --widgets".into());
                 }
                 widgets = true;
+            } else if arg == "--wait-values" {
+                if wait_values {
+                    return Err("duplicate --wait-values".into());
+                }
+                wait_values = true;
+            } else if arg == "--wait-states" {
+                if wait_states {
+                    return Err("duplicate --wait-states".into());
+                }
+                wait_states = true;
             } else if arg == "--discover" {
                 if discover {
                     return Err("duplicate --discover".into());
@@ -200,6 +214,8 @@ impl Options {
                 || calculator
                 || controls
                 || widgets
+                || wait_values
+                || wait_states
                 || discover
                 || application.is_some()
                 || pid.is_some()
@@ -216,6 +232,15 @@ impl Options {
         }
         if controls && widgets {
             return Err("choose --controls or --widgets".into());
+        }
+        if wait_values && (!widgets || source.is_none() || discover) {
+            return Err("--wait-values requires --widgets and --run SOURCE".into());
+        }
+        if wait_states && (!widgets || source.is_none() || discover) {
+            return Err("--wait-states requires --widgets and --run SOURCE".into());
+        }
+        if wait_values && wait_states {
+            return Err("choose --wait-values or --wait-states".into());
         }
         if !auxiliaries.is_empty() && !widgets {
             return Err("--allow-auxiliary requires --widgets".into());
@@ -278,6 +303,8 @@ impl Options {
                     application,
                     window,
                     auxiliaries,
+                    wait_values,
+                    wait_states,
                     input,
                 });
             }
@@ -796,6 +823,157 @@ mod tests {
             &["--controls", "--calculator", "--controls", "--run", "a"],
             &["--controls", "--prepare", "a", "--discover"],
             &["--controls", "--check-permission"],
+        ] {
+            assert!(parse(args).is_err(), "{args:?}");
+        }
+    }
+    #[test]
+    fn source_wait_values_require_explicit_widget_source_mode() {
+        let parse = |args: &[&str]| Options::parse(args.iter().map(OsString::from));
+        let scope = ["--app", "/Applications/Test.app", "--window-title", "Test"];
+        let arguments: Vec<_> = scope
+            .into_iter()
+            .chain(["--widgets", "--wait-values", "--run", "wait.lese"])
+            .collect();
+        assert!(matches!(
+            parse(&arguments),
+            Ok(Options::Widgets {
+                wait_values: true,
+                input: ControlInput::Run(_),
+                ..
+            })
+        ));
+        let legacy: Vec<_> = scope
+            .into_iter()
+            .chain(["--widgets", "--run", "wait.lese"])
+            .collect();
+        assert!(matches!(
+            parse(&legacy),
+            Ok(Options::Widgets {
+                wait_values: false,
+                ..
+            })
+        ));
+        for suffix in [
+            vec!["--wait-values"],
+            vec!["--wait-values", "--run", "wait.lese"],
+            vec!["--widgets", "--wait-values", "--discover"],
+            vec![
+                "--widgets",
+                "--wait-values",
+                "--discover",
+                "--run",
+                "wait.lese",
+            ],
+            vec!["--controls", "--wait-values", "--run", "wait.lese"],
+            vec![
+                "--widgets",
+                "--wait-values",
+                "--wait-values",
+                "--run",
+                "wait.lese",
+            ],
+            vec![
+                "--widgets",
+                "--wait-values",
+                "--windows",
+                "--run",
+                "wait.lese",
+            ],
+            vec![
+                "--widgets",
+                "--wait-values",
+                "--auxiliary-processes",
+                "--run",
+                "wait.lese",
+            ],
+            vec!["--widgets", "--wait-values", "--help", "--run", "wait.lese"],
+        ] {
+            let arguments: Vec<_> = scope.into_iter().chain(suffix).collect();
+            assert!(parse(&arguments).is_err(), "{arguments:?}");
+        }
+        for args in [
+            &["--wait-values"][..],
+            &["--calculator", "--wait-values", "--run", "wait.lese"],
+            &["--document", "x", "--wait-values", "--run", "wait.lese"],
+            &["--widgets", "--wait-values", "--run", "wait.lese"],
+        ] {
+            assert!(parse(args).is_err(), "{args:?}");
+        }
+    }
+    #[test]
+    fn state_waits_are_a_distinct_explicit_widget_source_mode() {
+        let parse = |args: &[&str]| Options::parse(args.iter().map(OsString::from));
+        let scope = ["--app", "/Applications/Test.app", "--window-title", "Test"];
+        let args: Vec<_> = scope
+            .into_iter()
+            .chain(["--widgets", "--wait-states", "--run", "state.lese"])
+            .collect();
+        assert!(matches!(
+            parse(&args),
+            Ok(Options::Widgets {
+                wait_states: true,
+                wait_values: false,
+                input: ControlInput::Run(_),
+                ..
+            })
+        ));
+        for suffix in [
+            vec!["--wait-states"],
+            vec!["--wait-states", "--run", "state.lese"],
+            vec!["--controls", "--wait-states", "--run", "state.lese"],
+            vec!["--widgets", "--wait-states", "--discover"],
+            vec![
+                "--widgets",
+                "--wait-states",
+                "--wait-states",
+                "--run",
+                "state.lese",
+            ],
+            vec![
+                "--widgets",
+                "--wait-states",
+                "--wait-values",
+                "--run",
+                "state.lese",
+            ],
+            vec![
+                "--widgets",
+                "--wait-values",
+                "--wait-states",
+                "--run",
+                "state.lese",
+            ],
+            vec![
+                "--widgets",
+                "--wait-states",
+                "--windows",
+                "--run",
+                "state.lese",
+            ],
+            vec![
+                "--widgets",
+                "--wait-states",
+                "--auxiliary-processes",
+                "--run",
+                "state.lese",
+            ],
+            vec![
+                "--widgets",
+                "--wait-states",
+                "--help",
+                "--run",
+                "state.lese",
+            ],
+        ] {
+            let args: Vec<_> = scope.into_iter().chain(suffix).collect();
+            assert!(parse(&args).is_err(), "{args:?}");
+        }
+        for args in [
+            &["--wait-states"][..],
+            &["--calculator", "--wait-states", "--run", "state.lese"],
+            &["--document", "x", "--wait-states", "--run", "state.lese"],
+            &["--widgets", "--wait-states", "--run", "state.lese"],
         ] {
             assert!(parse(args).is_err(), "{args:?}");
         }

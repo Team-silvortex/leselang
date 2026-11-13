@@ -1,0 +1,94 @@
+// Requires --wait-states; row selection is followed by an independent unique-selection check.
+// Dedicated Finder list-view fixture. No action follows a failed observation.
+// Discovery must show one ListView outline and one vertical scrollbar at zero.
+fn scroll_list() = bind(
+    bar: gui.select(role: "AXScrollBar", identifier: "", label: ""),
+    body: bind(
+        before: gui.observe(target: bar),
+        body: choose(
+            when: and(
+                left: and(left: field(value: before, name: "enabled"), right: field(value: before, name: "position_available")),
+                right: and(left: eq(left: field(value: before, name: "orientation"), right: "vertical"), right: eq(left: field(value: before, name: "position"), right: 0)),
+            ),
+            then: bind(
+                submitted: gui.scroll(target: bar, expected_revision: field(value: before, name: "revision"), position: 1000),
+                body: bind(
+                    after: gui.wait_position(target: bar, expected: 1000, max_attempts: 16, interval_ms: 50, timeout_ms: 2000),
+                    body: and(left: field(value: after, name: "position_available"), right: eq(left: field(value: after, name: "position"), right: 1000)),
+                ),
+            ),
+            otherwise: false,
+        ),
+    ),
+)
+
+fn select_row(row_key: string) = bind(
+    row: gui.find(key: row_key),
+    body: bind(
+        initial: gui.observe(target: row),
+        body: bind(
+            owner: gui.select(role: "AXOutline", identifier: "ListView", label: ""),
+            body: bind(
+                before: gui.observe(target: owner),
+                body: choose(
+                    when: and(
+                        left: and(
+                            left: eq(left: field(value: initial, name: "role"), right: "AXRow"),
+                            right: and(left: field(value: initial, name: "selection_available"), right: not(value: field(value: initial, name: "selected"))),
+                        ),
+                        right: and(
+                            left: eq(left: value_or(left: field(value: initial, name: "parent_key"), right: ""), right: field(value: before, name: "key")),
+                            right: and(left: field(value: before, name: "enabled"), right: eq(left: len(value: field(value: before, name: "selected_keys")), right: 0)),
+                        ),
+                    ),
+                    then: bind(
+                        submitted: gui.select_item(target: owner, expected_revision: field(value: before, name: "revision"), item: row),
+                        body: bind(
+                            selected: gui.wait_selected(target: row, expected: true, max_attempts: 16, interval_ms: 50, timeout_ms: 2000),
+                            body: bind(
+                                after: gui.observe(target: owner),
+                                body: and(
+                                    left: and(left: field(value: selected, name: "selection_available"), right: field(value: selected, name: "selected")),
+                                    right: and(
+                                        left: eq(left: len(value: field(value: after, name: "selected_keys")), right: 1),
+                                        right: fold(found: false, items: field(value: after, name: "selected_keys"), item: "candidate", next: or(left: found, right: eq(left: candidate, right: row_key)), limit: 64),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                    otherwise: false,
+                ),
+            ),
+        ),
+    ),
+)
+
+fn follow_cell(cell_key: string) = bind(
+    cell: gui.find(key: cell_key),
+    body: bind(
+        observed: gui.observe(target: cell),
+        body: choose(
+            when: and(left: eq(left: field(value: observed, name: "role"), right: "AXCell"), right: has_value(value: field(value: observed, name: "parent_key"))),
+            then: select_row(row_key: value_or(left: field(value: observed, name: "parent_key"), right: "")),
+            otherwise: false,
+        ),
+    ),
+)
+
+fn select_named_row() = bind(
+    name: gui.select_value(role: "AXTextField", value: "Widget folder 01"),
+    body: bind(
+        observed: gui.observe(target: name),
+        body: choose(
+            when: and(left: eq(left: value_or(left: field(value: observed, name: "value"), right: ""), right: "Widget folder 01"), right: has_value(value: field(value: observed, name: "parent_key"))),
+            then: follow_cell(cell_key: value_or(left: field(value: observed, name: "parent_key"), right: "")),
+            otherwise: false,
+        ),
+    ),
+)
+
+fn main() = bind(
+    selected: select_named_row(),
+    body: choose(when: selected, then: scroll_list(), otherwise: false),
+)

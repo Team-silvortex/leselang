@@ -638,13 +638,13 @@ impl<'a> Parser<'a> {
             return None;
         }
         let first = self.expect_ident("LSE1101", "expected function or effect namespace")?;
-        let callee = if self.peek().kind == TokenKind::Dot {
+        let mut callee = first.0;
+        while self.peek().kind == TokenKind::Dot {
             self.bump();
-            let second = self.expect_ident("LSE1103", "expected effect operation")?;
-            format!("{}.{}", first.0, second.0)
-        } else {
-            first.0.clone()
-        };
+            let segment = self.expect_ident("LSE1103", "expected effect operation")?;
+            callee.push('.');
+            callee.push_str(&segment.0);
+        }
         self.expect(TokenKind::LeftParen, "LSE1104", "expected '('")?;
         let mut arguments = Vec::new();
         while self.peek().kind != TokenKind::RightParen && self.peek().kind != TokenKind::Eof {

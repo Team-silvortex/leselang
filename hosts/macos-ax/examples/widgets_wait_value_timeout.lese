@@ -1,0 +1,4 @@
+// A read-only expiry check. No dependent expression may run after the timeout.
+fn main() = bind(owner: gui.select(role: "AXPopUpButton", identifier: "Text size:", label: ""), body:
+    bind(after: gui.wait_value(target: owner, expected: optional_string(value: "not a Finder text size"), max_attempts: 64, interval_ms: 50, timeout_ms: 250), body:
+        eq(left: value_or(left: field(value: after, name: "value"), right: ""), right: "not a Finder text size")))

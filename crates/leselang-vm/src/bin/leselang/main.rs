@@ -11,7 +11,8 @@ use std::{
 };
 
 use leselang_vm::embedding::{
-    Fuel, HostBuilder, HostFailure, Limits, Poll, ScalarType, ScalarValue, parameter,
+    Error, Fuel, HostBuilder, HostFailure, Limits, Poll, ScalarType, ScalarValue,
+    diagnostics as diagnostic_view, parameter,
 };
 
 mod diagnostics;
@@ -20,8 +21,8 @@ const DEFAULT_FUEL: u64 = 10_000;
 const HELP: &str = "LeseLang — bounded local language runner
 
 Usage:
-  leselang check FILE [--allow stdio]
-  leselang run FILE [--allow stdio] [--fuel N]
+  leselang check FILE [--allow stdio] [--diagnostic-format text|json]
+  leselang run FILE [--allow stdio] [--fuel N] [--diagnostic-format text|json]
   leselang --help
   leselang --version
 
@@ -31,6 +32,8 @@ whose name starts with a hyphen. Options may appear before or after FILE.
 check compiles all declarations without running any host operation.
 run evaluates main; std.print(message: string) requires --allow stdio.
 Non-none final values are printed as JSON literals; std.print writes text lines.
+Diagnostics go to stderr; json emits one schema-versioned object per line.
+Place --diagnostic-format json immediately after check/run for JSON usage errors.
 
 The source limit is 16384 bytes and the default fuel budget is 10000.
 Fuel is shared across language slices and charged host output; it never refills.
@@ -49,6 +52,7 @@ struct Options {
     input: PathBuf,
     stdio: bool,
     fuel: u64,
+    diagnostic_format: diagnostics::Format,
 }
 
 enum Action {
@@ -57,7 +61,10 @@ enum Action {
     Execute(Options),
 }
 
-fn arguments(args: impl IntoIterator<Item = OsString>) -> Result<Action, String> {
+fn arguments(
+    args: impl IntoIterator<Item = OsString>,
+    diagnostic_format: &mut diagnostics::Format,
+) -> Result<Action, String> {
     let mut args = args.into_iter();
     let first = args.next().ok_or("expected check or run; see --help")?;
     if first == "--help" || first == "-h" {
@@ -81,6 +88,7 @@ fn arguments(args: impl IntoIterator<Item = OsString>) -> Result<Action, String>
     let mut stdio = false;
     let mut fuel = None;
     let mut positional_only = false;
+    let mut format_supplied = false;
     while let Some(argument) = args.next() {
         if !positional_only {
             if argument == "--" {
@@ -88,10 +96,27 @@ fn arguments(args: impl IntoIterator<Item = OsString>) -> Result<Action, String>
                 continue;
             }
             if argument == "--help" || argument == "-h" {
-                if input.is_some() || stdio || fuel.is_some() || args.next().is_some() {
+                if input.is_some()
+                    || stdio
+                    || fuel.is_some()
+                    || format_supplied
+                    || args.next().is_some()
+                {
                     return Err("use check --help or run --help without other arguments".into());
                 }
                 return Ok(Action::Help);
+            }
+            if argument == "--diagnostic-format" {
+                if format_supplied {
+                    return Err("--diagnostic-format may be supplied only once".into());
+                }
+                *diagnostic_format = match args.next().as_deref().and_then(|value| value.to_str()) {
+                    Some("text") => diagnostics::Format::Text,
+                    Some("json") => diagnostics::Format::Json,
+                    _ => return Err("--diagnostic-format requires text or json".into()),
+                };
+                format_supplied = true;
+                continue;
             }
             if argument == "--allow" {
                 if stdio {
@@ -135,6 +160,7 @@ fn arguments(args: impl IntoIterator<Item = OsString>) -> Result<Action, String>
         input: input.ok_or("missing source file (use - for standard input)")?,
         stdio,
         fuel: fuel.unwrap_or(DEFAULT_FUEL),
+        diagnostic_format: *diagnostic_format,
     }))
 }
 
@@ -165,9 +191,11 @@ fn execute(options: &Options, output: &mut dyn Write) -> Result<(), String> {
             .and_then(|mut file| read_source(&mut file, Limits::default().max_source_bytes))
     }
     .map_err(|error| {
-        format!(
-            "{}: error: {error}",
-            diagnostics::display_path(&options.input.to_string_lossy())
+        options.diagnostic_format.other(
+            Some(&options.input.to_string_lossy()),
+            "input",
+            "LSI0001",
+            &error,
         )
     })?;
     execute_source(options, &source, output)
@@ -202,38 +230,48 @@ fn execute_source(options: &Options, source: &str, output: &mut dyn Write) -> Re
                 Ok(ScalarValue::None)
             },
         )
-        .map_err(|error| format!("cannot register CLI host: {error}"))?;
+        .map_err(|error| {
+            options.diagnostic_format.other(
+                Some(&options.input.to_string_lossy()),
+                "runtime",
+                "LSR0001",
+                &format!("cannot register CLI host: {error}"),
+            )
+        })?;
     let host = builder.build();
     let grants: &[&str] = if options.stdio { &["stdio"] } else { &[] };
     let path = options.input.to_string_lossy();
     let program = host
         .compile(source, grants)
-        .map_err(|error| diagnostics::render_compile(&path, source, &error))?;
+        .map_err(|error| options.diagnostic_format.compile(&path, source, &error))?;
     if options.command == Command::Check {
         return Ok(());
     }
-    let path = diagnostics::display_path(&path);
     let mut session = host
         .start(&program, grants, Fuel::new(options.fuel))
-        .map_err(|error| diagnostics::render_runtime(&error))?;
+        .map_err(|error| {
+            options
+                .diagnostic_format
+                .runtime(&path, &diagnostic_view::runtime(&error), None)
+        })?;
     let outcome = (|| {
         loop {
             match session
                 .poll()
-                .map_err(|error| diagnostics::render_runtime(&error))?
+                .map_err(|error| diagnostic_view::runtime(&error))?
             {
                 Poll::Request(request) => {
                     // The CLI is the explicit synchronous host driver; the library
                     // does not schedule, dispatch, accept, or resume on its own.
                     let authorized = session
                         .authorize(request)
-                        .map_err(|rejected| diagnostics::render_runtime(&rejected.error))?;
+                        .map_err(|rejected| diagnostic_view::runtime(&rejected.error))?;
                     let receipt = session
                         .dispatch(authorized)
-                        .map_err(|failure| diagnostics::render_runtime(&failure.error))?;
+                        .map_err(|failure| diagnostic_view::runtime(&failure.error))?;
                     session
                         .accept(receipt)
-                        .map_err(|rejected| diagnostics::render_runtime(&rejected.error))?;
+                        .map_err(|rejected| diagnostic_view::runtime(&rejected.error))?;
                 }
                 Poll::Value(value) => {
                     if value != ScalarValue::None {
@@ -244,23 +282,30 @@ fn execute_source(options: &Options, source: &str, output: &mut dyn Write) -> Re
                             .write_all(rendered.as_bytes())
                             .and_then(|()| output.flush())
                             .map_err(|error| {
-                                format!("cannot write result: {error}; output may be partial")
+                                diagnostic_view::runtime(&Error::Execution(format!(
+                                    "cannot write result: {error}; output may be partial"
+                                )))
                             })?;
                     }
                     return Ok(());
                 }
-                Poll::Awaiting => return Err("CLI host lost its pending request or receipt".into()),
-                Poll::Terminal(end) => return Err(format!("execution ended: {end:?}")),
+                Poll::Awaiting => {
+                    return Err(diagnostic_view::runtime(&Error::Execution(
+                        "CLI host lost its pending request or receipt".into(),
+                    )));
+                }
+                Poll::Terminal(end) => {
+                    return Err(diagnostic_view::runtime(&Error::Execution(format!(
+                        "execution ended: {end:?}"
+                    ))));
+                }
             }
         }
     })();
-    outcome.map_err(|message: String| {
-        let message = message.trim_end();
-        let prefix = if message.starts_with("error[") { "" } else { "error: " };
-        format!(
-            "{path}: {prefix}{message}\nnote: execution stopped with {} fuel remaining; completed output is not rolled back",
-            session.fuel_remaining(),
-        )
+    outcome.map_err(|diagnostic| {
+        options
+            .diagnostic_format
+            .runtime(&path, &diagnostic, Some(session.fuel_remaining()))
     })
 }
 
@@ -309,10 +354,12 @@ fn quoted(text: &str) -> String {
 }
 
 fn main() -> ExitCode {
-    let action = match arguments(std::env::args_os().skip(1)) {
+    let mut diagnostic_format = diagnostics::Format::Text;
+    let action = match arguments(std::env::args_os().skip(1), &mut diagnostic_format) {
         Ok(action) => action,
         Err(message) => {
-            let _ = writeln!(io::stderr().lock(), "error: {message}");
+            let message = diagnostic_format.other(None, "usage", "LSU0001", &message);
+            let _ = io::stderr().lock().write_all(message.as_bytes());
             return ExitCode::from(2);
         }
     };
@@ -330,7 +377,11 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            let _ = writeln!(io::stderr().lock(), "{message}");
+            let mut stderr = io::stderr().lock();
+            let _ = stderr.write_all(message.as_bytes());
+            if !message.ends_with('\n') {
+                let _ = stderr.write_all(b"\n");
+            }
             ExitCode::FAILURE
         }
     }
@@ -370,6 +421,7 @@ mod tests {
             input: "test.lese".into(),
             stdio: true,
             fuel: DEFAULT_FUEL,
+            diagnostic_format: diagnostics::Format::Text,
         }
     }
 
@@ -407,6 +459,37 @@ mod tests {
         let error = execute_source(&run_options(), source, &mut output).unwrap_err();
         assert!(error.contains("cannot write result"), "{error}");
         assert_eq!(output.bytes, b"done\n4");
+    }
+
+    #[test]
+    fn json_reports_uncertain_and_result_output_failures_without_replaying_effects() {
+        let mut options = run_options();
+        options.diagnostic_format = diagnostics::Format::Json;
+        for (source, expected, kind) in [
+            (
+                "fn main() = bind(first: std.print(message: \"first\"), body: std.print(message: \"second\"))",
+                b"first\n".as_slice(),
+                "host_uncertain",
+            ),
+            (
+                "fn main() = bind(first: std.print(message: \"done\"), body: 42)",
+                b"done\n4".as_slice(),
+                "runtime",
+            ),
+        ] {
+            let mut output = PartialWriter {
+                bytes: vec![],
+                remaining: 6,
+                fail_flush: false,
+            };
+            let error = execute_source(&options, source, &mut output).unwrap_err();
+            let record: serde_json::Value = serde_json::from_str(&error).unwrap();
+            assert_eq!(record["schema_version"], 1);
+            assert_eq!(record["kind"], kind);
+            assert!(record["fuel_remaining"].as_u64().unwrap() < DEFAULT_FUEL);
+            assert!(record["span"].is_null());
+            assert_eq!(output.bytes, expected);
+        }
     }
 
     #[test]

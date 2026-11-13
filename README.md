@@ -40,6 +40,10 @@ embedding. The arithmetic example prints `42`; the Effect example prints two
 lines through the CLI's explicitly granted `std.print` host operation. `check`
 never invokes host callbacks. Read the [language and CLI guide](docs/language.md)
 for scalar values, helpers, control flow, Fuel and the supported profile.
+Editors and agents can select `check --diagnostic-format json FILE` or
+`run --diagnostic-format json FILE` for versioned JSON Lines diagnostics on
+standard error. Default text diagnostics and program output remain available;
+the guide specifies coordinates, failure phases and compatibility rules.
 
 ## Embed From Rust
 
@@ -64,6 +68,9 @@ fn main() = bind(first: increment(n: 19), body: increment(n: add(left: first, ri
 The queued mode interleaves two independent local VMs over shared immutable IR.
 It is a bounded, single-threaded host loop, not an implicit async runtime.
 See the [embedding guide](docs/embedding.md) for cancellation and authority tests.
+The same module exposes [structured diagnostics](docs/embedding.md#structured-diagnostics)
+with host-neutral categories and source spans, so custom Rust hosts can present
+errors without decoding CLI text or walking nested compiler errors themselves.
 The `protocol_hosts` example discovers and binds a native object in source, then
 passes it to observation/action calls. CLI and headless GUI hosts use distinct
 native state and explicit event pumps; conformance tests route between two
@@ -182,6 +189,18 @@ menu and checkbox changes, and the dedicated folder window for exact-value
 discovery, row selection and scrolling. Separate observations and desktop
 inspection confirmed the final state; the guide records the menu's delayed update and the
 explicit later read used before continuing.
+Rust embedders can opt into [bounded observation waiting](docs/macos-ax-observation-wait.md)
+for a selected pending `gui.observe` request. The host explicitly advances the
+wait with its clock and original VM Fuel; it adds no operation or mutation retry.
+For [source-declared waiting](docs/macos-ax-source-waits.md), the separate
+`--widgets --wait-values` catalog adds `gui.wait_value`: source supplies the
+expected optional value and bounded attempts/interval/timeout, while the host
+still explicitly drives the clock and wait steps. The original widgets catalog
+keeps its 13 operations.
+The independent [state-wait catalog](docs/macos-ax-state-waits.md), selected by
+`--widgets --wait-states`, includes value waiting and adds typed checkbox,
+selection and scrollbar-position waits. It rejects unavailable state instead
+of interpreting it as `false` or `0`; the value-only catalog remains unchanged.
 For windows with controls implemented by a helper process, the
 [auxiliary-process guide](docs/macos-ax-auxiliary-processes.md) describes explicit
 PID/start-time/executable grants and shared revocation. These grants retain the

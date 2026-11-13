@@ -17,6 +17,7 @@ pub mod controls;
 pub mod controls_access;
 pub mod driver;
 pub mod host;
+pub mod observation_wait;
 pub mod scope;
 #[cfg(target_os = "macos")]
 pub mod scope_access;

@@ -485,3 +485,255 @@ fn non_utf8_file_paths_are_supported_without_lossy_reinterpretation() {
         assert_success(&output, b"42\n");
     }
 }
+
+fn json_diagnostics(output: &Output) -> Vec<serde_json::Value> {
+    let records: Vec<serde_json::Value> = stderr(output)
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("every stderr line is one JSON diagnostic"))
+        .collect();
+    assert!(!records.is_empty());
+    for record in &records {
+        assert_eq!(record["schema_version"], 1);
+        assert_eq!(record["severity"], "error");
+        for field in ["phase", "code", "kind", "message"] {
+            assert!(record[field].is_string(), "{record}");
+        }
+        for field in [
+            "path",
+            "path_truncated",
+            "span",
+            "range",
+            "help",
+            "fuel_remaining",
+        ] {
+            assert!(record.get(field).is_some(), "{record}");
+        }
+    }
+    records
+}
+
+#[test]
+fn json_compile_diagnostics_share_precise_unicode_locations_with_the_embedding_api() {
+    let source = "// 中文 🦀\r\nfn helper() = bind(note: \"é🦀\", body: missing.operation.deep())\r\nfn main() = 0";
+    let output = run_file("check", source, &["--diagnostic-format", "json"]);
+    assert_code(&output, 1);
+    assert!(output.stdout.is_empty());
+    let records = json_diagnostics(&output);
+    assert_eq!(records.len(), 1);
+    let record = &records[0];
+    assert_eq!(record["phase"], "compile");
+    assert_eq!(record["kind"], "unknown_operation");
+    assert_eq!(record["code"], "LSC0001");
+    let host = leselang_vm::embedding::HostBuilder::new().build();
+    let error = host.compile(source, &[]).err().unwrap();
+    let diagnostics = leselang_vm::embedding::diagnostics::compile(&error);
+    let expected = &diagnostics[0];
+    let range = expected.location(source).unwrap();
+    assert_eq!(record["message"], expected.message);
+    assert_eq!(record["span"]["start"], expected.span.unwrap().start);
+    assert_eq!(record["span"]["end"], expected.span.unwrap().end);
+    assert_eq!(record["range"]["start"]["line"], range.start.line);
+    assert_eq!(record["range"]["start"]["column"], range.start.column);
+    assert_eq!(record["range"]["end"]["column"], range.end.column);
+    assert_eq!(record["range"]["start"]["line"], 2);
+    assert!(record["fuel_remaining"].is_null());
+    assert!(record["help"].as_str().unwrap().contains("std.print"));
+}
+
+#[test]
+fn json_syntax_diagnostics_preserve_parser_order_eof_and_byte_spans() {
+    for source in ["// 中文\r\nfn main() = @ #", "fn main() =\n"] {
+        let output = stdin_source("check", source.as_bytes(), &["--diagnostic-format", "json"]);
+        assert_code(&output, 1);
+        assert!(output.stdout.is_empty());
+        let records = json_diagnostics(&output);
+        let parsed = leselang_vm::native::syntax::parse(source);
+        assert_eq!(records.len(), parsed.diagnostics.len());
+        for (record, expected) in records.iter().zip(parsed.diagnostics) {
+            assert_eq!(record["path"], "-");
+            assert_eq!(record["phase"], "syntax");
+            assert_eq!(record["kind"], "syntax");
+            assert_eq!(record["code"], expected.code);
+            assert_eq!(record["span"]["start"], expected.span.start);
+            assert_eq!(record["span"]["end"], expected.span.end);
+        }
+        if source.ends_with('\n') {
+            assert_eq!(records.last().unwrap()["range"]["start"]["line"], 2);
+            assert_eq!(records.last().unwrap()["range"]["start"]["column"], 1);
+        }
+    }
+}
+
+#[test]
+fn json_cold_admission_reports_denial_and_types_without_dispatching() {
+    for source in [
+        "fn main() = choose(when: false, then: std.print(message: \"hidden\"), otherwise: none)",
+        "fn unused() = std.print(message: \"hidden\")\nfn main() = none",
+    ] {
+        for mode in ["check", "run"] {
+            let output = run_file(mode, source, &["--diagnostic-format", "json"]);
+            assert_code(&output, 1);
+            assert!(output.stdout.is_empty());
+            let records = json_diagnostics(&output);
+            assert_eq!(records[0]["kind"], "capability_denied");
+            assert!(
+                records[0]["help"]
+                    .as_str()
+                    .unwrap()
+                    .contains("--allow stdio")
+            );
+        }
+    }
+    let output = run_file(
+        "run",
+        "fn main() = std.print(message: 42)",
+        &["--diagnostic-format", "json", "--allow", "stdio"],
+    );
+    assert_code(&output, 1);
+    assert!(output.stdout.is_empty());
+    let records = json_diagnostics(&output);
+    assert_eq!(records[0]["phase"], "compile");
+    assert_eq!(records[0]["kind"], "compilation");
+    assert!(records[0]["help"].is_null());
+}
+
+#[test]
+fn diagnostic_format_does_not_change_success_values_effects_or_check_behavior() {
+    for format in ["text", "json"] {
+        let flags = ["--diagnostic-format", format, "--allow", "stdio"];
+        assert_success(&run_file("check", TWO_PRINTS, &flags), b"");
+        assert_success(&run_file("run", TWO_PRINTS, &flags), b"first\nsecond\n");
+        assert_success(&run_file("run", "fn main() = 42", &flags), b"42\n");
+    }
+}
+
+#[test]
+fn json_runtime_failure_preserves_partial_effects_and_reports_original_fuel() {
+    let source =
+        "fn main() = bind(first: std.print(message: \"committed\"), body: div(left: 1, right: 0))";
+    let output = run_file(
+        "run",
+        source,
+        &["--diagnostic-format", "json", "--allow", "stdio"],
+    );
+    assert_code(&output, 1);
+    assert_eq!(output.stdout, b"committed\n");
+    let records = json_diagnostics(&output);
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["phase"], "runtime");
+    assert_eq!(records[0]["code"], "LSR0001");
+    assert!(records[0]["span"].is_null());
+    assert!(records[0]["range"].is_null());
+    assert!(records[0]["fuel_remaining"].as_u64().unwrap() < 10_000);
+
+    let output = run_file(
+        "run",
+        TWO_PRINTS,
+        &[
+            "--diagnostic-format",
+            "json",
+            "--allow",
+            "stdio",
+            "--fuel",
+            "0",
+        ],
+    );
+    assert_code(&output, 1);
+    assert!(output.stdout.is_empty());
+    let records = json_diagnostics(&output);
+    assert_eq!(records[0]["fuel_remaining"], 0);
+    assert!(records[0]["message"].as_str().unwrap().contains("fuel"));
+}
+
+#[test]
+fn json_input_failures_have_no_invented_source_location() {
+    for source in [vec![0xff], vec![b' '; 16 * 1024 + 1]] {
+        let output = stdin_source("check", &source, &["--diagnostic-format", "json"]);
+        assert_code(&output, 1);
+        assert!(output.stdout.is_empty());
+        let records = json_diagnostics(&output);
+        assert_eq!(records[0]["phase"], "input");
+        assert_eq!(records[0]["code"], "LSI0001");
+        assert!(records[0]["span"].is_null());
+        assert!(records[0]["range"].is_null());
+        assert!(records[0]["fuel_remaining"].is_null());
+    }
+    let fixture = Fixture::new();
+    let output = fixture
+        .command()
+        .args(["check", "--diagnostic-format", "json", "missing.lese"])
+        .output()
+        .unwrap();
+    assert_code(&output, 1);
+    assert_eq!(json_diagnostics(&output)[0]["path"], "missing.lese");
+}
+
+#[test]
+fn json_usage_errors_follow_the_explicitly_parsed_format_and_option_terminator() {
+    for tail in [
+        vec![],
+        vec!["--unknown"],
+        vec!["--fuel", "invalid", "unread.lese"],
+        vec!["--diagnostic-format", "json", "unread.lese"],
+        vec!["--diagnostic-format", "text", "unread.lese"],
+        vec!["--help"],
+    ] {
+        let output = Command::new(BIN)
+            .args(["run", "--diagnostic-format", "json"])
+            .args(tail)
+            .output()
+            .unwrap();
+        assert_code(&output, 2);
+        assert!(output.stdout.is_empty());
+        let records = json_diagnostics(&output);
+        assert_eq!(records[0]["phase"], "usage");
+        assert_eq!(records[0]["code"], "LSU0001");
+        assert!(records[0]["path"].is_null());
+    }
+    for args in [
+        vec!["check", "--diagnostic-format"],
+        vec!["check", "--diagnostic-format", "xml"],
+        vec!["run", "--unknown", "--diagnostic-format", "json"],
+    ] {
+        let output = Command::new(BIN).args(args).output().unwrap();
+        assert_code(&output, 2);
+        assert!(stderr(&output).starts_with("error:"));
+    }
+    let fixture = Fixture::new();
+    fixture.write("--diagnostic-format", "fn main() = 42");
+    let output = fixture
+        .command()
+        .args(["run", "--", "--diagnostic-format"])
+        .output()
+        .unwrap();
+    assert_success(&output, b"42\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn json_paths_round_trip_without_literal_terminal_controls_or_extra_lines() {
+    let fixture = Fixture::new();
+    let path = fixture.write(
+        "line\n\u{1b}[2J\u{202e}.lese",
+        "fn main() = div(left: 1, right: 0)",
+    );
+    for (mode, remove) in [("run", false), ("check", true)] {
+        if remove {
+            fs::remove_file(&path).unwrap();
+        }
+        let output = fixture
+            .command()
+            .arg(mode)
+            .arg(&path)
+            .args(["--diagnostic-format", "json"])
+            .output()
+            .unwrap();
+        assert_code(&output, 1);
+        let records = json_diagnostics(&output);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0]["path"], path.to_string_lossy().as_ref());
+        assert_eq!(records[0]["path_truncated"], false);
+        assert!(!stderr(&output).contains('\u{1b}'));
+        assert!(!stderr(&output).contains('\u{202e}'));
+    }
+}

@@ -297,6 +297,15 @@ pub(crate) trait Profile {
     type Snapshot: ProfileSnapshot;
     fn check_permission(&self) -> Result<(), Error>;
     fn snapshot(&self) -> Result<Self::Snapshot, Error>;
+    fn source_wait_state<'a>(
+        &self,
+        _snapshot: &'a Self::Snapshot,
+        _kind: SourceWaitKind,
+    ) -> Result<SourceWaitState<'a>, Error> {
+        Err(Error::Invalid(
+            "typed source wait is unavailable in this profile",
+        ))
+    }
     fn snapshots(&self) -> Result<Vec<Self::Snapshot>, Error> {
         Ok(vec![self.snapshot()?])
     }
@@ -430,7 +439,87 @@ enum ResultKind {
     Keys,
     Object,
     Snapshot,
+    WaitSnapshot,
     Submitted,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SourceWaitKind {
+    Value,
+    Checked,
+    Selected,
+    Position,
+}
+impl SourceWaitKind {
+    pub(crate) const fn operation(self) -> &'static str {
+        match self {
+            Self::Value => "gui.wait_value",
+            Self::Checked => "gui.wait_checked",
+            Self::Selected => "gui.wait_selected",
+            Self::Position => "gui.wait_position",
+        }
+    }
+    pub(crate) fn from_operation(operation: &str) -> Option<Self> {
+        [Self::Value, Self::Checked, Self::Selected, Self::Position]
+            .into_iter()
+            .find(|kind| kind.operation() == operation)
+    }
+    pub(crate) const fn expected_type(self) -> ScalarType {
+        match self {
+            Self::Value => ScalarType::OptionalString,
+            Self::Checked | Self::Selected => ScalarType::Boolean,
+            Self::Position => ScalarType::Integer,
+        }
+    }
+    pub(crate) fn admits_expected(self, expected: &ScalarValue) -> bool {
+        expected.is_bounded()
+            && expected.scalar_type() == self.expected_type()
+            && (self != Self::Position || matches!(expected, ScalarValue::Integer(0..=1000)))
+    }
+}
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum SourceWaitCatalog {
+    None,
+    Values,
+    States,
+}
+impl SourceWaitCatalog {
+    fn kinds(self) -> &'static [SourceWaitKind] {
+        match self {
+            Self::None => &[],
+            Self::Values => &[SourceWaitKind::Value],
+            Self::States => &[
+                SourceWaitKind::Value,
+                SourceWaitKind::Checked,
+                SourceWaitKind::Selected,
+                SourceWaitKind::Position,
+            ],
+        }
+    }
+    fn contains(self, operation: &str) -> bool {
+        self.kinds()
+            .iter()
+            .any(|kind| kind.operation() == operation)
+    }
+}
+pub(crate) struct SourceWaitState<'a> {
+    // Mixed checkbox state has no Boolean value and matches neither Boolean.
+    pub(crate) value: Option<ScalarValue>,
+    pub(crate) selection_parent: Option<(u64, &'a str)>,
+}
+pub(crate) struct SourceWaitParameters {
+    pub(crate) kind: SourceWaitKind,
+    pub(crate) expected: ScalarValue,
+    pub(crate) max_attempts: u64,
+    pub(crate) interval_ms: u64,
+    pub(crate) timeout_ms: u64,
+}
+struct SourceWaitRequest<S: ProfileSnapshot> {
+    serial: u64,
+    parameters: SourceWaitParameters,
+    // Completion is proof of this exact sampled allocation, not merely a
+    // matching historical value that a public receipt could substitute.
+    ready: Option<Rc<Observation<S>>>,
+    selection_parent: Option<(u64, String)>,
 }
 /// Concrete TextEdit reply type, preserving constructor inference.
 pub type Reply = ProfileReply<Snapshot>;
@@ -463,8 +552,13 @@ pub struct Domain<'a, S: ProfileSnapshot = Snapshot> {
     lease: LocalExecutionLease,
     kind: ResultKind,
     expected: RefCell<Option<ObjectRef>>,
+    source_wait: RefCell<Option<SourceWaitRequest<S>>>,
 }
 impl<S: ProfileSnapshot> Domain<'_, S> {
+    fn validate_snapshot(&self, value: &Observation<S>) -> Result<(), Error> {
+        let slot = self.validate_object(value.object())?;
+        self.tracked.validate_observation(slot, value)
+    }
     fn validate_object(&self, actual: &ObjectRef) -> Result<usize, Error> {
         let expected = self.expected.borrow();
         let expected = expected
@@ -483,6 +577,7 @@ impl<S: ProfileSnapshot> HostResultDomain<ProfileReply<S>> for Domain<'_, S> {
             (ResultKind::Keys, ProfileReply::Submitted(_))
                 | (ResultKind::Object, ProfileReply::Object(_))
                 | (ResultKind::Snapshot, ProfileReply::Snapshot(_))
+                | (ResultKind::WaitSnapshot, ProfileReply::Snapshot(_))
                 | (ResultKind::Submitted, ProfileReply::Submitted(_))
         )
     }
@@ -505,9 +600,19 @@ impl<S: ProfileSnapshot> HostResultDomain<ProfileReply<S>> for Domain<'_, S> {
             (ResultKind::Object, ProfileReply::Object(value)) => {
                 self.validate_object(value).map(|_| ())
             }
-            (ResultKind::Snapshot, ProfileReply::Snapshot(value)) => {
-                let slot = self.validate_object(value.object())?;
-                self.tracked.validate_observation(slot, value)
+            (ResultKind::Snapshot, ProfileReply::Snapshot(value)) => self.validate_snapshot(value),
+            (ResultKind::WaitSnapshot, ProfileReply::Snapshot(value)) => {
+                if !self.source_wait.borrow().as_ref().is_some_and(|request| {
+                    request
+                        .ready
+                        .as_ref()
+                        .is_some_and(|ready| Rc::ptr_eq(ready, value))
+                }) {
+                    return Err(Error::Invalid(
+                        "source wait has not admitted this observation",
+                    ));
+                }
+                self.validate_snapshot(value)
             }
             (ResultKind::Submitted, ProfileReply::Submitted(value)) if value.is_submitted() => {
                 Ok(())
@@ -570,6 +675,10 @@ impl<S: ProfileSnapshot> Work<'_, S> {
     pub fn operation(&self) -> &'static str {
         self.identity.operation
     }
+    /// Whether this request needs explicit source-wait dispatch and stepping.
+    pub fn is_source_wait(&self) -> bool {
+        SourceWaitKind::from_operation(self.operation()).is_some()
+    }
 }
 pub struct ProfileReceipt<S: ProfileSnapshot> {
     pub identity: Identity,
@@ -593,6 +702,8 @@ pub struct Host<'h, 's, S: ProfileSnapshot = Snapshot> {
     granted: Cell<bool>,
     serial: Cell<u64>,
     dispatched: Cell<u64>,
+    observation_wait_serial: Cell<u64>,
+    source_waits: SourceWaitCatalog,
     pending: RefCell<Option<PendingAction<S>>>,
 }
 /// The catalog and its native reply guards belong to exactly one execution.
@@ -606,10 +717,32 @@ pub(crate) fn with_profile<S: ProfileSnapshot, T>(
     backend: &dyn Profile<Snapshot = S>,
     use_host: impl FnOnce(&Host<'_, '_, S>, LocalExecutionScope) -> T,
 ) -> Result<T, Error> {
+    with_profile_options(backend, SourceWaitCatalog::None, use_host)
+}
+pub(crate) fn with_profile_waits<S: ProfileSnapshot, T>(
+    backend: &dyn Profile<Snapshot = S>,
+    use_host: impl FnOnce(&Host<'_, '_, S>, LocalExecutionScope) -> T,
+) -> Result<T, Error> {
+    with_profile_options(backend, SourceWaitCatalog::Values, use_host)
+}
+pub(crate) fn with_profile_state_waits<S: ProfileSnapshot, T>(
+    backend: &dyn Profile<Snapshot = S>,
+    use_host: impl FnOnce(&Host<'_, '_, S>, LocalExecutionScope) -> T,
+) -> Result<T, Error> {
+    with_profile_options(backend, SourceWaitCatalog::States, use_host)
+}
+fn with_profile_options<S: ProfileSnapshot, T>(
+    backend: &dyn Profile<Snapshot = S>,
+    source_waits: SourceWaitCatalog,
+    use_host: impl FnOnce(&Host<'_, '_, S>, LocalExecutionScope) -> T,
+) -> Result<T, Error> {
+    if source_waits != SourceWaitCatalog::None && !S::WIDGETS {
+        return Err(Error::Invalid("source waits require the widgets profile"));
+    }
     let tracked = TrackedDocument::new(backend)?;
     let scope = LocalExecutionScope::new();
     let lease = scope.lease();
-    catalog::with_catalog(&tracked, lease.clone(), |catalog| {
+    catalog::with_catalog(&tracked, lease.clone(), source_waits, |catalog| {
         let host = Host {
             tracked: &tracked,
             catalog,
@@ -617,6 +750,8 @@ pub(crate) fn with_profile<S: ProfileSnapshot, T>(
             granted: Cell::new(true),
             serial: Cell::new(0),
             dispatched: Cell::new(0),
+            observation_wait_serial: Cell::new(0),
+            source_waits,
             pending: RefCell::new(None),
         };
         use_host(&host, scope)
