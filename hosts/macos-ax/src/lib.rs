@@ -12,9 +12,11 @@ pub mod access;
 pub mod calculator;
 #[cfg(target_os = "macos")]
 pub mod calculator_access;
+pub mod calculator_report;
 pub mod controls;
 #[cfg(target_os = "macos")]
 pub mod controls_access;
+pub mod discovery;
 pub mod driver;
 pub mod host;
 pub mod observation_wait;

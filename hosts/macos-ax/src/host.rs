@@ -5,7 +5,7 @@
 //! This module owns the public protocol, profile contracts and stable object
 //! registry. Catalog/source admission and runtime session boundaries are separate
 //! private modules; existing callers keep using the same `host` API.
-mod catalog;
+pub(crate) mod catalog;
 mod session;
 #[cfg(test)]
 mod tests;

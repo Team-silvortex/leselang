@@ -461,6 +461,117 @@ fn text_options_reject_non_utf8_names_and_values() {
 }
 
 #[test]
+fn describe_emits_a_versioned_catalog_without_source_or_grants() {
+    let mut previous = None;
+    for flags in [
+        vec![],
+        vec!["--diagnostic-format", "text"],
+        vec!["--diagnostic-format", "json"],
+    ] {
+        let output = Command::new(BIN)
+            .arg("describe")
+            .args(flags)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert_code(&output, 0);
+        assert!(output.stderr.is_empty());
+        assert!(output.stdout.ends_with(b"\n"));
+        assert_eq!(
+            output.stdout.iter().filter(|byte| **byte == b'\n').count(),
+            1
+        );
+        let catalog: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(catalog["schema_version"], 1);
+        assert_eq!(catalog["protocol_version"], 1);
+        assert_eq!(catalog["catalog_version"], 1);
+        assert_eq!(catalog["profile"], "leselang.scalar");
+        assert_eq!(catalog["native_types"], serde_json::json!([]));
+        assert_eq!(
+            catalog["operations"],
+            serde_json::json!([{
+                "name": "std.print",
+                "parameters": [{"name": "message", "required": true,
+                    "types": [{"kind": "scalar", "name": "string"}]}],
+                "result": {"kind": "scalar", "name": "none"},
+                "required_capability": "stdio"
+            }])
+        );
+        if let Some(previous) = previous.replace(output.stdout.clone()) {
+            assert_eq!(previous, output.stdout);
+        }
+    }
+}
+
+#[test]
+fn described_signature_drives_the_same_real_operation_and_requires_permission() {
+    let output = Command::new(BIN).arg("describe").output().unwrap();
+    assert_code(&output, 0);
+    let catalog: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let operation = &catalog["operations"][0];
+    let name = operation["name"].as_str().unwrap();
+    let parameter = operation["parameters"][0]["name"].as_str().unwrap();
+    let capability = operation["required_capability"].as_str().unwrap();
+    let source = format!(
+        "fn main() = bind(first: {name}({parameter}: \"first\"), body: {name}({parameter}: \"second\"))"
+    );
+    let denied = run_file("run", &source, &["--diagnostic-format", "json"]);
+    assert_code(&denied, 1);
+    assert!(denied.stdout.is_empty());
+    assert_eq!(json_diagnostics(&denied)[0]["kind"], "capability_denied");
+    assert_success(&run_file("check", &source, &["--allow", capability]), b"");
+    assert_success(
+        &run_file("run", &source, &["--allow", capability]),
+        b"first\nsecond\n",
+    );
+}
+
+#[test]
+fn describe_rejects_source_and_execution_options_without_touching_files() {
+    let fixture = Fixture::new();
+    let path = fixture.write("program.lese", "fn main() = @");
+    for flags in [
+        vec![path.to_str().unwrap()],
+        vec!["-"],
+        vec!["--", "program.lese"],
+        vec!["--allow", "stdio"],
+        vec!["--entry", "main"],
+        vec!["--fuel", "0"],
+        vec!["--text", "name", "value"],
+        vec!["--check"],
+        vec!["--format", "json"],
+        vec!["--diagnostic-format", "json"],
+        vec!["--help"],
+    ] {
+        let output = fixture
+            .command()
+            .args(["describe", "--diagnostic-format", "json"])
+            .args(flags)
+            .output()
+            .unwrap();
+        assert_code(&output, 2);
+        assert!(output.stdout.is_empty());
+        let record = &json_diagnostics(&output)[0];
+        assert_eq!(record["phase"], "usage");
+        assert!(record["path"].is_null());
+    }
+    assert_eq!(fs::read_to_string(path).unwrap(), "fn main() = @");
+    for option in ["--help", "-h"] {
+        let output = Command::new(BIN)
+            .args(["describe", option])
+            .output()
+            .unwrap();
+        assert_code(&output, 0);
+        assert!(output.stderr.is_empty());
+        assert!(
+            std::str::from_utf8(&output.stdout)
+                .unwrap()
+                .contains("leselang describe")
+        );
+    }
+}
+
+#[test]
 fn documented_examples_check_and_run_through_the_installed_command_contract() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()

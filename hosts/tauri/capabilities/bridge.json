@@ -1,0 +1,17 @@
+{
+  "identifier": "bridge",
+  "description": "Only the bundled main WebView can establish and reply to the registered control bridge.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "allow-bridge-ready",
+    "allow-bridge-reply",
+    "allow-bridge-closed",
+    "allow-agent-describe",
+    "allow-agent-start",
+    "allow-agent-start-task",
+    "allow-agent-reply",
+    "allow-agent-cancel",
+    "allow-agent-closed"
+  ]
+}

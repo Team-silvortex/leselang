@@ -13,6 +13,22 @@ struct Fake {
     writes: Cell<usize>,
     outcome: Cell<u8>,
 }
+
+#[test]
+fn offline_description_matches_live_document_catalog_without_authority() {
+    let fake = Fake::new();
+    with_host(&fake, |host, _| {
+        host.set_granted(false);
+        fake.permitted.set(false);
+        catalog::assert_live_description(host, crate::discovery::Profile::TextEdit);
+        assert!(
+            host.compile("fn main() = gui.find(name: \"document\")")
+                .is_err()
+        );
+    })
+    .unwrap();
+    assert_eq!(fake.writes.get(), 0);
+}
 impl Fake {
     fn new() -> Self {
         Self {

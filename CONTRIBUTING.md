@@ -23,7 +23,9 @@ cargo fmt --manifest-path hosts/macos-ax/Cargo.toml --all -- --check
 cargo test --workspace --all-features --locked --offline --profile lean
 cargo clippy --workspace --all-features --all-targets --locked --offline --profile lean -- -D warnings
 cargo test --manifest-path consumer/Cargo.toml --locked --offline --profile lean
+cargo test --manifest-path consumer/Cargo.toml --example catalog_agent --locked --offline --profile lean
 cargo clippy --manifest-path consumer/Cargo.toml --all-targets --locked --offline --profile lean -- -D warnings
+cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- describe
 cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- check examples/arithmetic.lese
 cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/arithmetic.lese
 cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/two_effects.lese --allow stdio
@@ -43,7 +45,7 @@ The consumer is deliberately a separate Cargo workspace. Its repository-boundary
 test checks actual Cargo metadata, including all-features builds, so a sibling
 checkout or optional product dependency cannot silently become a prerequisite.
 
-Use the `lean` profile for local checks. All four workspaces share the repository's
+Use the `lean` profile for local checks. All five workspaces share the repository's
 `target/` through `.cargo/config.toml`; their independence concerns dependencies
 and acceptance, not separate build caches. See [build output and cleanup](#build-output-and-cleanup)
 below before changing output paths. No containers or external server are needed
@@ -65,6 +67,48 @@ turning diagnostic messages into a parsing contract. Verify the API from the
 independent Consumer as well as the CLI. Dotted host operation names are exact
 catalog keys, so parser admission must remain consistent with registration,
 including names with more than two segments.
+
+Catalog discovery projects actual operation, capability and field declarations;
+do not maintain a separate list that can diverge from compilation. Preserve the
+borrowed `Host::describe` API and native catalog/handle serialization boundaries.
+Test optional and deny-all domains, all scalar alternatives, exact native type
+references, Unicode escaping, declaration order and every metadata/output bound.
+Encoding failure returns no partial record; external write failures must not
+retry. Cover the versioned JSON contract in the independent
+[`catalog_discovery` Consumer tests](consumer/tests/catalog_discovery.rs), including
+zero callbacks, original Fuel cutoffs, revocation and partial side effects.
+For GUI `--describe`, test all catalog profiles without backend creation,
+permission queries or native dispatch; keep live `--discover` inventory distinct.
+Document schema changes in the [discovery guide](docs/host-discovery.md), and
+preserve unknown-field tolerance without treating unknown types as wildcards.
+
+Keep the [catalog agent](docs/agent-workflow.md) independent of native host
+dependencies. Its optional [semantic metadata](docs/host-semantics.md) path
+validates finite task declarations against actual catalog signatures, then
+generates source and checks declared report predicates without profile branches.
+Keep absent-metadata legacy strategies compatible, and reject malformed present
+metadata without fallback. Equal types do not establish equal operation meaning.
+Task text stays in typed inputs rather than generated
+source. Cover malformed or incompatible catalogs and reports, false or
+contradictory postconditions, subprocess output and time limits, missing
+executables, and preservation of failure evidence without automatic retry.
+The default planning path must finish before GUI execution; `--execute` runs
+the selected host once. Keep output directories new and refuse overwriting
+previous evidence. Run the example tests explicitly, since ordinary package
+tests do not execute example unit tests by default. CI also builds a plan
+against the real offline AppKit, TypeScript and Calculator catalogs on Linux
+and macOS. Forward the same literal host selectors during discovery and
+execution, and reject a requested task that differs from the discovered
+contract. Calculator requires no text input: test its ten-Effect success,
+nonzero initial display with zero presses, mismatched last expression, and
+failed reports without replay. Execute the agent-generated Calculator fixture
+through the actual host driver with a fake backend as well as checking types.
+For semantics, cover an unknown profile with renamed operations, controls,
+input and task; forward/duplicate bindings; mismatched field/argument types;
+unknown versions; ambiguous report matches; missing nullable fields; checked
+integer arithmetic; and failed predicates without retry. Preserve the base
+catalog structs and byte output, global bounds and existing host Fuel budgets.
+Keep application task declarations in hosts rather than the language crates.
 
 Explicit entry selection must use the existing catalog compiler without
 synthetic source or an extra runtime wrapper. Keep default `main` behavior,
@@ -133,12 +177,97 @@ actual AppKit controls. They require a logged-in macOS 14+ desktop session and
 Xcode Command Line Tools. The ordinary package tests cover command-line ingress
 and compile-time thread affinity without starting GUI work on test workers.
 There is no successful headless fallback or skipped GUI test reported as proof.
-CI builds and lints the host and runs its non-GUI package tests on macOS. Run
+CI lints the host and runs its portable catalog, report and ingress tests on
+Linux and macOS; native AppKit builds run on macOS. Run
 both desktop commands explicitly when changing its bridge, event pump,
 discovery, identity/dependency tracking or operation policy. Preserve both the
 four-Effect button compatibility example
 and the source-file form workflow. See
 [the AppKit guide](docs/appkit-host.md) for the adapter's tested scope.
+For structured execution reports, keep stdout to one complete bounded JSON
+record and send traces to stderr. Project public scalar fields explicitly;
+never serialize `WidgetSnapshot` identities or native authority. Native
+before/after verification reads must remain identified separately from VM
+Effects and their Fuel. Exercise the generated
+[agent workflow](docs/agent-workflow.md#execute-and-verify-once) on a real
+desktop when changing that integration, and record the source result and
+independent native postconditions rather than treating successful launch as
+acceptance.
+
+The independent `hosts/tauri` workspace supplies the registered TypeScript
+adapter and macOS WebView transport. Run its frontend and portable checks:
+
+```sh
+npm ci --prefix hosts/tauri --ignore-scripts
+npm test --prefix hosts/tauri
+cargo fetch --manifest-path hosts/tauri/Cargo.toml --locked
+cargo fmt --manifest-path hosts/tauri/Cargo.toml --all -- --check
+cargo test --manifest-path hosts/tauri/Cargo.toml --no-default-features --locked --offline --profile lean
+cargo clippy --manifest-path hosts/tauri/Cargo.toml --no-default-features --all-targets --locked --offline --profile lean -- -D warnings
+```
+
+The shared bridge is an independent package in `packages/javascript`. Validate
+its public ESM/declaration exports and packed artifact, then run the independent
+JavaScript application against the real Rust VM:
+
+```sh
+npm ci --prefix packages/javascript --ignore-scripts
+npm test --prefix packages/javascript
+npm ci --prefix consumer/javascript --ignore-scripts
+cargo build --manifest-path hosts/tauri/Cargo.toml --no-default-features --example node_host --locked --offline --profile lean
+cargo test --manifest-path hosts/tauri/Cargo.toml --no-default-features --example node_host --locked --offline --profile lean
+npm test --prefix consumer/javascript
+cargo test --manifest-path hosts/tauri/Cargo.toml --no-default-features --example node_host --locked --offline --profile lean -- --ignored
+```
+
+Keep Tauri-specific behavior outside the SDK, and consume the package entry
+rather than importing its source files. Preserve stable object slots within a
+session, bounded inventories and explicit re-find after replacement. The generic
+execution report carries evidence; application verification remains with its
+caller. See the [JavaScript SDK guide](docs/javascript-sdk.md).
+
+The in-app `AgentSession` tests must cover cancellation in every awaited phase,
+late provider/host completion, overlapping submissions, plan/report ownership
+and failed application verification. The Tauri `--agent` page adds reusable
+application state with a fresh transport/VM session per workflow. On a desktop,
+exercise two sequential commands and an unsupported command through the actual
+conversation UI; the latter must perform no application operation. Preserve
+the original one-shot desktop acceptance as well. The reference planner must
+remain explicitly labelled offline, with no implied model integration. See
+the [agent-entry guide](docs/agent-entry.md).
+
+Keep the shared `createSemanticProvider` independent of form operation names,
+controls and task aliases. Match the Rust semantic planner's golden source for
+all reference catalogs, and test renamed applications and zero-input tasks.
+Preserve exact `u64` JSON tokens, reject duplicate keys and unsafe object numbers,
+and bound raw catalogs and reports before planning or verification. The host
+must independently rebuild the declared plan, bind evidence to its execution
+and original cancellation signal, and compare both initial and fresh observed
+state; provider summaries never establish success. Run the independent Node
+Consumer's declared workflow through the real Rust VM, including unchanged
+unrelated controls, failure after a committed mutation and failed declared
+postconditions without automatic replay. For the Tauri task carrier, admit no
+input or one exact named string before transport bootstrap; test all six scalar
+result types and refusal of native results. Keep the original form entry and
+catalog compatible. Compare old/new execution Fuel and Effect counts for the
+same source, preserve exact raw integer reports, and run no-input, renamed-input
+and different-result workflows through the real conversation UI. Reference
+carrier input restrictions must remain explicit even when the language can
+describe more task shapes.
+
+Keep the Tauri dependency, IPC command permissions and frontend build toolchain
+outside the five language crates and independent Consumer. The gateway must
+retain Rust object ownership and original VM correlation while validating the
+separate transport version, page epoch, session, object generation and revision.
+Every deferred JavaScript mutation must re-enter `context.commit`; neither a
+Promise nor a timeout can roll back earlier effects. Test replacement, ABA,
+wrong scope, duplicate/late replies, cancellation and partial mutations.
+The actual DOM handlers share their application logic with the portable model
+tests, but those tests do not establish WebView behavior. On macOS, build the
+default desktop feature and run the [TypeScript agent workflow](docs/typescript-host.md#drive-it-from-the-independent-agent)
+against a real window. Record the source result, original Fuel, DOM/model
+observations and unrelated-control state. The Rust worker owns `LocalVm`; Tauri
+callbacks only transport bounded data and must not poll or resume it reentrantly.
 
 The independent `hosts/macos-ax` workspace supplies scoped TextEdit and Calculator
 Accessibility profiles over one shared typed host driver. Keep its process
@@ -157,8 +286,9 @@ permission check and the relevant TextEdit or Calculator workflow in
 cover URL/text admission and AX error handling without remote GUI calls. Ordinary
 backend tests do not establish cross-process desktop execution. Use a dedicated
 new file for TextEdit. Calculator requires the supported Basic-mode UI and an
-initial display of `0`; do not clear an unrelated calculation to force the demo
-through. Preserve unrelated documents and application state. Do not
+initial display of `0`; obtain authorization before clearing an existing
+calculation and restore its original display after the test. Preserve unrelated
+documents and application state. Do not
 automatically grant Accessibility access or retry an uncertain native mutation.
 Document snapshot-based freshness separately from the application-owned
 AppKit host's mutation tracking: a remote read followed by a write is not an
@@ -233,7 +363,7 @@ build then lands in `target/lean/debug/`, and a lean build in
 `CARGO_TARGET_DIR`, `CARGO_BUILD_TARGET_DIR` or a command-line override can change
 the effective root. Before diagnosing duplicate outputs, inspect
 `target_directory` from `cargo metadata --no-deps --format-version 1 --locked --offline`
-in the relevant workspace; all four should resolve to this repository's
+in the relevant workspace; all five should resolve to this repository's
 `target/`. Keep one cache root for normal checks instead of assigning directories
 per command. The AppKit bundle script explicitly passes the repository target
 root to Cargo, so its build and subsequent binary copy use the same location

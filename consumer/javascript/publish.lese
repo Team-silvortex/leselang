@@ -1,0 +1,40 @@
+// Registered JavaScript publication task; text remains a typed task input.
+fn has_control(ids: string_list, wanted: string) = fold(
+  found: false, items: ids, item: "candidate",
+  next: or(left: found, right: eq(left: candidate, right: wanted)), limit: 64
+)
+fn input_ready(observed: snapshot) = and(
+  left: eq(left: field(value: observed, name: "role"), right: "text_field"),
+  right: and(left: field(value: observed, name: "editable"), right: field(value: observed, name: "enabled"))
+)
+fn save(text: string) = bind(
+  target: gui.find(name: "publish"), body: bind(
+    before: gui.observe(target: target), body: choose(
+      when: and(left: eq(left: field(value: before, name: "role"), right: "button"), right: field(value: before, name: "enabled")),
+      then: bind(clicked: gui.click(target: target, expected_revision: field(value: before, name: "revision")), body: choose(
+        when: clicked, then: bind(after: gui.observe(target: target), body: and(
+          left: eq(left: field(value: after, name: "value"), right: text),
+          right: eq(left: field(value: after, name: "clicks"), right: add(left: field(value: before, name: "clicks"), right: 1))
+        )), otherwise: false
+      )), otherwise: false
+    )
+  )
+)
+fn fill(text: string) = bind(
+  target: gui.find(name: "draft"), body: bind(
+    before: gui.observe(target: target), body: choose(
+      when: input_ready(observed: before), then: bind(typed: gui.set_text(target: target, expected_revision: field(value: before, name: "revision"), text: text), body: choose(
+        when: typed, then: bind(after: gui.observe(target: target), body: choose(
+          when: and(left: input_ready(observed: after), right: eq(left: field(value: after, name: "value"), right: text)),
+          then: save(text: text), otherwise: false
+        )), otherwise: false
+      )), otherwise: false
+    )
+  )
+)
+fn main(text: string) = bind(
+  ids: gui.list(), body: choose(
+    when: and(left: has_control(ids: ids, wanted: "draft"), right: has_control(ids: ids, wanted: "publish")),
+    then: fill(text: text), otherwise: false
+  )
+)

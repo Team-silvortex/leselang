@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/leselang-syntax", "crates/leselang-runtime-core", "crates/leselang-hir-core", "crates/leselang-hir", "crates/leselang-vm"]
-exclude = ["consumer", "hosts/appkit", "hosts/macos-ax"]
+exclude = ["consumer", "hosts/appkit", "hosts/macos-ax", "hosts/tauri"]
 resolver = "3"
 
 [profile.lean]

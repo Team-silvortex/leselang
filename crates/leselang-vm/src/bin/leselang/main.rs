@@ -11,8 +11,8 @@ use std::{
 };
 
 use leselang_vm::embedding::{
-    CompileError, Error, Fuel, HostBuilder, HostFailure, Limits, Poll, ScalarType, ScalarValue,
-    diagnostics as diagnostic_view, parameter,
+    CompileError, Error, Fuel, Host, HostBuilder, HostFailure, Limits, Poll, RegistrationError,
+    ScalarType, ScalarValue, diagnostics as diagnostic_view, parameter,
 };
 
 mod diagnostics;
@@ -21,6 +21,7 @@ const DEFAULT_FUEL: u64 = 10_000;
 const HELP: &str = "LeseLang — bounded local language runner
 
 Usage:
+  leselang describe [--diagnostic-format text|json]
   leselang check FILE [--entry NAME] [--text NAME VALUE]... [--allow stdio] [--diagnostic-format text|json]
   leselang run FILE [--entry NAME] [--text NAME VALUE]... [--allow stdio] [--fuel N] [--diagnostic-format text|json]
   leselang fmt FILE [--check] [--diagnostic-format text|json]
@@ -31,6 +32,8 @@ FILE may be - to read UTF-8 source from standard input. Use -- before a file
 whose name starts with a hyphen. Options may appear before or after FILE.
 
 check compiles all declarations without running any host operation.
+describe writes the registered host catalog as versioned JSON to stdout.
+It takes no source file or grants, and invokes no host operation.
 run evaluates main by default; --entry NAME selects another function.
 --text supplies required string task inputs without interpreting VALUE as source.
 Without --text, the selected entry must take no parameters. Rust hosts also support
@@ -42,7 +45,7 @@ fmt --check is quiet on matching source and fails if formatting would change it.
 Formatting checks syntax only; --entry, --text, --allow and --fuel do not apply to fmt.
 Non-none final values are printed as JSON literals; std.print writes text lines.
 Diagnostics go to stderr; json emits one schema-versioned object per line.
-Place --diagnostic-format json immediately after check/run/fmt for JSON usage errors.
+Place --diagnostic-format json immediately after describe/check/run/fmt for JSON usage errors.
 
 Source and formatted output are limited to 16384 bytes; default run fuel is 10000.
 Fuel is shared across language slices and charged host output; it never refills.
@@ -71,6 +74,7 @@ struct Options {
 enum Action {
     Help,
     Version,
+    Describe(diagnostics::Format),
     Execute(Options),
 }
 
@@ -81,7 +85,7 @@ fn arguments(
     let mut args = args.into_iter();
     let first = args
         .next()
-        .ok_or("expected check, run or fmt; see --help")?;
+        .ok_or("expected describe, check, run or fmt; see --help")?;
     if first == "--help" || first == "-h" {
         if args.next().is_some() {
             return Err("--help does not take arguments".into());
@@ -94,11 +98,14 @@ fn arguments(
         }
         return Ok(Action::Version);
     }
+    if first == "describe" {
+        return describe_arguments(args, diagnostic_format);
+    }
     let command = match first.to_str() {
         Some("check") => Command::Check,
         Some("run") => Command::Run,
         Some("fmt") => Command::Format,
-        _ => return Err("expected check, run or fmt; see --help".into()),
+        _ => return Err("expected describe, check, run or fmt; see --help".into()),
     };
     let mut input = None;
     let mut entry = None;
@@ -242,6 +249,37 @@ fn arguments(
     }))
 }
 
+fn describe_arguments(
+    mut args: impl Iterator<Item = OsString>,
+    format: &mut diagnostics::Format,
+) -> Result<Action, String> {
+    let mut supplied = false;
+    while let Some(argument) = args.next() {
+        if argument == "--help" || argument == "-h" {
+            if supplied || args.next().is_some() {
+                return Err("use describe --help without other arguments".into());
+            }
+            return Ok(Action::Help);
+        }
+        if argument != "--diagnostic-format" {
+            return Err(
+                "describe takes only --diagnostic-format text|json; no source or execution options"
+                    .into(),
+            );
+        }
+        if supplied {
+            return Err("--diagnostic-format may be supplied only once".into());
+        }
+        *format = match args.next().as_deref().and_then(|value| value.to_str()) {
+            Some("text") => diagnostics::Format::Text,
+            Some("json") => diagnostics::Format::Json,
+            _ => return Err("--diagnostic-format requires text or json".into()),
+        };
+        supplied = true;
+    }
+    Ok(Action::Describe(*format))
+}
+
 fn read_source(input: &mut dyn Read, limit: usize) -> Result<String, String> {
     // Stop before allocating/reading unbounded input, including streams and pipes.
     let mut bytes = Vec::new();
@@ -279,47 +317,78 @@ fn execute(options: &Options, output: &mut dyn Write) -> Result<(), String> {
     execute_source(options, &source, output)
 }
 
+// Discovery and execution use the same registration, including its callback.
+fn cli_host<'h>(output: &'h RefCell<&mut dyn Write>) -> Result<Host<'h>, RegistrationError> {
+    let mut builder = HostBuilder::new();
+    builder.register(
+        "std.print",
+        vec![parameter("message", ScalarType::String)],
+        ScalarType::None,
+        "stdio",
+        |arguments, fuel| {
+            let Some(ScalarValue::String(message)) = arguments.get("message") else {
+                return Err(HostFailure::Failed(
+                    "std.print requires a string message".into(),
+                ));
+            };
+            fuel.charge(message.len() as u64 + 1)
+                .map_err(|_| HostFailure::Failed("fuel exhausted before std.print".into()))?;
+            let mut output = output.borrow_mut();
+            output
+                .write_all(message.as_bytes())
+                .and_then(|()| output.write_all(b"\n"))
+                .and_then(|()| output.flush())
+                // A write/flush error can occur after visible output; never retry it.
+                .map_err(|error| {
+                    HostFailure::Uncertain(format!("standard output failed: {error}"))
+                })?;
+            Ok(ScalarValue::None)
+        },
+    )?;
+    Ok(builder.build())
+}
+
+fn describe_catalog(format: diagnostics::Format, output: &mut dyn Write) -> Result<(), String> {
+    let output = RefCell::new(output);
+    let host = cli_host(&output).map_err(|error| {
+        format.other(
+            None,
+            "discovery",
+            "LSD0001",
+            &format!("cannot register CLI host: {error}"),
+        )
+    })?;
+    let json = host
+        .catalog_description("leselang.scalar")
+        .to_json()
+        .map_err(|error| format.other(None, "discovery", "LSD0001", &error.to_string()))?;
+    let mut output = output.borrow_mut();
+    output
+        .write_all(json.as_bytes())
+        .and_then(|()| output.flush())
+        .map_err(|error| {
+            format.other(
+                None,
+                "discovery",
+                "LSD0002",
+                &format!("cannot write catalog: {error}; output may be partial"),
+            )
+        })
+}
+
 fn execute_source(options: &Options, source: &str, output: &mut dyn Write) -> Result<(), String> {
     if options.command == Command::Format {
         return format_source(options, source, output);
     }
     let output = RefCell::new(output);
-    let mut builder = HostBuilder::new();
-    builder
-        .register(
-            "std.print",
-            vec![parameter("message", ScalarType::String)],
-            ScalarType::None,
-            "stdio",
-            |arguments, fuel| {
-                let Some(ScalarValue::String(message)) = arguments.get("message") else {
-                    return Err(HostFailure::Failed(
-                        "std.print requires a string message".into(),
-                    ));
-                };
-                fuel.charge(message.len() as u64 + 1)
-                    .map_err(|_| HostFailure::Failed("fuel exhausted before std.print".into()))?;
-                let mut output = output.borrow_mut();
-                output
-                    .write_all(message.as_bytes())
-                    .and_then(|()| output.write_all(b"\n"))
-                    .and_then(|()| output.flush())
-                    // A write/flush error can occur after visible output; never retry it.
-                    .map_err(|error| {
-                        HostFailure::Uncertain(format!("standard output failed: {error}"))
-                    })?;
-                Ok(ScalarValue::None)
-            },
+    let host = cli_host(&output).map_err(|error| {
+        options.diagnostic_format.other(
+            Some(&options.input.to_string_lossy()),
+            "runtime",
+            "LSR0001",
+            &format!("cannot register CLI host: {error}"),
         )
-        .map_err(|error| {
-            options.diagnostic_format.other(
-                Some(&options.input.to_string_lossy()),
-                "runtime",
-                "LSR0001",
-                &format!("cannot register CLI host: {error}"),
-            )
-        })?;
-    let host = builder.build();
+    })?;
     let grants: &[&str] = if options.stdio { &["stdio"] } else { &[] };
     let path = options.input.to_string_lossy();
     let program = if options.text_arguments.is_empty() {
@@ -511,6 +580,7 @@ fn main() -> ExitCode {
         Action::Version => writeln!(output, "leselang {}", env!("CARGO_PKG_VERSION"))
             .and_then(|()| output.flush())
             .map_err(|error| format!("cannot write version: {error}")),
+        Action::Describe(format) => describe_catalog(format, &mut output),
         Action::Execute(options) => execute(&options, &mut output),
     };
     match result {
@@ -564,6 +634,32 @@ mod tests {
             fuel: DEFAULT_FUEL,
             diagnostic_format: diagnostics::Format::Text,
             format_check: false,
+        }
+    }
+
+    #[test]
+    fn catalog_output_failures_report_partial_delivery_without_retry() {
+        let mut complete = Vec::new();
+        describe_catalog(diagnostics::Format::Json, &mut complete).unwrap();
+        for (remaining, fail_flush, delivered) in [
+            (0, false, 0),
+            (17, false, 17),
+            (complete.len(), true, complete.len()),
+        ] {
+            let mut output = PartialWriter {
+                bytes: Vec::new(),
+                remaining,
+                fail_flush,
+            };
+            let error = describe_catalog(diagnostics::Format::Json, &mut output).unwrap_err();
+            assert_eq!(output.bytes, complete[..delivered]);
+            let record: serde_json::Value = serde_json::from_str(&error).unwrap();
+            assert_eq!(record["phase"], "discovery");
+            assert_eq!(record["code"], "LSD0002");
+            assert!(record["path"].is_null());
+            assert!(record["span"].is_null());
+            assert!(record["fuel_remaining"].is_null());
+            assert!(record["message"].as_str().unwrap().contains("partial"));
         }
     }
 

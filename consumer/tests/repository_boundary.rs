@@ -109,6 +109,34 @@ fn language_consumer_and_gui_hosts_remain_separate_mit_and_repository_local() {
     .unwrap();
 }
 
+#[test]
+fn typescript_host_remains_a_separate_workspace_with_scoped_framework_dependencies() {
+    let metadata = metadata(&root().join("hosts/tauri/Cargo.toml"));
+    let packages = metadata["packages"].as_array().unwrap();
+    assert_eq!(packages.len(), 1);
+    let package = &packages[0];
+    assert_eq!(package["name"], "leselang-tauri-host");
+    assert_eq!(package["license"], "MIT");
+    assert_eq!(package["version"], env!("CARGO_PKG_VERSION"));
+    inside(root(), &package["manifest_path"]).unwrap();
+    for dependency in package["dependencies"].as_array().unwrap() {
+        let name = dependency["name"].as_str().unwrap();
+        if let Some(path) = dependency.get("path") {
+            assert!(CRATES.contains(&name));
+            inside(root(), path).unwrap();
+        } else {
+            assert!(["serde", "serde_json", "tauri", "tauri-build"].contains(&name));
+            if name.starts_with("tauri") {
+                assert_eq!(dependency["optional"], true);
+                assert_eq!(dependency["target"], "cfg(target_os = \"macos\")");
+            }
+        }
+    }
+    for target in package["targets"].as_array().unwrap() {
+        inside(root(), &target["src_path"]).unwrap();
+    }
+}
+
 fn fixture() -> Value {
     json!({"packages": [{
         "name": "leselang-vm",

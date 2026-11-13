@@ -1,4 +1,6 @@
 //! Typed, explicitly driven AppKit host. All native objects stay on the main thread.
+use crate::catalog::{self, ResultKind};
+pub use crate::catalog::{ArgumentDomain, Field, NativeType};
 use crate::{
     Error,
     gui::{Gui, WIDGET_COUNT, WidgetSnapshot},
@@ -206,29 +208,6 @@ fn valid_identifiers(value: &StringListValue) -> bool {
             .all(|(index, name)| !name.is_empty() && !value.0[..index].contains(name))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Field {
-    Identifier,
-    Role,
-    Value,
-    Editable,
-    Revision,
-    Title,
-    Clicks,
-    Enabled,
-}
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum NativeType {
-    Object,
-    Snapshot,
-}
-#[derive(Clone, Copy)]
-enum ResultKind {
-    Identifiers,
-    Object,
-    Snapshot,
-    Submitted,
-}
 pub enum Reply {
     Identifiers(StringListValue),
     Object(ObjectRef),
@@ -303,22 +282,6 @@ impl HostResultDomain<Reply> for Domain<'_> {
 pub enum NativeValue {
     Object(ObjectRef),
     Snapshot(Rc<Observation<WidgetSnapshot>>),
-}
-#[derive(Clone, Copy)]
-pub enum ArgumentDomain {
-    Scalar(ScalarTypeSet),
-    Object,
-}
-impl ScalarArgumentDomain for ArgumentDomain {
-    fn scalar_types(&self) -> ScalarTypeSet {
-        match self {
-            Self::Scalar(value) => *value,
-            Self::Object => ScalarTypeSet::empty(),
-        }
-    }
-    fn accepts_literal(&self, value: &ScalarValue) -> bool {
-        matches!(self, Self::Scalar(domain) if domain.accepts_literal(value))
-    }
 }
 pub type Node = ir::Computation<Field, &'static str, (), ()>;
 type Schema<'s> = OperationSchema<'s, &'static str, &'s str, ArgumentDomain, Domain<'s>, u8>;
@@ -417,86 +380,26 @@ pub fn with_host<T>(
     let tracked = TrackedGui::new(gui)?;
     let scope = LocalExecutionScope::new();
     let lease = scope.lease();
-    let find_parameters = [NamedParameter::required(
-        "name",
-        ArgumentDomain::Scalar(ScalarTypeSet::only(ScalarType::String)),
-    )];
-    let observe_parameters = [NamedParameter::required("target", ArgumentDomain::Object)];
-    let click_parameters = [
-        NamedParameter::required("target", ArgumentDomain::Object),
-        NamedParameter::required(
-            "expected_revision",
-            ArgumentDomain::Scalar(ScalarTypeSet::only(ScalarType::Integer)),
-        ),
-    ];
-    let set_text_parameters = [
-        NamedParameter::required("target", ArgumentDomain::Object),
-        NamedParameter::required(
-            "expected_revision",
-            ArgumentDomain::Scalar(ScalarTypeSet::only(ScalarType::Integer)),
-        ),
-        NamedParameter::required(
-            "text",
-            ArgumentDomain::Scalar(ScalarTypeSet::only(ScalarType::String)),
-        ),
-    ];
-    let domain = |kind| Domain {
-        tracked: &tracked,
-        lease: lease.clone(),
-        kind,
-        expected: RefCell::new(None),
-    };
-    let schemas = [
-        Schema {
-            key: "gui.list",
-            parameters: &[],
-            required_capability: 1,
-            result: domain(ResultKind::Identifiers),
+    catalog::with_catalog(
+        |kind| Domain {
+            tracked: &tracked,
+            lease: lease.clone(),
+            kind,
+            expected: RefCell::new(None),
         },
-        Schema {
-            key: "gui.set_text",
-            parameters: &set_text_parameters,
-            required_capability: 2,
-            result: domain(ResultKind::Submitted),
-        },
-        Schema {
-            key: "gui.find",
-            parameters: &find_parameters,
-            required_capability: 1,
-            result: domain(ResultKind::Object),
-        },
-        Schema {
-            key: "gui.observe",
-            parameters: &observe_parameters,
-            required_capability: 1,
-            result: domain(ResultKind::Snapshot),
-        },
-        Schema {
-            key: "gui.click",
-            parameters: &click_parameters,
-            required_capability: 2,
-            result: domain(ResultKind::Submitted),
-        },
-    ];
-    let catalog = OperationCatalog::new(
-        1,
-        &schemas,
-        OperationCatalogLimits {
-            max_operations: 5,
-            max_parameters_per_operation: 3,
+        |catalog| {
+            let host = Host {
+                tracked: &tracked,
+                catalog,
+                lease: lease.clone(),
+                granted: Cell::new(true),
+                serial: Cell::new(0),
+                dispatched: Cell::new(0),
+                pending: RefCell::new(None),
+            };
+            use_host(&host, scope)
         },
     )
-    .map_err(|_| Error::Native("invalid AppKit operation catalog"))?;
-    let host = Host {
-        tracked: &tracked,
-        catalog: &catalog,
-        lease,
-        granted: Cell::new(true),
-        serial: Cell::new(0),
-        dispatched: Cell::new(0),
-        pending: RefCell::new(None),
-    };
-    Ok(use_host(&host, scope))
 }
 
 impl<'s> Host<'_, 's> {
@@ -566,7 +469,14 @@ impl<'s> Host<'_, 's> {
             &self.source(),
             self,
         )
-        .map_err(|error| error.to_string())
+        .map_err(|error| match error {
+            // Preserve payload-free categories useful to source generators.
+            catalog_source::CatalogSourceError::Program(error) => match *error {
+                catalog_program::CatalogProgramError::Declarations(error) => error.to_string(),
+                error => error.to_string(),
+            },
+            error => error.to_string(),
+        })
     }
     pub fn dispatch(
         &self,
@@ -796,13 +706,7 @@ impl PureTypeEnvironment<Field, &'static str> for Host<'_, '_> {
         if *result != NativeType::Snapshot {
             return None;
         }
-        Some(match field {
-            Field::Revision => ScalarType::Integer,
-            Field::Identifier | Field::Role | Field::Value | Field::Title => ScalarType::String,
-            Field::Editable => ScalarType::Boolean,
-            Field::Clicks => ScalarType::Integer,
-            Field::Enabled => ScalarType::Boolean,
-        })
+        catalog::field_type(*field)
     }
     fn member_result(&self, _: &NativeType, _: &str, _: &&'static str) -> Option<NativeType> {
         None
@@ -824,12 +728,7 @@ impl<'s> CallFlowEnvironment<'s, Field, &'static str, Domain<'s>> for Host<'_, '
         _: &&'static str,
         domain: &'s Domain<'s>,
     ) -> Option<PureType<NativeType>> {
-        Some(match domain.kind {
-            ResultKind::Identifiers => PureType::Scalar(ScalarType::StringList),
-            ResultKind::Object => PureType::Result(NativeType::Object),
-            ResultKind::Snapshot => PureType::Result(NativeType::Snapshot),
-            ResultKind::Submitted => PureType::Scalar(ScalarType::Boolean),
-        })
+        Some(catalog::result_type(domain.kind))
     }
 }
 impl<'source, 's> CatalogSourceEnvironment<'source, 's, Field, &'static str, Domain<'s>>
@@ -837,11 +736,7 @@ impl<'source, 's> CatalogSourceEnvironment<'source, 's, Field, &'static str, Dom
 {
     type Error = Error;
     fn source_type_name(&self, name: &str) -> Option<NativeType> {
-        match name {
-            "object" => Some(NativeType::Object),
-            "snapshot" => Some(NativeType::Snapshot),
-            _ => None,
-        }
+        catalog::native_type(name)
     }
     fn source_operation(&self, operation: &&'static str) -> Result<&'static str, Error> {
         Ok(*operation)
@@ -854,17 +749,7 @@ impl<'source, 's> CatalogSourceEnvironment<'source, 's, Field, &'static str, Dom
         if *result != NativeType::Snapshot {
             return Ok(None);
         }
-        Ok(match name {
-            "identifier" => Some((Field::Identifier, ScalarType::String)),
-            "role" => Some((Field::Role, ScalarType::String)),
-            "value" => Some((Field::Value, ScalarType::String)),
-            "editable" => Some((Field::Editable, ScalarType::Boolean)),
-            "revision" => Some((Field::Revision, ScalarType::Integer)),
-            "title" => Some((Field::Title, ScalarType::String)),
-            "clicks" => Some((Field::Clicks, ScalarType::Integer)),
-            "enabled" => Some((Field::Enabled, ScalarType::Boolean)),
-            _ => None,
-        })
+        Ok(catalog::source_field(name))
     }
     fn source_member(
         &self,

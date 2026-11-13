@@ -156,6 +156,13 @@ pub fn run(
     driver::run_profile(&CalculatorProfile(backend), source, 2000)
 }
 
+pub(crate) fn run_diagnostics(
+    backend: &dyn CalculatorBackend,
+    source: &str,
+) -> Result<driver::ProfileRunSummary<CalculatorSnapshot>, String> {
+    driver::run_profile_diagnostics(&CalculatorProfile(backend), source, 2000)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,6 +184,17 @@ mod tests {
         presses: RefCell<Vec<String>>,
         behavior: Cell<u8>,
         attempts: Cell<usize>,
+    }
+    #[test]
+    fn offline_description_matches_live_calculator_catalog_and_fields() {
+        let fake = Fake::new();
+        host::with_profile(&CalculatorProfile(&fake), |host, _| {
+            host.set_granted(false);
+            fake.permitted.set(false);
+            host::catalog::assert_live_description(host, crate::discovery::Profile::Calculator);
+        })
+        .unwrap();
+        assert!(fake.presses.borrow().is_empty());
     }
     impl Fake {
         fn new() -> Self {

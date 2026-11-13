@@ -289,6 +289,53 @@ impl<'a> OperationDescription<'a> {
 }
 
 impl<'a> Host<'a> {
+    /// Copy the registered scalar signatures into the common discovery model.
+    ///
+    /// The caller chooses a stable profile label. This is descriptive metadata:
+    /// no callback, compiler, session or permission check is invoked. Operation
+    /// and parameter order, optionality and all scalar domain alternatives come
+    /// from the same immutable registrations used for compilation and execution.
+    /// Empty domains remain empty (deny-all), not an implicit default type.
+    ///
+    /// [`crate::native::core::discovery::CatalogDescription::to_json`] validates
+    /// this presentation's independent metadata and output bounds. Large custom
+    /// registries can exceed those bounds without changing their native validity.
+    pub fn catalog_description(
+        &self,
+        profile: &str,
+    ) -> crate::native::core::discovery::CatalogDescription {
+        use crate::native::core::discovery::{
+            CatalogDescription, OperationDescription, ParameterDescription, TypeDescription,
+        };
+        CatalogDescription {
+            profile: profile.into(),
+            catalog_version: 1,
+            operations: self
+                .operations
+                .iter()
+                .map(|operation| OperationDescription {
+                    name: operation.name.clone(),
+                    parameters: operation
+                        .parameters
+                        .iter()
+                        .map(|parameter| ParameterDescription {
+                            name: parameter.name.clone(),
+                            required: parameter.required,
+                            types: parameter
+                                .domain
+                                .iter()
+                                .map(TypeDescription::Scalar)
+                                .collect(),
+                        })
+                        .collect(),
+                    result: TypeDescription::Scalar(operation.result_type),
+                    required_capability: operation.capability.clone(),
+                })
+                .collect(),
+            native_types: Vec::new(),
+        }
+    }
+
     /// Inspect supported operations without compilation, execution or granting
     /// capabilities. Native adapters can use `OperationCatalog::schemas` instead
     /// to expose their own non-scalar domains without conversion or copying.

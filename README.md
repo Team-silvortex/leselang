@@ -20,6 +20,9 @@ same catalog to other running macOS application bundles.
 The separate [widgets catalog](docs/macos-ax-widgets.md) adds scoped popup menus,
 checkbox state, item selection and scrollbar positioning without changing the
 existing controls interface.
+The [TypeScript host](docs/typescript-host.md) extends the same contract into
+registered JavaScript objects and a real Tauri WebView. The VM stays in Rust;
+input handling, asynchronous Save behavior and application state live in TypeScript.
 No Gewyvern, Leserpent, SQLite,
 Node.js, Python or shell runtime is required by this workspace.
 
@@ -30,6 +33,7 @@ and lint tools in `rust-toolchain.toml`.
 
 ```sh
 cargo fetch --locked
+cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- describe
 cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- check examples/arithmetic.lese
 cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/arithmetic.lese
 cargo run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/two_effects.lese --allow stdio
@@ -48,6 +52,23 @@ validation and permissions when switching tasks.
 Use `--text NAME VALUE` to pass required string inputs as data to a task;
 [`check` validates the same inputs](docs/language.md#supply-text-inputs) without
 running callbacks. The source can stay unchanged between invocations.
+Use `leselang describe` to obtain the registered host catalog as versioned JSON,
+without source or permission grants. AppKit, AX and Tauri offer offline `--describe`
+profiles using the same schema. The [catalog discovery guide](docs/host-discovery.md)
+defines parameter alternatives, native type fields, limits and the distinction
+between supported operations and current resource availability.
+The independent [catalog agent example](docs/agent-workflow.md) reads the actual
+AppKit, TypeScript or Calculator catalog, checks its known semantic contract
+and generates a typed LeseLang task. The same executable fills and saves the
+reference forms or calculates `1 + 2` in the real macOS Calculator through AX.
+Its default mode writes a plan; explicit execution checks both the program
+result and before/after control state.
+The catalog, generated source, inputs and verification report remain available
+in a new output directory. The hosts now publish optional
+[operation semantics and task verification](docs/host-semantics.md), allowing
+the same agent to generate finite workflows and evaluate declared predicates
+for new application profiles without adding a planner branch. Old catalogs
+retain their known strategies; signatures alone do not define GUI task meaning.
 Editors and agents can select `check --diagnostic-format json FILE` or
 `run --diagnostic-format json FILE` for versioned JSON Lines diagnostics on
 standard error. Default text diagnostics and program output remain available;
@@ -90,6 +111,10 @@ compiled program can run with different inputs; startup moves validated values
 into the original VM locals without consuming Fuel. The
 [task input guide](docs/embedding.md#supply-typed-task-inputs) covers all six
 scalar types and startup failures.
+`Host::catalog_description(profile).to_json()` exposes the same registered
+scalar signatures to editors and agents; the original borrowed `describe()`
+view remains available. Native descriptions contain type metadata and
+capability labels, with no executable handles or live grants.
 The same module exposes [structured diagnostics](docs/embedding.md#structured-diagnostics)
 with host-neutral categories and source spans, so custom Rust hosts can present
 errors without decoding CLI text or walking nested compiler errors themselves.
@@ -131,6 +156,52 @@ do not become dependencies of the five language crates or the independent
 consumer. See the [AppKit guide](docs/appkit-host.md) for prerequisites,
 execution boundaries and the scope of the real GUI tests.
 
+## Control TypeScript In A Real WebView
+
+The separate Tauri host uses a small TypeScript adapter to register a real form.
+LeseLang finds its controls, observes their state, changes the input and clicks
+Save. A JavaScript Promise completes through an explicit mutation gate before
+fresh observations verify the result.
+
+```sh
+npm ci --prefix hosts/tauri --ignore-scripts
+npm run build --prefix hosts/tauri
+cargo fetch --manifest-path hosts/tauri/Cargo.toml --locked
+cargo build --manifest-path hosts/tauri/Cargo.toml --locked --offline --profile lean
+target/lean/leselang-tauri-host --text 'TypeScript ✓' --report-json --hold
+```
+
+Desktop execution currently targets macOS. Node.js and TypeScript are needed
+only to build and test this host's frontend; they are not dependencies of the
+language or independent Consumer. The same catalog agent accepts this host's
+`tauri.typescript` profile and generates the form task from its actual catalog.
+See the [TypeScript host guide](docs/typescript-host.md) for agent invocation,
+object replacement, page lifetime, Promise cancellation and failure evidence.
+
+The adapter core is also available as the independent repository-local
+[`@leselang/bridge`](packages/javascript/package.json) ESM package. Applications
+register their own named controls; the portable Rust driver supports up to 64
+registered objects while retaining local ownership and explicit observation.
+The [JavaScript SDK guide](docs/javascript-sdk.md) demonstrates registration and
+an independent Node.js application that executes real LeseLang Effects without
+Tauri or a graphical session. Its publish handler and state live entirely in
+JavaScript, and its failure test preserves a committed publish before reporting
+failure.
+
+The [in-app agent entry](docs/agent-entry.md) connects a conversation UI to an
+application-selected provider, LeseLang execution and application verification.
+`leselang-tauri-host --agent` keeps the reference app open for sequential tasks.
+Its labelled offline planner reads declared tasks from the semantic catalog
+and accepts `task TASK:input` or `task TASK` for no-input work. The Tauri task
+entry binds declared names such as `message` and returns typed scalar values;
+the same conversation can inspect controls, save a message and verify each
+result. `保存：…` / `save:…` remain local aliases for the reference form's task.
+Use `--describe-agent` to inspect these contracts without starting a GUI. The
+same public SDK provider drives the independent
+JavaScript consumer's custom publish workflow through the real Rust VM.
+It does not call a model service. The provider interface is replaceable, while task isolation,
+cancellation and result verification remain with the SDK and host.
+
 ## Run A Scoped External GUI Host
 
 The [macOS Accessibility adapter](docs/macos-ax-host.md) has TextEdit and
@@ -169,6 +240,11 @@ Calculator starts with 2,000 Fuel; TextEdit keeps its 1,000-Fuel budget.
 The ten-Effect Calculator flow has been verified against Calculator 12.0 on
 macOS 27.0.1, including separate inspection of the result and last expression
 in the real window. `--run FILE` supplies independent source for either selected profile.
+Calculator also supports `--report-json`. The same independent catalog agent
+selects it with `--host-arg --calculator --task calculate_one_plus_two`, then
+verifies both `3` and the expression `1 + 2`; see the
+[cross-application workflow](docs/agent-workflow.md). A nonzero initial display
+ends the generated task after two read Effects without pressing a button.
 
 For individual control discovery, opt into the shared controls catalog:
 

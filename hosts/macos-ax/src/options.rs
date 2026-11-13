@@ -13,11 +13,12 @@ pub const INITIAL: &str = "LeseLang AX initial\n";
 #[cfg(target_os = "macos")]
 pub const EXPECTED: &str = "LeseLang cross-process ✓\n";
 pub const MAX_SOURCE_BYTES: usize = 16 * 1024;
-pub const HELP: &str = "LeseLang macOS Accessibility host\n  --prepare FILE                  Create a new plain-text test document (never overwrite)\n  --check-permission              Check this process's Accessibility access without prompting\n  --document FILE [--run SOURCE]   Drive exactly that already-open TextEdit document\n  --calculator [--run SOURCE]      Drive Calculator's supported basic-mode window\n  --app ABS_APP [--pid PID]       Select an already-running .app executable instance\n  --windows                      List windows of --app without reading controls\n  --window-title TITLE           Match an exact window title\n  --window-id IDENTIFIER         Match an exact window identifier\n  --window-document FILE         Match an exact local document path\n  --controls                     Use the per-control catalog in the selected scope\n  --widgets                      Opt in to common widgets (requires --app and window)\n  --wait-values                  Add gui.wait_value to --widgets --run; CLI schedules explicit steps\n  --wait-states                  Add value/checked/selected/position waits to --widgets --run\n  --auxiliary-processes          Inspect foreign process frontiers of an exact window (read only)\n  --allow-auxiliary PID START_SECONDS START_MICROS EXECUTABLE\n                                 Explicit widget grant; repeat for at most four processes\n  --entry NAME                   Select a task entry with --controls --run\n  --text NAME VALUE              Supply a string task input; repeat up to eight times\n  --discover                     Print bounded metadata (requires --controls or --widgets)\n  --help                         Show usage\nRequires macOS 14+, the selected application already open and Accessibility access.\nTextEdit uses 1000 Fuel; its default program requires the exact initial test text.\nCalculator uses 2000 Fuel; its default program requires display 0 before 1 + 2 =.\nThe legacy Calculator demo supports the observed English basic-mode interface.\nControl mode requires --discover or --run SOURCE and uses 10000 Fuel for source.\nWith --app, use --windows or --controls/--widgets with an exact window field.\nWindow fields combine; missing or multiple matches fail. No focused-window fallback.\nDiscovery keys are connection-local; use exact selectors in later runs.\nAuxiliary discovery does not authorize access; grants require complete reviewed identities.\nThis host does not open apps, clear Calculator, change OS permissions, save documents\nor retry uncertain actions. Source files are limited to 16384 UTF-8 bytes.";
+pub const HELP: &str = "LeseLang macOS Accessibility host\n  --describe                     Print offline catalog JSON (default: TextEdit)\n                                 Optional profile: --calculator, --controls or --widgets\n                                 Widgets may add --wait-values or --wait-states\n  --prepare FILE                  Create a new plain-text test document (never overwrite)\n  --check-permission              Check this process's Accessibility access without prompting\n  --document FILE [--run SOURCE]   Drive exactly that already-open TextEdit document\n  --calculator [--run SOURCE]      Drive Calculator's supported basic-mode window\n  --report-json                  With --calculator: bounded JSON workflow verification\n                                 Extra native before/after reads are outside VM Effects/Fuel\n  --app ABS_APP [--pid PID]       Select an already-running .app executable instance\n  --windows                      List windows of --app without reading controls\n  --window-title TITLE           Match an exact window title\n  --window-id IDENTIFIER         Match an exact window identifier\n  --window-document FILE         Match an exact local document path\n  --controls                     Use the per-control catalog in the selected scope\n  --widgets                      Opt in to common widgets (requires --app and window)\n  --wait-values                  Add gui.wait_value to --widgets --run; CLI schedules explicit steps\n  --wait-states                  Add value/checked/selected/position waits to --widgets --run\n  --auxiliary-processes          Inspect foreign process frontiers of an exact window (read only)\n  --allow-auxiliary PID START_SECONDS START_MICROS EXECUTABLE\n                                 Explicit widget grant; repeat for at most four processes\n  --entry NAME                   Select a task entry with --controls --run\n  --text NAME VALUE              Supply a string task input; repeat up to eight times\n  --discover                     Print bounded metadata (requires --controls or --widgets)\n  --help                         Show usage\nGUI execution requires macOS 14+, an already-open application and Accessibility access.\nOffline --describe requires no application, window, permission check or desktop session.\nTextEdit uses 1000 Fuel; its default program requires the exact initial test text.\nCalculator uses 2000 Fuel; its default program requires display 0 before 1 + 2 =.\nThe legacy Calculator demo supports the observed English basic-mode interface.\nControl mode requires --discover or --run SOURCE and uses 10000 Fuel for source.\nWith --app, use --windows or --controls/--widgets with an exact window field.\nWindow fields combine; missing or multiple matches fail. No focused-window fallback.\nDiscovery keys are connection-local; use exact selectors in later runs.\nAuxiliary discovery does not authorize access; grants require complete reviewed identities.\nThis host does not open apps, clear Calculator, change OS permissions, save documents\nor retry uncertain actions. Source files are limited to 16384 UTF-8 bytes.";
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Options {
     Help,
+    Describe(leselang_macos_ax_host::discovery::Profile),
     Permission,
     Prepare(PathBuf),
     Run {
@@ -26,6 +27,7 @@ pub enum Options {
     },
     Calculator {
         source: Option<PathBuf>,
+        report_json: bool,
     },
     Controls {
         scope: ControlScope,
@@ -73,11 +75,13 @@ impl Options {
         let mut arguments: Vec<(String, ScalarValue)> = Vec::new();
         let mut mode = None;
         let mut calculator = false;
+        let mut report_json = false;
         let mut controls = false;
         let mut widgets = false;
         let mut wait_values = false;
         let mut wait_states = false;
         let mut discover = false;
+        let mut describe = false;
         let mut application = None;
         let mut pid = None;
         let mut windows = false;
@@ -187,6 +191,11 @@ impl Options {
                     return Err("duplicate --calculator".into());
                 }
                 calculator = true;
+            } else if arg == "--report-json" {
+                if report_json {
+                    return Err("duplicate --report-json".into());
+                }
+                report_json = true;
             } else if arg == "--controls" {
                 if controls {
                     return Err("duplicate --controls".into());
@@ -207,6 +216,11 @@ impl Options {
                     return Err("duplicate --wait-states".into());
                 }
                 wait_states = true;
+            } else if arg == "--describe" {
+                if describe {
+                    return Err("duplicate --describe".into());
+                }
+                describe = true;
             } else if arg == "--discover" {
                 if discover {
                     return Err("duplicate --discover".into());
@@ -231,6 +245,64 @@ impl Options {
                     return Err("choose one action".into());
                 }
             }
+        }
+        if describe {
+            use leselang_macos_ax_host::discovery::Profile;
+            if mode.is_some()
+                || document.is_some()
+                || source.is_some()
+                || entry.is_some()
+                || !arguments.is_empty()
+                || discover
+                || application.is_some()
+                || pid.is_some()
+                || windows
+                || auxiliary_processes
+                || !auxiliaries.is_empty()
+                || window_title.is_some()
+                || window_identifier.is_some()
+                || window_document.is_some()
+                || report_json
+            {
+                return Err("--describe accepts only a catalog profile and its wait option".into());
+            }
+            if usize::from(calculator) + usize::from(controls) + usize::from(widgets) > 1 {
+                return Err("--describe requires one catalog profile".into());
+            }
+            if wait_values && wait_states {
+                return Err("choose --wait-values or --wait-states".into());
+            }
+            if (wait_values || wait_states) && !widgets {
+                return Err("catalog wait options require --widgets".into());
+            }
+            return Ok(Self::Describe(if widgets {
+                if wait_states {
+                    Profile::WidgetsWithStateWaits
+                } else if wait_values {
+                    Profile::WidgetsWithValueWaits
+                } else {
+                    Profile::Widgets
+                }
+            } else if controls {
+                Profile::Controls
+            } else if calculator {
+                Profile::Calculator
+            } else {
+                Profile::TextEdit
+            }));
+        }
+        if report_json
+            && (!calculator
+                || controls
+                || widgets
+                || mode.is_some()
+                || discover
+                || document.is_some()
+                || application.is_some()
+                || entry.is_some()
+                || !arguments.is_empty())
+        {
+            return Err("--report-json requires the standalone --calculator profile".into());
         }
         if (entry.is_some() || !arguments.is_empty())
             && (!controls || widgets || discover || source.is_none() || mode.is_some())
@@ -399,7 +471,10 @@ impl Options {
             if document.is_some() {
                 return Err("choose --document or --calculator".into());
             }
-            return Ok(Self::Calculator { source });
+            return Ok(Self::Calculator {
+                source,
+                report_json,
+            });
         }
         if let Some(document) = document {
             return Ok(Self::Run { document, source });
@@ -911,12 +986,16 @@ mod tests {
         let parse = |args: &[&str]| Options::parse(args.iter().map(OsString::from));
         assert_eq!(
             parse(&["--calculator"]).unwrap(),
-            Options::Calculator { source: None }
+            Options::Calculator {
+                source: None,
+                report_json: false
+            }
         );
         assert_eq!(
             parse(&["--run", "calc.lese", "--calculator"]).unwrap(),
             Options::Calculator {
-                source: Some("calc.lese".into())
+                source: Some("calc.lese".into()),
+                report_json: false,
             }
         );
         for args in [
@@ -928,6 +1007,62 @@ mod tests {
             &["--calculator", "--help"],
             &["--calculator", "--run"],
             &["--calculator", "--run", "a", "--run", "b"],
+        ] {
+            assert!(parse(args).is_err(), "{args:?}");
+        }
+    }
+    #[test]
+    fn json_reporting_is_an_explicit_calculator_only_mode() {
+        let parse = |args: &[&str]| Options::parse(args.iter().map(OsString::from));
+        assert_eq!(
+            parse(&["--calculator", "--report-json"]).unwrap(),
+            Options::Calculator {
+                source: None,
+                report_json: true
+            }
+        );
+        assert_eq!(
+            parse(&["--report-json", "--run", "agent.lese", "--calculator"]).unwrap(),
+            Options::Calculator {
+                source: Some("agent.lese".into()),
+                report_json: true
+            }
+        );
+        for args in [
+            &["--report-json"][..],
+            &["--report-json", "--run", "agent.lese"],
+            &["--calculator", "--report-json", "--report-json"],
+            &["--calculator", "--report-json", "--describe"],
+            &[
+                "--calculator",
+                "--report-json",
+                "--controls",
+                "--run",
+                "agent.lese",
+            ],
+            &["--report-json", "--document", "test.txt"],
+            &[
+                "--report-json",
+                "--widgets",
+                "--app",
+                "/Applications/Example.app",
+                "--window-title",
+                "Example",
+                "--discover",
+            ],
+            &["--report-json", "--prepare", "test.txt"],
+            &["--calculator", "--report-json", "--pid", "123"],
+            &[
+                "--calculator",
+                "--report-json",
+                "--window-title",
+                "Calculator",
+            ],
+            &["--calculator", "--report-json", "--entry", "main"],
+            &["--calculator", "--report-json", "--wait-values"],
+            &["--calculator", "--report-json", "--wait-states"],
+            &["--calculator", "--report-json", "--check-permission"],
+            &["--calculator", "--report-json", "--help"],
         ] {
             assert!(parse(args).is_err(), "{args:?}");
         }

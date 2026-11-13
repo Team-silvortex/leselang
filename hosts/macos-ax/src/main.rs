@@ -14,6 +14,17 @@ fn execute() -> Result<(), String> {
             println!("{}", options::HELP);
             Ok(())
         }
+        options::Options::Describe(profile) => {
+            use std::io::Write;
+            let json = leselang_macos_ax_host::discovery::describe_json(profile)?;
+            let mut output = std::io::stdout().lock();
+            output
+                .write_all(json.as_bytes())
+                .and_then(|()| output.flush())
+                .map_err(|error| {
+                    format!("cannot write catalog description: {error}; output may be partial")
+                })
+        }
         options::Options::Prepare(path) => {
             options::prepare(&path)?;
             println!(
@@ -32,9 +43,12 @@ fn execute() -> Result<(), String> {
             let custom_source = source.as_deref().map(options::load_source).transpose()?;
             run(&document, custom_source.as_deref())
         }
-        options::Options::Calculator { source } => {
+        options::Options::Calculator {
+            source,
+            report_json,
+        } => {
             let custom_source = source.as_deref().map(options::load_source).transpose()?;
-            run_calculator(custom_source.as_deref())
+            run_calculator(custom_source.as_deref(), report_json)
         }
         options::Options::Controls { scope, input } => {
             let (source, task) = match input {
@@ -117,10 +131,21 @@ fn run(_document: &std::path::Path, _source: Option<&str>) -> Result<(), String>
 }
 
 #[cfg(target_os = "macos")]
-fn run_calculator(source: Option<&str>) -> Result<(), String> {
-    use leselang_macos_ax_host::{calculator, calculator_access::CalculatorAccess};
+fn run_calculator(source: Option<&str>, report_json: bool) -> Result<(), String> {
+    use leselang_macos_ax_host::{
+        calculator, calculator_access::CalculatorAccess, calculator_report,
+    };
     use leselang_vm::native::core::ScalarValue;
     let backend = CalculatorAccess::connect().map_err(|error| error.to_string())?;
+    if report_json {
+        let report = calculator_report::run(&backend, source.unwrap_or(calculator::PROGRAM))?;
+        report.write_to(&mut std::io::stdout().lock())?;
+        return if report.verified() {
+            Ok(())
+        } else {
+            Err("Calculator workflow verification failed; report preserves the observed result; native effects remain; do not retry automatically".into())
+        };
+    }
     let summary = calculator::run(&backend, source.unwrap_or(calculator::PROGRAM))?;
     if source.is_none() && summary.value != ScalarValue::String("3".into()) {
         return Err(format!(
@@ -137,7 +162,7 @@ fn run_calculator(source: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 #[cfg(not(target_os = "macos"))]
-fn run_calculator(_source: Option<&str>) -> Result<(), String> {
+fn run_calculator(_source: Option<&str>, _report_json: bool) -> Result<(), String> {
     Err("this adapter requires macOS 14+".into())
 }
 

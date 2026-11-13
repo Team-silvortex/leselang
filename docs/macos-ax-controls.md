@@ -21,6 +21,55 @@ not expand authority beyond the host's selected application instance and window.
 The [Accessibility host guide](macos-ax-host.md) covers building the host,
 preparing a disposable TextEdit file and checking existing Accessibility access.
 
+## Discover The Catalog Offline
+
+`--describe` emits the selected host's operation and type metadata as one JSON
+object followed by LF. It creates no backend or session, reads no source file,
+connects to no application and performs no Accessibility permission check.
+It can run before a GUI application is available:
+
+```sh
+target/lean/leselang-macos-ax-host --describe --controls
+target/lean/leselang-macos-ax-host --describe --widgets --wait-states
+```
+
+| Description options | Profile | Operations |
+| --- | --- | --- |
+| `--describe` | `macos_ax.textedit` | 3 |
+| `--describe --calculator` | `macos_ax.calculator` | 3 |
+| `--describe --controls` | `macos_ax.controls` | 6 |
+| `--describe --widgets` | `macos_ax.widgets` | 13 |
+| `--describe --widgets --wait-values` | `macos_ax.widgets.wait_values` | 14 |
+| `--describe --widgets --wait-states` | `macos_ax.widgets.wait_states` | 17 |
+
+Choose one profile. Wait options require widgets and remain mutually exclusive.
+Scope, document, application, window, source, entry, task-input, permission-check
+and `--discover` flags cannot be combined with `--describe`.
+
+The JSON includes `schema_version`, `protocol_version`, `catalog_version`,
+`profile`, declaration-ordered `operations` and `native_types`. Each operation
+reports its named parameters, required flags, accepted types, result type and
+required capability label. `gui.read` and `gui.write` describe policy; they are
+not granted permissions. Native `object` is opaque, while `snapshot` lists the
+scalar fields admitted by that exact profile. For example, TextEdit's `value`
+is `string`; controls and widgets expose it as `optional_string`. Neither live
+object references nor observations appear in this metadata.
+The [shared discovery guide](host-discovery.md) specifies the JSON schema,
+encoding limits and compatibility rules used by all reference hosts.
+
+Rust callers use `leselang_macos_ax_host::discovery::{describe, Profile}` and
+`describe(Profile::Controls)` without supplying a backend. The returned shared
+`CatalogDescription` has a bounded `to_json()` encoder. The same catalog-row
+builder supplies live result domains and offline descriptions, and native type
+aliases and field names share the compiler's source mapping. Discovery does
+not publish a second hand-maintained operation registry.
+
+Success writes only JSON to stdout. A description or output error reports a
+failure on stderr; a write failure can leave partial stdout and is not retried.
+Descriptions are complete before writing begins. `--describe` discovers what
+the host supports; `--discover` still inspects actual controls inside a chosen
+live application scope under its existing permission checks.
+
 ## Inspect Before Choosing A Control
 
 Use one explicit application scope and request discovery:

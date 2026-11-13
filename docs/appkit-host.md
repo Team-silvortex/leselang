@@ -14,6 +14,38 @@ dispatch. A small Objective-C bridge calls those APIs; the compiler, object
 protocol, Fuel and VM remain the existing Rust implementations. No GUI toolkit
 dependency is added to the five language crates.
 
+## Discover The Catalog Without A GUI
+
+```sh
+cargo run --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean -- --describe
+```
+
+`--describe` emits one JSON object followed by LF and returns before creating
+an AppKit application, window, execution scope or session. It reads no source
+file and invokes no GUI operation. The public Rust function
+`leselang_appkit_host::describe()` also works on an ordinary background thread
+without a `Gui` argument. The metadata API and command path are available on
+non-macOS targets; actual GUI modes still require the platform and desktop
+environment below.
+
+The shared description schema has `schema_version: 1`, `protocol_version: 1`,
+`catalog_version: 1` and `profile: "appkit"`. It describes all five operations,
+their declaration-ordered named parameters, scalar or native types, results
+and required capability labels. Native `object` is opaque; `snapshot` lists
+the eight scalar fields admitted by the compiler. `gui.read` and `gui.write`
+describe policy and grant no authority. A shared row builder supplies both
+this description and the live catalog's independent result domains; compiler
+type aliases and field mappings are also shared.
+See the [shared discovery guide](host-discovery.md) for the common JSON schema,
+encoding limits and compatibility rules.
+
+The command accepts no GUI mode, `--hold`, source or task-input flags alongside
+`--describe`. Success writes only JSON to stdout; failures use stderr. The
+bounded shared `CatalogDescription::to_json()` encoder prepares a complete
+record before writing. An output failure may leave a partial record and is
+not retried. Discovery neither exports native handles nor establishes that a
+particular control exists or is currently authorized.
+
 ## Build And Run
 
 Requirements:
@@ -86,6 +118,49 @@ main-thread ownership, cancellation, Fuel and partial side effects.
 The AppKit and Accessibility catalogs have different operation signatures;
 the AX controls task can be reused across supported applications through its
 [application-scoped adapter](macos-ax-controls.md#reuse-a-task-with-typed-inputs).
+
+## Machine-Readable Execution Reports
+
+For a caller that needs to verify a task result, combine `--run` with
+`--report-json`:
+
+```sh
+cargo run --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean -- \
+  --run hosts/appkit/examples/text_task.lese --entry main \
+  --text name input --text text 'LeseLang typed task ✓' --report-json
+```
+
+On success, stdout contains one JSON object followed by LF. Execution traces
+move to stderr. Without the flag, the existing human-readable output stays
+unchanged. The flag requires `--run` and refuses `--hold`, demonstrations,
+self-tests and catalog discovery, so its successful process exit is a finite
+execution boundary.
+
+The record has `schema_version: 1`, `kind: "appkit_run"` and `profile: "appkit"`.
+`result` contains a scalar `type` and JSON `value`; the type distinguishes, for
+example, `string` from `optional_string`. The record also reports `effects`,
+`fuel_remaining`, `native_before` and `native_after`. Each native snapshot
+projects only `identifier`, `role`, `title`, `value`, `editable`, `enabled` and
+`clicks`. Native pointers, object references and leases are never serialized.
+
+The before/after arrays come from additional native verification reads around
+the run, separate from language Effects and their Fuel. A caller compares these
+values against its own task postconditions. A successful process and a
+submission acknowledgement do not by themselves mean that a task's intended
+state was reached; a program can validly complete with `false`.
+
+The host builds a complete report before writing, with a 128 KiB output bound.
+Write or flush failure returns an error without retry; output or GUI effects
+may already be partial. Runtime failure uses stderr and a nonzero exit, with no
+success report. Reporting does not change the VM budget, live authorization,
+explicit action pump or cancellation behavior.
+
+The [independent catalog agent](agent-workflow.md) consumes this report after
+generating its own nine-Effect form task from the validated catalog. It checks
+the Boolean result, edited input, captured Save value, callback count and
+unchanged public scalar state for `other`, and preserves the evidence for review.
+
+## Native Desktop Checks
 
 For a Finder-launchable local demo, run `hosts/appkit/bundle-demo.sh`. It builds
 `target/LeseLang AppKit Host.app`; opening that bundle runs the form demo with

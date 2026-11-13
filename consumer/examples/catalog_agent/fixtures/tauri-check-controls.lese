@@ -1,0 +1,6 @@
+// Generated from validated host semantic metadata; no retry or scheduler.
+fn _lese_contains(items: string_list, wanted: string) = fold(
+  _lese_found: false, items: items, item: "_lese_item",
+  next: or(left: _lese_found, right: eq(left: _lese_item, right: wanted)), limit: 64
+)
+fn main() = bind(ids: gui.list(), body: choose(when: and(left: _lese_contains(items: ids, wanted: "input"), right: and(left: _lese_contains(items: ids, wanted: "save"), right: _lese_contains(items: ids, wanted: "other"))), then: bind(save_object: gui.find(name: "save"), body: bind(saved: gui.observe(target: save_object), body: choose(when: eq(left: field(value: saved, name: "role"), right: "button"), then: none, otherwise: none))), otherwise: none))

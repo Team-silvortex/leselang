@@ -24,20 +24,35 @@ jobs:
       - run: cargo +1.98.0 test --workspace --all-features --locked --offline --profile lean
       - run: cargo +1.98.0 clippy --workspace --all-features --all-targets --locked --offline --profile lean -- -D warnings
       - run: cargo +1.98.0 test --manifest-path consumer/Cargo.toml --locked --offline --profile lean
+      - name: Test the independent catalog agent without a GUI
+        run: cargo +1.98.0 test --manifest-path consumer/Cargo.toml --example catalog_agent --locked --offline --profile lean
       - run: cargo +1.98.0 clippy --manifest-path consumer/Cargo.toml --all-targets --locked --offline --profile lean -- -D warnings
       - name: Build the real AppKit host
         if: runner.os == 'macOS'
         run: cargo +1.98.0 build --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean
-      - name: Lint the real AppKit host
-        if: runner.os == 'macOS'
+      - name: Lint AppKit catalog metadata and platform boundaries
         run: cargo +1.98.0 clippy --manifest-path hosts/appkit/Cargo.toml --all-targets --locked --offline --profile lean -- -D warnings
-      - name: Test AppKit host ingress and ownership boundaries without a GUI
-        if: runner.os == 'macOS'
+      - name: Test AppKit catalog and ingress without a GUI
         run: cargo +1.98.0 test --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean
+      - name: Generate an agent plan from the actual offline AppKit catalog
+        run: >-
+          cargo +1.98.0 run --manifest-path consumer/Cargo.toml --example catalog_agent
+          --locked --offline --profile lean --
+          --host target/lean/leselang-appkit-host
+          --output "$RUNNER_TEMP/leselang-agent-plan"
+          --text 'LeseLang agent CI'
       - name: Test Accessibility host contracts with a fake transport
         run: cargo +1.98.0 test --manifest-path hosts/macos-ax/Cargo.toml --locked --offline --profile lean
       - name: Lint Accessibility host
         run: cargo +1.98.0 clippy --manifest-path hosts/macos-ax/Cargo.toml --all-targets --locked --offline --profile lean -- -D warnings
+      - name: Generate a second GUI strategy from the actual offline Calculator catalog
+        run: >-
+          cargo +1.98.0 run --manifest-path consumer/Cargo.toml --example catalog_agent
+          --locked --offline --profile lean --
+          --host target/lean/leselang-macos-ax-host
+          --host-arg --calculator
+          --task calculate_one_plus_two
+          --output "$RUNNER_TEMP/leselang-calculator-plan"
       - name: Test Accessibility bridge boundaries without remote GUI calls
         if: runner.os == 'macOS'
         run: sh hosts/macos-ax/test-native.sh
@@ -60,3 +75,50 @@ jobs:
       - run: cargo +1.98.0 run --manifest-path consumer/Cargo.toml --example native_counter --locked --offline --profile lean -- --queued
       - run: cargo +1.98.0 run --manifest-path consumer/Cargo.toml --example native_counter --locked --offline --profile lean -- --queued-cancel-pending
       - run: cargo +1.98.0 run --manifest-path consumer/Cargo.toml --example native_counter --locked --offline --profile lean -- --queued-cancel-reply
+  typescript-host:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.6.0'
+      - run: rustup toolchain install 1.98.0 --profile minimal --component clippy,rustfmt
+      - run: npm ci --prefix packages/javascript --ignore-scripts
+      - run: npm test --prefix packages/javascript
+      - run: npm ci --prefix hosts/tauri --ignore-scripts
+      - run: npm test --prefix hosts/tauri
+      - run: npm ci --prefix consumer/javascript --ignore-scripts
+      - run: cargo +1.98.0 fetch --manifest-path hosts/tauri/Cargo.toml --locked
+      - run: cargo +1.98.0 fetch --manifest-path consumer/Cargo.toml --locked
+      - run: cargo +1.98.0 fmt --manifest-path hosts/tauri/Cargo.toml --all -- --check
+      - run: cargo +1.98.0 test --manifest-path hosts/tauri/Cargo.toml --no-default-features --locked --offline --profile lean
+      - run: cargo +1.98.0 clippy --manifest-path hosts/tauri/Cargo.toml --no-default-features --all-targets --locked --offline --profile lean -- -D warnings
+      - run: cargo +1.98.0 build --manifest-path hosts/tauri/Cargo.toml --no-default-features --example node_host --locked --offline --profile lean
+      - name: Test bounded Node carrier source admission
+        run: cargo +1.98.0 test --manifest-path hosts/tauri/Cargo.toml --no-default-features --example node_host --locked --offline --profile lean
+      - name: Run the independent JavaScript application through the real VM
+        run: npm test --prefix consumer/javascript
+      - name: Test Node carrier preplay and stalled-child failures
+        run: cargo +1.98.0 test --manifest-path hosts/tauri/Cargo.toml --no-default-features --example node_host --locked --offline --profile lean -- --ignored
+      - run: cargo +1.98.0 build --manifest-path hosts/tauri/Cargo.toml --no-default-features --locked --offline --profile lean
+      - name: Generate an agent plan from the actual TypeScript catalog
+        run: >-
+          cargo +1.98.0 run --manifest-path consumer/Cargo.toml --example catalog_agent
+          --locked --offline --profile lean --
+          --host target/lean/leselang-tauri-host
+          --output "$RUNNER_TEMP/leselang-typescript-plan"
+          --text 'TypeScript agent CI'
+      - name: Compile the real Tauri WebView transport
+        if: runner.os == 'macOS'
+        run: cargo +1.98.0 build --manifest-path hosts/tauri/Cargo.toml --locked --offline --profile lean
+      - name: Test Tauri transport boundaries without launching a GUI
+        if: runner.os == 'macOS'
+        run: cargo +1.98.0 test --manifest-path hosts/tauri/Cargo.toml --locked --offline --profile lean
+      - name: Lint the real Tauri transport without launching a GUI
+        if: runner.os == 'macOS'
+        run: cargo +1.98.0 clippy --manifest-path hosts/tauri/Cargo.toml --all-targets --locked --offline --profile lean -- -D warnings

@@ -119,12 +119,58 @@ To run independent source against that profile:
 target/lean/leselang-macos-ax-host --calculator --run hosts/macos-ax/examples/calculator.lese
 ```
 
+For a bounded machine-readable report, add `--report-json`:
+
+```sh
+target/lean/leselang-macos-ax-host --calculator \
+  --run hosts/macos-ax/examples/calculator.lese --report-json
+```
+
+This option is available only with the standalone Calculator profile. It may
+also run the default demonstration when `--run` is omitted; it cannot be
+combined with `--describe`, TextEdit, controls, widgets, task inputs or window
+selectors. Offline discovery remains
+`leselang-macos-ax-host --describe --calculator` and does not touch the GUI.
+
+JSON reporting verifies the specific `1 + 2 = 3` workflow. Standard output
+contains one complete JSON record followed by a newline, bounded to 128 KiB;
+execution diagnostics go to standard error. The record has
+`schema_version: 1`, `profile: "macos_ax.calculator"`,
+`kind: "macos_ax_calculator_run"`, a typed string `result`, `effects`,
+`fuel_remaining`, `verified` and `native_before` / `native_after` arrays.
+Each array contains one public snapshot with `identifier: "calculator"`,
+`role: "AXWindow"`, `display`, nullable `last_expression`, and the four allowed
+buttons' `name` and `enabled` fields. Native object identities and process
+identifiers remain private to the host.
+
+The extra before/after native reads bracket the normal driver and are outside
+the program's Effect count and VM Fuel. Successful verification requires an
+initial display of `0`, a string result of `3`, ten Effects, final display `3`
+and last expression `1 + 2`. The host also checks enabled buttons and the same
+native instance across the initial, program and final observations. A matching
+number alone is insufficient. A completed string-returning program with a
+failed postcondition emits `verified: false` and exits unsuccessfully. An
+execution or native-read failure produces no complete verification report;
+an output failure may leave partial bytes. Neither case retries or undoes
+earlier presses.
+
+The independent [catalog agent](agent-workflow.md) consumes this report through
+the same discovery, generation, execution and verification interface it uses
+for AppKit and TypeScript forms. Select this host with
+`--host-arg --calculator --task calculate_one_plus_two`, with no `--text`.
+The agent validates the actual Calculator catalog before generating its source,
+then independently checks the structured native evidence. The guide includes
+commands for offline planning and explicit execution against the existing
+Calculator window; no run automatically launches, clears or closes Calculator.
+
 `--calculator` and `--document FILE` are mutually exclusive. Source files must
 contain valid UTF-8 and are limited to 16 KiB (16,384 bytes). The TextEdit runner
 starts with 1,000 Fuel; the Calculator runner starts with 2,000. Custom source
-supplies its own checks and final scalar result; the runner does not impose the
-built-in demonstrations' initial or final values. A native object or observation
-cannot escape as the final result: project scalar fields before returning.
+supplies its own checks and final scalar result. In the default text-output
+mode, the runner does not impose the built-in demonstrations' initial or final
+values; Calculator JSON reporting instead checks the reference workflow above.
+A native object or observation cannot escape as the final result: project
+scalar fields before returning.
 Rejecting a native final result does not undo earlier edits or button presses.
 Printed strings escape control characters and are intended for human inspection,
 not as a wire format.

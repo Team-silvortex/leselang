@@ -604,6 +604,21 @@ mod tests {
         assert_eq!(*editor.actions.borrow(), [7]);
     }
 
+    #[test]
+    fn offline_description_matches_live_controls_catalog_and_fields() {
+        let fake = Fake::editor();
+        with_host(&fake, |host, _| {
+            host.set_granted(false);
+            fake.permitted.set(false);
+            crate::host::catalog::assert_live_description(
+                host,
+                crate::discovery::Profile::Controls,
+            );
+        })
+        .unwrap();
+        assert!(fake.actions.borrow().is_empty());
+    }
+
     const TEXT_TASK: &str = include_str!("../examples/controls_text_task.lese");
     fn text_inputs(expected: &str, text: &str) -> Vec<(String, ScalarValue)> {
         // Intentionally submitted in a different order from the source signature.

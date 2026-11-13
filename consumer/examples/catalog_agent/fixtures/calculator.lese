@@ -1,0 +1,27 @@
+// Generated from the validated Calculator catalog. No clear or retry operation.
+fn calculation_matches(observed: snapshot) = and(
+  left: eq(left: field(value: observed, name: "display"), right: "3"),
+  right: eq(left: value_or(left: field(value: observed, name: "last_expression"), right: ""), right: "1 + 2")
+)
+fn main() = bind(
+  target: gui.find(name: "calculator"), body: bind(
+    before: gui.observe(target: target), body: choose(
+      when: eq(left: field(value: before, name: "display"), right: "0"),
+      then: bind(one: gui.press(target: target, expected_revision: field(value: before, name: "revision"), button: "one"), body: bind(
+        after_one: gui.observe(target: target), body: bind(add: gui.press(target: target, expected_revision: field(value: after_one, name: "revision"), button: "add"), body: bind(
+          after_add: gui.observe(target: target), body: bind(two: gui.press(target: target, expected_revision: field(value: after_add, name: "revision"), button: "two"), body: bind(
+            after_two: gui.observe(target: target), body: bind(equals: gui.press(target: target, expected_revision: field(value: after_two, name: "revision"), button: "equals"), body: bind(
+              after: gui.observe(target: target), body: choose(
+                when: and(
+                  left: and(left: and(left: one, right: add), right: and(left: two, right: equals)),
+                  right: calculation_matches(observed: after)
+                ),
+                then: field(value: after, name: "display"), otherwise: "verification failed"
+              )
+            ))
+          ))
+        ))
+      )), otherwise: "initial display mismatch"
+    )
+  )
+)

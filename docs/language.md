@@ -1,6 +1,7 @@
 # LeseLang Scalar Language And CLI
 
-The `leselang` executable formats, checks and runs source. Checking and running
+The `leselang` executable describes its host catalog and formats, checks and
+runs source. Checking and running
 use the current scalar language profile and the same compiler and session
 engine as Rust embedding. Executable programs are UTF-8 source files containing
 `fn` declarations and a selected entry function. The default entry is `main`;
@@ -25,6 +26,7 @@ The arithmetic program prints `42`. The Effect program prints `first` and
 it is then available at `target/lean/leselang`.
 
 ```text
+leselang describe [--diagnostic-format text|json]
 leselang check FILE [--entry NAME] [--text NAME VALUE]... [--allow stdio] [--diagnostic-format text|json]
 leselang run FILE [--entry NAME] [--text NAME VALUE]... [--allow stdio] [--fuel N] [--diagnostic-format text|json]
 leselang fmt FILE [--check] [--diagnostic-format text|json]
@@ -44,7 +46,29 @@ extra line. String results are escaped and quoted; lists use JSON arrays. An
 absent `optional_string` prints `null`, while a present one prints its quoted
 string. `std.print` writes its text directly, without result-value quoting. Diagnostics go to
 standard error. Exit status is `0` for success, `2` for command-line usage
-errors, and `1` for input, formatting, compilation or execution failures.
+errors, and `1` for input, formatting, compilation, execution or discovery failures.
+
+## Inspect The Host Catalog
+
+`leselang describe` writes one versioned JSON catalog record to standard
+output, followed by LF. It describes the same `std.print` registration used by
+`check` and `run`: its required `message: string` operand, `none` result and
+`stdio` capability label. It requires no source file, permission grant or VM
+session and invokes no callback. The output describes supported operations;
+it does not grant the listed capability.
+
+```sh
+target/lean/leselang describe
+target/lean/leselang describe --diagnostic-format json
+```
+
+Both commands emit the same catalog format. `--diagnostic-format` affects
+errors on standard error only. `describe` accepts no file or execution options
+such as `--allow`, `--fuel`, `--entry` or `--text`. Registration or encoding
+failure uses `LSD0001`; output write/flush failure uses `LSD0002` without retry.
+The [host discovery guide](host-discovery.md) specifies the shared JSON schema,
+256 KiB encoded output cap and offline AppKit/AX profiles. Host catalogs list
+host operations, not the pure language builtins or a source file's task entries.
 
 ## Select An Entry Function
 
@@ -224,9 +248,9 @@ The version 1 diagnostic record has these fields:
 | --- | --- |
 | `schema_version` | Integer `1`, identifying this CLI diagnostic presentation schema. |
 | `severity` | `"error"`. |
-| `phase` | `"syntax"`, `"compile"`, `"runtime"`, `"input"`, `"usage"` or `"format"`. |
-| `code` | Original parser `LSE...` code, or `LSC0001` for compilation, `LSR0001` for runtime, `LSI0001` for source input, `LSI0002` for task-input binding and `LSU0001` for usage failures. Formatting uses `LSF0001` for a `--check` difference, `LSF0002` for output exceeding the CLI limit and `LSF0003` for an output write failure; the syntax formatter's `LSE2002` output-limit error also has phase `format`. |
-| `kind` | Public diagnostic category: `syntax`, `compilation`, `unknown_operation`, `capability_denied`, `runtime` or `host_uncertain`; CLI presentation adds `input`, `usage` and `format`. |
+| `phase` | `"syntax"`, `"compile"`, `"runtime"`, `"input"`, `"usage"`, `"format"` or `"discovery"`. |
+| `code` | Original parser `LSE...` code, or `LSC0001` for compilation, `LSR0001` for runtime, `LSI0001` for source input, `LSI0002` for task-input binding and `LSU0001` for usage failures. Formatting uses `LSF0001` for a `--check` difference, `LSF0002` for output exceeding the CLI limit and `LSF0003` for an output write failure; the syntax formatter's `LSE2002` output-limit error also has phase `format`. Discovery uses `LSD0001` for registration/encoding failures and `LSD0002` for output failure. |
+| `kind` | Public diagnostic category: `syntax`, `compilation`, `unknown_operation`, `capability_denied`, `runtime` or `host_uncertain`; CLI presentation adds `input`, `usage`, `format` and `discovery`. |
 | `message` | Descriptive text, bounded to 512 Unicode scalar values. Wording is not a parsing contract. |
 | `path` | Input path display text, or `null` when no path applies. Non-UTF-8 operating-system paths use a lossy UTF-8 display; this is not a round-trippable file identifier. Standard input uses `"-"`. |
 | `path_truncated` | Whether the displayed path was shortened to 256 Unicode scalar values. |

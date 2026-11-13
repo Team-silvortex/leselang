@@ -1,0 +1,16 @@
+{
+  "name": "leselang-typescript-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --project ../../packages/javascript/tsconfig.json && tsc && node frontend/build.mjs",
+    "test": "npm run build && node --test ../../packages/javascript/test/*.test.mjs frontend/form.test.mjs frontend/offline-provider.test.mjs frontend/agent-host.test.mjs frontend/result-display.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "https://registry.npmjs.org/typescript/-/typescript-5.9.3.tgz"
+  },
+  "dependencies": {
+    "@leselang/bridge": "file:../../packages/javascript"
+  }
+}

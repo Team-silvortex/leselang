@@ -686,6 +686,30 @@ mod tests {
         changes: Cell<usize>,
         behavior: Cell<u8>,
     }
+    #[test]
+    fn offline_descriptions_match_each_live_widget_catalog_and_fields() {
+        use crate::discovery::Profile;
+        for profile in [
+            Profile::Widgets,
+            Profile::WidgetsWithValueWaits,
+            Profile::WidgetsWithStateWaits,
+        ] {
+            let fake = Fake::new();
+            let check = |host: &crate::host::Host<'_, '_, WidgetSnapshot>, _| {
+                host.set_granted(false);
+                fake.permitted.set(false);
+                crate::host::catalog::assert_live_description(host, profile);
+            };
+            match profile {
+                Profile::Widgets => with_host(&fake, check),
+                Profile::WidgetsWithValueWaits => with_wait_host(&fake, check),
+                Profile::WidgetsWithStateWaits => with_state_wait_host(&fake, check),
+                _ => unreachable!(),
+            }
+            .unwrap();
+            assert!(fake.calls.borrow().is_empty());
+        }
+    }
     impl Fake {
         fn new() -> Self {
             let mut popup = widget(1, "AXPopUpButton", "format");

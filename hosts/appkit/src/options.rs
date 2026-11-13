@@ -1,13 +1,14 @@
 //! Host CLI ingress and scalar display; independent of AppKit and its main thread.
 use leselang_vm::native::core::ScalarValue;
-use std::{
-    ffi::OsString,
-    io::Read,
-    path::{Path, PathBuf},
-};
+#[cfg(any(target_os = "macos", test))]
+use std::io::Read;
+#[cfg(target_os = "macos")]
+use std::path::Path;
+use std::{ffi::OsString, path::PathBuf};
 
+#[cfg(any(target_os = "macos", test))]
 pub const MAX_SOURCE_BYTES: usize = 16 * 1024;
-pub const HELP: &str = "LeseLang AppKit host\n  --demo [--hold]         Discover controls, fill input, submit and verify (default)\n  --button-demo [--hold]  Run the original button-only demo\n  --run FILE [--hold]     Run a bounded UTF-8 LeseLang source file\n  --entry NAME           Select a task entry with --run\n  --text NAME VALUE      Supply a string task input; repeat up to eight times\n  --self-test            Run real GUI conformance on the main thread\nRequires macOS 14+ and a logged-in graphical desktop.";
+pub const HELP: &str = "LeseLang AppKit host\n  --describe            Print offline catalog JSON without creating a GUI\n  --demo [--hold]         Discover controls, fill input, submit and verify (default)\n  --button-demo [--hold]  Run the original button-only demo\n  --run FILE [--hold]     Run a bounded UTF-8 LeseLang source file\n  --report-json          With --run, emit one JSON result and native snapshots\n  --entry NAME           Select a task entry with --run\n  --text NAME VALUE      Supply a string task input; repeat up to eight times\n  --self-test            Run real GUI conformance on the main thread\nGUI modes require macOS 14+ and a logged-in graphical desktop.\nOffline --describe creates no GUI and is available on every target platform.";
 #[derive(Debug, Eq, PartialEq)]
 pub enum Mode {
     Form,
@@ -15,11 +16,13 @@ pub enum Mode {
     Run(PathBuf),
     SelfTest,
     Help,
+    Describe,
 }
 #[derive(Debug, Eq, PartialEq)]
 pub struct Options {
     pub mode: Mode,
     pub hold: bool,
+    pub report_json: bool,
     pub entry: Option<String>,
     pub arguments: Vec<(String, ScalarValue)>,
 }
@@ -28,9 +31,17 @@ impl Options {
         let mut args = args.into_iter();
         let mut mode = None;
         let mut hold = false;
+        let mut report_json = false;
         let mut entry = None;
         let mut arguments: Vec<(String, ScalarValue)> = Vec::new();
         while let Some(arg) = args.next() {
+            if arg == "--report-json" {
+                if report_json {
+                    return Err("duplicate --report-json".into());
+                }
+                report_json = true;
+                continue;
+            }
             if arg == "--entry" {
                 let value = task_name(args.next(), "--entry")?;
                 if entry.replace(value).is_some() {
@@ -66,6 +77,8 @@ impl Options {
                 Mode::Form
             } else if arg == "--button-demo" {
                 Mode::Buttons
+            } else if arg == "--describe" {
+                Mode::Describe
             } else if arg == "--self-test" {
                 Mode::SelfTest
             } else if arg == "--help" || arg == "-h" {
@@ -75,20 +88,27 @@ impl Options {
             };
             if mode.replace(selected).is_some() {
                 return Err(
-                    "choose one of --demo, --button-demo, --run, --self-test or --help".into(),
+                    "choose one of --demo, --button-demo, --run, --self-test, --describe or --help"
+                        .into(),
                 );
             }
         }
         let mode = mode.unwrap_or(Mode::Form);
-        if hold && matches!(mode, Mode::Help | Mode::SelfTest) {
+        if hold && matches!(mode, Mode::Help | Mode::SelfTest | Mode::Describe) {
             return Err("--hold is only available for a program run".into());
         }
         if (entry.is_some() || !arguments.is_empty()) && !matches!(mode, Mode::Run(_)) {
             return Err("--entry and --text require --run FILE".into());
         }
+        if report_json && (!matches!(mode, Mode::Run(_)) || hold) {
+            return Err(
+                "--report-json requires --run FILE and cannot be combined with --hold".into(),
+            );
+        }
         Ok(Self {
             mode,
             hold,
+            report_json,
             entry,
             arguments,
         })
@@ -101,10 +121,12 @@ fn task_name(value: Option<OsString>, flag: &str) -> Result<String, String> {
         .filter(|name| leselang_vm::native::hir::pure_typing::valid_local_name(name))
         .ok_or_else(|| format!("{flag} requires an ASCII identifier of 1 to 64 bytes"))
 }
+#[cfg(target_os = "macos")]
 pub fn load_source(path: &Path) -> Result<String, String> {
     let file = std::fs::File::open(path).map_err(|e| format!("cannot open {path:?}: {e}"))?;
     read_source(file)
 }
+#[cfg(any(target_os = "macos", test))]
 fn read_source(input: impl Read) -> Result<String, String> {
     let mut bytes = Vec::new();
     input
@@ -117,6 +139,7 @@ fn read_source(input: impl Read) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| "source is not valid UTF-8".into())
 }
 // Bounded human-readable scalar output, not a wire codec or native handle format.
+#[cfg(any(target_os = "macos", test))]
 pub fn render_value(value: &ScalarValue) -> String {
     match value {
         ScalarValue::Integer(value) => value.to_string(),
@@ -145,6 +168,7 @@ mod tests {
             Options {
                 mode: Mode::Run("form.lese".into()),
                 hold: true,
+                report_json: false,
                 entry: None,
                 arguments: Vec::new(),
             }
@@ -158,6 +182,26 @@ mod tests {
             &["--invalid"],
         ] {
             assert!(parse(args).is_err(), "{args:?}");
+        }
+    }
+    #[test]
+    fn json_reports_require_a_noninteractive_file_run() {
+        let options =
+            parse(&["--report-json", "--run", "task.lese", "--text", "text", "✓"]).unwrap();
+        assert!(options.report_json);
+        assert_eq!(options.mode, Mode::Run("task.lese".into()));
+        assert!(!parse(&["--run", "task.lese"]).unwrap().report_json);
+        for args in [
+            vec!["--report-json"],
+            vec!["--report-json", "--demo"],
+            vec!["--report-json", "--button-demo"],
+            vec!["--report-json", "--self-test"],
+            vec!["--report-json", "--describe"],
+            vec!["--report-json", "--help"],
+            vec!["--report-json", "--run", "task.lese", "--hold"],
+            vec!["--run", "task.lese", "--report-json", "--report-json"],
+        ] {
+            assert!(parse(&args).is_err(), "{args:?}");
         }
     }
     #[test]

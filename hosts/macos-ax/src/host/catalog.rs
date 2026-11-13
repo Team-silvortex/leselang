@@ -8,6 +8,10 @@ use catalog_program::{
 use catalog_source::{CatalogSourceEnvironment, CatalogSourceLimits};
 use control_source::ControlSourceLimits;
 use flow_typing::CallFlowEnvironment;
+use leselang_vm::native::core::discovery::{
+    CatalogDescription, FieldDescription, NativeTypeDescription, OperationDescription,
+    ParameterDescription, TypeDescription,
+};
 use leselang_vm::native::syntax::parse;
 use pure_typing::{PureType, PureTypeEnvironment};
 use source_call::{SourceCallHost, SourceCallLimits};
@@ -15,6 +19,195 @@ use source_call::{SourceCallHost, SourceCallLimits};
 const CATALOG_VERSION: u32 = 1;
 const READ: u8 = 1;
 const WRITE: u8 = 2;
+
+const NATIVE_TYPES: [(&str, NativeType); 2] = [
+    ("object", NativeType::Object),
+    ("snapshot", NativeType::Snapshot),
+];
+const SOURCE_FIELDS: &[(&str, Field)] = &[
+    ("document", Field::Document),
+    ("role", Field::Role),
+    ("value", Field::Value),
+    ("editable", Field::Editable),
+    ("revision", Field::Revision),
+    ("display", Field::Display),
+    ("buttons", Field::Buttons),
+    ("last_expression", Field::LastExpression),
+    ("key", Field::Key),
+    ("identifier", Field::Identifier),
+    ("label", Field::Label),
+    ("enabled", Field::Enabled),
+    ("pressable", Field::Pressable),
+    ("actions", Field::Actions),
+    ("check_state", Field::CheckState),
+    ("selected", Field::Selected),
+    ("selection_available", Field::SelectionAvailable),
+    ("selected_keys", Field::SelectedKeys),
+    ("position", Field::Position),
+    ("position_available", Field::PositionAvailable),
+    ("orientation", Field::Orientation),
+    ("parent_key", Field::ParentKey),
+];
+
+fn native_type(name: &str) -> Option<NativeType> {
+    NATIVE_TYPES
+        .iter()
+        .find_map(|(key, ty)| (*key == name).then_some(*ty))
+}
+
+fn result_type(kind: ResultKind) -> PureType<NativeType> {
+    match kind {
+        ResultKind::Keys => PureType::Scalar(ScalarType::StringList),
+        ResultKind::Object => PureType::Result(NativeType::Object),
+        ResultKind::Snapshot | ResultKind::WaitSnapshot => PureType::Result(NativeType::Snapshot),
+        ResultKind::Submitted => PureType::Scalar(ScalarType::Boolean),
+    }
+}
+
+fn describe_type(ty: PureType<NativeType>) -> TypeDescription {
+    match ty {
+        PureType::Scalar(ty) => TypeDescription::Scalar(ty),
+        PureType::Result(ty) => TypeDescription::Native(
+            NATIVE_TYPES
+                .iter()
+                .find(|(_, candidate)| *candidate == ty)
+                .expect("every native type has a source alias")
+                .0
+                .into(),
+        ),
+    }
+}
+
+pub(crate) fn describe<S: ProfileSnapshot>(
+    profile: &str,
+    source_waits: SourceWaitCatalog,
+) -> Result<CatalogDescription, Error> {
+    with_metadata_catalog::<S, _, _>(
+        source_waits,
+        |kind| kind,
+        |catalog| CatalogDescription {
+            profile: profile.into(),
+            catalog_version: catalog.version(),
+            operations: catalog
+                .schemas()
+                .iter()
+                .map(|schema| OperationDescription {
+                    name: schema.key.into(),
+                    parameters: schema
+                        .parameters
+                        .iter()
+                        .map(|parameter| ParameterDescription {
+                            name: parameter.name.into(),
+                            required: parameter.required,
+                            types: match parameter.domain {
+                                ArgumentDomain::Scalar(types) => {
+                                    types.iter().map(TypeDescription::Scalar).collect()
+                                }
+                                ArgumentDomain::Object => {
+                                    vec![describe_type(PureType::Result(NativeType::Object))]
+                                }
+                            },
+                        })
+                        .collect(),
+                    result: describe_type(result_type(schema.result)),
+                    required_capability: match schema.required_capability {
+                        READ => "gui.read",
+                        WRITE => "gui.write",
+                        _ => unreachable!("private catalog capability"),
+                    }
+                    .into(),
+                })
+                .collect(),
+            native_types: NATIVE_TYPES
+                .iter()
+                .map(|(name, ty)| NativeTypeDescription {
+                    name: (*name).into(),
+                    fields: SOURCE_FIELDS
+                        .iter()
+                        .filter_map(|(name, field)| {
+                            if *ty != NativeType::Snapshot {
+                                return None;
+                            }
+                            S::field_type(*field).map(|scalar_type| FieldDescription {
+                                name: (*name).into(),
+                                scalar_type,
+                            })
+                        })
+                        .collect(),
+                })
+                .collect(),
+        },
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn assert_live_description<S: ProfileSnapshot>(
+    host: &Host<'_, '_, S>,
+    profile: crate::discovery::Profile,
+) {
+    let description = crate::discovery::describe(profile).unwrap();
+    assert_eq!(description.catalog_version, host.catalog.version());
+    assert_eq!(description.operations.len(), host.catalog.schemas().len());
+    for (described, live) in description.operations.iter().zip(host.catalog.schemas()) {
+        assert_eq!(described.name, live.key);
+        assert_eq!(
+            described.required_capability,
+            match live.required_capability {
+                1 => "gui.read",
+                2 => "gui.write",
+                _ => panic!("unmapped capability"),
+            }
+        );
+        assert_eq!(described.parameters.len(), live.parameters.len());
+        for (parameter, native) in described.parameters.iter().zip(live.parameters) {
+            assert_eq!(parameter.name, native.name);
+            assert_eq!(parameter.required, native.required);
+            match native.domain {
+                ArgumentDomain::Scalar(types) => assert_eq!(
+                    parameter.types,
+                    types
+                        .iter()
+                        .map(TypeDescription::Scalar)
+                        .collect::<Vec<_>>()
+                ),
+                ArgumentDomain::Object => {
+                    assert_eq!(parameter.types, [TypeDescription::Native("object".into())]);
+                    assert!(host.call_native_argument_type(
+                        &live.key,
+                        native.name,
+                        &NativeType::Object
+                    ));
+                }
+            }
+        }
+        let actual = host.call_result_type(&live.key, &live.result).unwrap();
+        match &described.result {
+            TypeDescription::Scalar(ty) => assert_eq!(actual, PureType::Scalar(*ty)),
+            TypeDescription::Native(name) => assert_eq!(
+                actual,
+                PureType::Result(host.source_type_name(name).unwrap())
+            ),
+        }
+    }
+    for native in &description.native_types {
+        let ty = host.source_type_name(&native.name).unwrap();
+        for (name, field) in SOURCE_FIELDS {
+            let actual = host.source_field(&ty, name).unwrap();
+            let described = native.fields.iter().find(|entry| entry.name == *name);
+            match (actual, described) {
+                (Some((actual_field, actual_type)), Some(described)) => {
+                    assert_eq!(actual_field, *field);
+                    assert_eq!(actual_type, described.scalar_type);
+                    assert_eq!(host.field_type(&ty, field), Some(described.scalar_type));
+                }
+                (None, None) => {}
+                _ => panic!("source and discovery field contracts differ: {name}"),
+            }
+        }
+        assert!(host.source_field(&ty, "not_a_field").unwrap().is_none());
+    }
+    assert!(host.source_type_name("not_a_type").is_none());
+}
 
 const COMPILATION: CatalogProgramLimits = CatalogProgramLimits {
     expression: CatalogSourceLimits {
@@ -49,6 +242,27 @@ pub(super) fn with_catalog<S: ProfileSnapshot, T>(
     source_waits: SourceWaitCatalog,
     use_catalog: impl FnOnce(&Catalog<'_, S>) -> T,
 ) -> Result<T, Error> {
+    with_metadata_catalog::<S, _, _>(
+        source_waits,
+        |kind| Domain {
+            tracked,
+            lease: lease.clone(),
+            kind,
+            expected: RefCell::new(None),
+            source_wait: RefCell::new(None),
+        },
+        |catalog| use_catalog(catalog),
+    )
+}
+
+type MetadataCatalog<'s, Result> =
+    OperationCatalog<'s, &'static str, &'s str, ArgumentDomain, Result, u8>;
+
+fn with_metadata_catalog<S: ProfileSnapshot, Result, Output>(
+    source_waits: SourceWaitCatalog,
+    mut result_factory: impl FnMut(ResultKind) -> Result,
+    use_catalog: impl FnOnce(&MetadataCatalog<'_, Result>) -> Output,
+) -> std::result::Result<Output, Error> {
     let scalar = |name, kind| {
         NamedParameter::required(name, ArgumentDomain::Scalar(ScalarTypeSet::only(kind)))
     };
@@ -89,7 +303,7 @@ pub(super) fn with_catalog<S: ProfileSnapshot, T>(
     let scroll_parameters = mutation(scalar("position", ScalarType::Integer));
     // Each declaration gets its own expected-object cell. Catalog construction
     // shares metadata, never a pending reply guard between operations.
-    let schema = |key, parameters, kind| Schema {
+    let mut schema = |key, parameters, kind| OperationSchema {
         key,
         parameters,
         required_capability: if matches!(kind, ResultKind::Submitted) {
@@ -97,13 +311,7 @@ pub(super) fn with_catalog<S: ProfileSnapshot, T>(
         } else {
             READ
         },
-        result: Domain {
-            tracked,
-            lease: lease.clone(),
-            kind,
-            expected: RefCell::new(None),
-            source_wait: RefCell::new(None),
-        },
+        result: result_factory(kind),
     };
     let mut schemas = vec![
         schema("gui.find", find_parameters.as_slice(), ResultKind::Object),
@@ -269,14 +477,7 @@ impl<'s, S: ProfileSnapshot> CallFlowEnvironment<'s, Field, &'static str, Domain
         _: &&'static str,
         domain: &'s Domain<'s, S>,
     ) -> Option<PureType<NativeType>> {
-        Some(match domain.kind {
-            ResultKind::Keys => PureType::Scalar(ScalarType::StringList),
-            ResultKind::Object => PureType::Result(NativeType::Object),
-            ResultKind::Snapshot | ResultKind::WaitSnapshot => {
-                PureType::Result(NativeType::Snapshot)
-            }
-            ResultKind::Submitted => PureType::Scalar(ScalarType::Boolean),
-        })
+        Some(result_type(domain.kind))
     }
 }
 impl<'source, 's, S: ProfileSnapshot>
@@ -284,11 +485,7 @@ impl<'source, 's, S: ProfileSnapshot>
 {
     type Error = Error;
     fn source_type_name(&self, name: &str) -> Option<NativeType> {
-        match name {
-            "object" => Some(NativeType::Object),
-            "snapshot" => Some(NativeType::Snapshot),
-            _ => None,
-        }
+        native_type(name)
     }
     fn source_operation(&self, operation: &&'static str) -> Result<&'static str, Error> {
         Ok(*operation)
@@ -301,32 +498,10 @@ impl<'source, 's, S: ProfileSnapshot>
         if *result != NativeType::Snapshot {
             return Ok(None);
         }
-        let field = match name {
-            "document" => Field::Document,
-            "role" => Field::Role,
-            "value" => Field::Value,
-            "editable" => Field::Editable,
-            "revision" => Field::Revision,
-            "display" => Field::Display,
-            "buttons" => Field::Buttons,
-            "last_expression" => Field::LastExpression,
-            "key" => Field::Key,
-            "identifier" => Field::Identifier,
-            "label" => Field::Label,
-            "enabled" => Field::Enabled,
-            "pressable" => Field::Pressable,
-            "actions" => Field::Actions,
-            "check_state" => Field::CheckState,
-            "selected" => Field::Selected,
-            "selection_available" => Field::SelectionAvailable,
-            "selected_keys" => Field::SelectedKeys,
-            "position" => Field::Position,
-            "position_available" => Field::PositionAvailable,
-            "orientation" => Field::Orientation,
-            "parent_key" => Field::ParentKey,
-            _ => return Ok(None),
+        let Some((_, field)) = SOURCE_FIELDS.iter().find(|(key, _)| *key == name) else {
+            return Ok(None);
         };
-        Ok(S::field_type(field).map(|kind| (field, kind)))
+        Ok(S::field_type(*field).map(|kind| (*field, kind)))
     }
 
     fn source_member(

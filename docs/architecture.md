@@ -30,6 +30,17 @@ The `leselang` executable lives in `leselang-vm` and consumes its public
 CLI permissions and diagnostics. `std.print` is a host registration, not a new
 language primitive; the library remains usable without this executable.
 
+`leselang-runtime-core::discovery` contains owned catalog-description DTOs and
+a bounded schema-version 1 JSON encoder. The scalar embedding adapter projects
+its immutable registrations; the CLI's `describe`, `check` and `run` share the
+same host registration function. Native GUI profiles project shared operation
+and field/type declarations offline, without constructing backends or sessions.
+This presentation layer is separate from the original `OperationCatalog` and
+local object/request/receipt types, which keep their existing ownership and
+serialization boundaries. Description schema, operation catalog and local
+protocol versions are distinct. The [discovery contract](host-discovery.md)
+does not introduce transport, authentication or live resource availability.
+
 The scalar embedding layer forwards an explicit entry name through
 `Host::compile_entry` to the existing catalog program compiler; `compile`
 continues to select `main`. The complete declaration forest is checked for
@@ -69,7 +80,7 @@ the input file or invokes an Effect. Syntax validity, formatting conformance and
 host-specific semantic admission remain separate checks.
 
 `serde` is the only registry dependency of production library code.
-`serde_json` supports tests and host-owned checkpoint fixtures. Neither implies
+`serde_json` supports tests, executable host reports and host-owned checkpoint fixtures. Neither implies
 a built-in journal, authentic storage or replay protection.
 
 ## Execution
@@ -121,12 +132,39 @@ in the product repository. Do not import them to make a native acceptance test p
 
 ## Host Adapter Boundaries
 
-The language, independent consumer, AppKit host and macOS Accessibility host are
-four separate Cargo workspaces. They share the repository build cache and the
+The language, independent consumer, AppKit host, macOS Accessibility host and
+Tauri host are five separate Cargo workspaces. They share the repository build cache and the
 `lean` profile, while keeping their manifests, lockfiles and acceptance suites
 independent. A shared output directory does not add host dependencies to the
 language. The [contributor guide](../CONTRIBUTING.md#build-output-and-cleanup)
 describes the cache layout and cleanup procedure.
+
+The [TypeScript/Tauri host](typescript-host.md) keeps its Rust gateway, Tauri
+transport and frontend assets in `hosts/tauri`. The framework-independent
+[`@leselang/bridge`](javascript-sdk.md) package lives in `packages/javascript`;
+both the Tauri frontend and the separate Node consumer import its public package
+entry. The portable Rust `run_registered` entry accepts a bounded application
+inventory and returns execution evidence without a form-specific postcondition.
+The original form wrapper retains its names and verification policy. A dedicated Rust worker owns the
+local VM, while the Tauri event loop routes bounded requests and replies to the
+registered TypeScript adapters. The bridge has its own transport version and
+page/session/object lifetime checks; it does not serialize local `ObjectRef`,
+leases or receipts. The TypeScript application owns DOM handlers and Promise
+completion, and gates every deferred mutation with the current bridge context.
+Its Node/TypeScript build tools and Tauri dependencies remain outside the five
+language crates and the separate Consumer. The existing catalog agent selects
+this known form strategy by exact profile and contract, then independently
+checks the host's public DOM/model evidence.
+
+The [in-app agent entry](agent-entry.md) adds an application-owned planning
+boundary above that host. `AgentSession` reads the host catalog, admits a
+provider's bounded source and arguments, invokes the host and requires an
+independent application verifier. It serializes user submissions without
+polling the VM or installing a language scheduler. The interactive Tauri mode
+keeps its model and page alive while creating new bridge/VM identities for each
+workflow; cancellation must settle the old worker before another starts.
+The offline reference planner has a fixed, documented command grammar. Model
+selection, credentials and conversational memory remain provider concerns.
 
 Within `hosts/macos-ax`, new profiles fit these existing responsibilities:
 

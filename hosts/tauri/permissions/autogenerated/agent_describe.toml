@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agent-describe"
+description = "Enables the agent_describe command without any pre-configured scope."
+commands.allow = ["agent_describe"]
+
+[[permission]]
+identifier = "deny-agent-describe"
+description = "Denies the agent_describe command without any pre-configured scope."
+commands.deny = ["agent_describe"]

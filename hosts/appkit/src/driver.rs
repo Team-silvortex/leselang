@@ -60,7 +60,7 @@ pub struct RunSummary {
 
 /// Execute caller-provided source. Demo postconditions do not constrain programs.
 pub fn run(gui: &Gui, source: &str) -> Result<RunSummary, String> {
-    drive(gui, source, None)
+    drive(gui, source, None, false)
 }
 
 /// Run scalar task inputs through the same explicit AppKit Effect driver.
@@ -70,12 +70,26 @@ pub fn run_task(
     entry: &str,
     arguments: Vec<(String, ScalarValue)>,
 ) -> Result<RunSummary, String> {
-    drive(gui, source, Some((entry, arguments)))
+    drive(gui, source, Some((entry, arguments)), false)
 }
 
 type TaskInputs<'a> = (&'a str, Vec<(String, ScalarValue)>);
 
-fn drive(gui: &Gui, source: &str, task: Option<TaskInputs<'_>>) -> Result<RunSummary, String> {
+fn drive(
+    gui: &Gui,
+    source: &str,
+    task: Option<TaskInputs<'_>>,
+    report_json: bool,
+) -> Result<RunSummary, String> {
+    macro_rules! trace {
+        ($($argument:tt)*) => {
+            if report_json {
+                eprintln!($($argument)*);
+            } else {
+                println!($($argument)*);
+            }
+        };
+    }
     host::with_host(gui, |host, scope| {
         let (node, parameters, arguments) = if let Some((entry, arguments)) = task {
             let program = host.compile_task(source, entry)?;
@@ -99,18 +113,18 @@ fn drive(gui: &Gui, source: &str, task: Option<TaskInputs<'_>>) -> Result<RunSum
                 EffectSessionPoll::Request(work) => {
                     effects += 1;
                     let operation = work.operation();
-                    println!("poll -> authorize -> dispatch: {operation}");
+                    trace!("poll -> authorize -> dispatch: {operation}");
                     let receipt = dispatch(&mut vm, host, work).map_err(|e| e.to_string())?;
                     if let Reply::Snapshot(snapshot) = &receipt.reply {
-                        println!("observe: id={:?}, role={:?}, title={:?}, value={:?}, revision={}", snapshot.data().identifier, snapshot.data().role, snapshot.data().title, snapshot.data().value, snapshot.revision());
+                        trace!("observe: id={:?}, role={:?}, title={:?}, value={:?}, revision={}", snapshot.data().identifier, snapshot.data().role, snapshot.data().title, snapshot.data().value, snapshot.revision());
                         observations.push(snapshot.data().clone());
                     }
                     let receipt = if matches!(receipt.reply, Reply::Submitted(true)) {
-                        println!("submitted: native work remains queued; explicit pump");
+                        trace!("submitted: native work remains queued; explicit pump");
                         pump(&mut vm, host, receipt).map_err(|e| e.to_string())?
                     } else { receipt };
                     accept(&mut vm, host, receipt)?;
-                    println!("accept: {operation}");
+                    trace!("accept: {operation}");
                 }
                 EffectSessionPoll::Value(PureValue::Scalar(value)) => {
                     return Ok(RunSummary { value, effects, fuel_remaining: vm.fuel_remaining(), observations });
@@ -124,9 +138,8 @@ fn drive(gui: &Gui, source: &str, task: Option<TaskInputs<'_>>) -> Result<RunSum
     }).map_err(|e| e.to_string())?
 }
 
-pub fn main() -> Result<(), String> {
-    use crate::options::{Mode, Options};
-    let options = Options::parse(std::env::args_os().skip(1))?;
+pub fn main(options: crate::options::Options) -> Result<(), String> {
+    use crate::options::Mode;
     if options.mode == Mode::Help {
         println!("{}", crate::options::HELP);
         return Ok(());
@@ -139,7 +152,7 @@ pub fn main() -> Result<(), String> {
         Mode::Run(path) => crate::options::load_source(path)?,
         Mode::Form => host::FORM_PROGRAM.to_owned(),
         Mode::Buttons => host::PROGRAM.to_owned(),
-        Mode::Help | Mode::SelfTest => unreachable!(),
+        Mode::Help | Mode::SelfTest | Mode::Describe => unreachable!(),
     };
     let gui = Gui::new().map_err(|e| e.to_string())?;
     gui.show().map_err(|e| e.to_string())?;
@@ -151,15 +164,29 @@ pub fn main() -> Result<(), String> {
         }
     }
     let other_before = gui.snapshot(1).map_err(|e| e.to_string())?;
-    let result = if options.entry.is_some() || !options.arguments.is_empty() {
-        run_task(
-            &gui,
-            &source,
-            options.entry.as_deref().unwrap_or("main"),
-            options.arguments,
-        )?
+    // These direct samples are host verification evidence, outside the VM's
+    // Effects and Fuel. Never export native identities or use them as grants.
+    let native_before = if options.report_json {
+        Some(native_snapshots(&gui)?)
     } else {
-        run(&gui, &source)?
+        None
+    };
+    let task = (options.entry.is_some() || !options.arguments.is_empty()).then_some((
+        options.entry.as_deref().unwrap_or("main"),
+        options.arguments,
+    ));
+    let result = drive(&gui, &source, task, options.report_json)?;
+    let report = if let Some(before) = native_before {
+        let after = native_snapshots(&gui)?;
+        Some(crate::report::encode(
+            &result.value,
+            result.effects,
+            result.fuel_remaining,
+            &before.each_ref().map(crate::report::Snapshot::from),
+            &after.each_ref().map(crate::report::Snapshot::from),
+        )?)
+    } else {
+        None
     };
     let status = match options.mode {
         Mode::Form => {
@@ -201,13 +228,17 @@ pub fn main() -> Result<(), String> {
                 .take(512)
                 .collect::<String>()
         ),
-        Mode::Help | Mode::SelfTest => unreachable!(),
+        Mode::Help | Mode::SelfTest | Mode::Describe => unreachable!(),
     };
     gui.status(&status).map_err(|e| e.to_string())?;
-    println!(
-        "{status}\nLeseLang result: {}",
-        crate::options::render_value(&result.value)
-    );
+    if let Some(report) = report {
+        crate::report::write(&mut std::io::stdout().lock(), &report)?;
+    } else {
+        println!(
+            "{status}\nLeseLang result: {}",
+            crate::options::render_value(&result.value)
+        );
+    }
     if options.hold {
         println!("Window remains interactive; close it to exit.");
         while gui.is_open().map_err(|e| e.to_string())? {
@@ -216,4 +247,12 @@ pub fn main() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn native_snapshots(gui: &Gui) -> Result<[WidgetSnapshot; 3], String> {
+    Ok([
+        gui.snapshot(0).map_err(|error| error.to_string())?,
+        gui.snapshot(1).map_err(|error| error.to_string())?,
+        gui.snapshot(2).map_err(|error| error.to_string())?,
+    ])
 }

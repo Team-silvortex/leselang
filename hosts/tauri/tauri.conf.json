@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LeseLang TypeScript Host",
+  "version": "0.1.0",
+  "identifier": "org.leselang.typescript-reference",
+  "build": {
+    "frontendDist": "frontend/dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; frame-src 'none'",
+      "capabilities": ["bridge"]
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

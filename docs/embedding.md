@@ -86,6 +86,21 @@ revision-checked action attempts, see the
 [local host protocol draft](host-protocol.md). That native HIR opt-in facility
 does not add object values to this scalar convenience layer.
 
+For machine-readable discovery, `host.catalog_description(profile)` projects
+the same registration into owned `native::core::discovery::CatalogDescription`
+metadata. Call `.to_json()` to validate and encode one schema-version 1 JSON
+record plus LF. It preserves operation/parameter order, optionality, all accepted
+scalar alternatives and empty deny-all domains. Profile labels are chosen by
+the embedding host; the scalar projection has no native type declarations.
+The original borrowed `describe()` view remains available.
+
+The owned DTO can outlive its host, but editing it cannot reconfigure the host
+or authorize a session. Encoding has separate metadata and 256 KiB output
+bounds, so a large valid native registry may fail description without affecting
+compilation or execution. No registered callback or permission check runs during
+projection. See [host catalog discovery](host-discovery.md) for a Rust example,
+the exact JSON contract and the corresponding offline GUI catalog profiles.
+
 ## Select And Inspect A Program
 
 `host.compile(source, grants)` keeps `main` as the default entry. Use

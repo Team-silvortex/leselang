@@ -28,6 +28,15 @@ non-scalar result domains use the existing `OperationCatalog::schemas()` to
 inspect the original schemas in declaration order. Discovery introduces no
 parallel registry or conversion of native result domains into scalar types.
 
+The optional [`discovery::CatalogDescription`](host-discovery.md) holds an owned
+projection of those same declarations and validates it when encoding JSON. Scalar hosts use
+`Host::catalog_description(profile)`; native hosts project their exact helper
+aliases and exported scalar fields from shared schema/type tables. The
+standalone CLI `describe` and GUI CLIs' offline `--describe` modes emit this
+metadata without creating a session, checking native permission or connecting
+to resources. Live GUI inventory remains a separate scoped operation.
+The original borrowed descriptions and `OperationCatalog` APIs are unchanged.
+
 Discovery describes what a host supports; it does not grant permission to call
 it or attest that a particular resource is currently available. Compilation
 checks the chosen catalog and declared grants. The host must still check live
@@ -36,6 +45,7 @@ Operation catalog versions and this protocol version are separate contracts.
 
 | Identifier | What it identifies |
 | --- | --- |
+| Description schema version | The JSON metadata presentation contract, currently 1; no executable handles or live grants are encoded. |
 | Protocol version | This local Rust host contract. `ProtocolVersion::from_number` accepts exactly V1; `number()` exposes its numeric value. |
 | Operation catalog version | The host's operation-schema lineage, checked by existing catalog lookup and authorization. |
 | Object generation | The current native identity occupying an owner's object slot; replacement invalidates older references. |
@@ -408,6 +418,7 @@ identity.
 | Milestone | Current evidence and boundary |
 | --- | --- |
 | Reusable Rust embedding | Registration, compilation and explicit session driving use the existing HIR/VM; independent consumers test Fuel, revocation, cancellation, late replies and partial effects. |
+| Machine-readable catalog discovery | The scalar CLI and offline AppKit/AX profiles share a bounded schema-version 1 JSON projection of actual operation and native field declarations. Independent Consumer tests cover signature fidelity, references, bounds, zero callbacks and unchanged execution/Fuel/authority semantics. |
 | Standalone scalar CLI | `check` and `run` admit complete source programs; `--entry` selects a task and `--text` supplies bounded string inputs. `check` validates inputs without execution; `std.print` is an explicitly granted reference host operation. |
 | Typed task inputs and native helpers | Scalar embedding admits required named inputs through an explicit task compiler and moves validated payloads into original VM locals. Independent Consumer tests compare input reads with native VM Fuel cutoffs, and cover input errors, two Effects, revocation and partial outcomes. Native hosts can opt into exact helper types; AppKit and AX controls expose `object` and `snapshot` while keeping task entry inputs scalar. |
 | Local protocol draft | Opaque object identity, generation, execution lease, revision checks and historical observations are exercised through GUI/CLI headless host conformance tests with distinct native representations and explicit queues. |

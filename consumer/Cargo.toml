@@ -207,6 +207,10 @@ name = "task_inputs"
 path = "tests/task_inputs.rs"
 
 [[test]]
+name = "catalog_discovery"
+path = "tests/catalog_discovery.rs"
+
+[[test]]
 name = "host_protocol"
 path = "tests/host_protocol.rs"
 

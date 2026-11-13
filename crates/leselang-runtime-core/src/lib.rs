@@ -24,6 +24,7 @@ mod collection;
 mod continuation;
 mod continuation_context;
 mod control;
+pub mod discovery;
 mod dispatch_capacity;
 mod dispatch_data;
 mod dispatch_lease;

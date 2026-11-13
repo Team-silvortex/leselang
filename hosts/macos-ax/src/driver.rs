@@ -14,7 +14,29 @@ use leselang_vm::native::{
         pure_evaluation::PureValue,
     },
 };
-use std::time::Duration;
+use std::{fmt, io::Write, time::Duration};
+
+#[derive(Clone, Copy)]
+enum Trace {
+    Stdout,
+    Stderr,
+}
+struct DriveSettings {
+    budget: u64,
+    trace: Trace,
+}
+impl Trace {
+    fn line(self, message: fmt::Arguments<'_>) -> Result<(), String> {
+        let result = match self {
+            Self::Stdout => {
+                println!("{message}");
+                Ok(())
+            }
+            Self::Stderr => writeln!(std::io::stderr().lock(), "{message}"),
+        };
+        result.map_err(|error| format!("cannot write execution trace: {error}; native effects may already have occurred; do not retry automatically"))
+    }
+}
 
 pub type Vm<'ir, 's, S = Snapshot> = LocalVm<
     'ir,
@@ -78,7 +100,7 @@ pub struct ProfileRunSummary<S: ProfileSnapshot> {
 /// Execute caller-provided source. Demo postconditions do not constrain programs.
 pub fn run(backend: &dyn Backend, source: &str) -> Result<RunSummary, String> {
     host::with_host(backend, |host, scope| {
-        drive(host, scope, source, 1000, None)
+        drive(host, scope, source, 1000, None, Trace::Stdout)
     })
     .map_err(|e| e.to_string())?
 }
@@ -88,7 +110,19 @@ pub(crate) fn run_profile<S: ProfileSnapshot>(
     fuel: u64,
 ) -> Result<ProfileRunSummary<S>, String> {
     host::with_profile(backend, |host, scope| {
-        drive(host, scope, source, fuel, None)
+        drive(host, scope, source, fuel, None, Trace::Stdout)
+    })
+    .map_err(|e| e.to_string())?
+}
+
+/// Keep machine-readable stdout separate from the existing explicit VM trace.
+pub(crate) fn run_profile_diagnostics<S: ProfileSnapshot>(
+    backend: &dyn Profile<Snapshot = S>,
+    source: &str,
+    fuel: u64,
+) -> Result<ProfileRunSummary<S>, String> {
+    host::with_profile(backend, |host, scope| {
+        drive(host, scope, source, fuel, None, Trace::Stderr)
     })
     .map_err(|e| e.to_string())?
 }
@@ -114,7 +148,17 @@ pub(crate) fn run_profile_task<S: ProfileSnapshot>(
             .zip(arguments)
             .map(|(parameter, (_, value))| (parameter.name.as_str(), PureValue::Scalar(value)))
             .collect();
-        drive_node(host, scope, &program.node, bindings, fuel, None)
+        drive_node(
+            host,
+            scope,
+            &program.node,
+            bindings,
+            DriveSettings {
+                budget: fuel,
+                trace: Trace::Stdout,
+            },
+            None,
+        )
     })
     .map_err(|e| e.to_string())?
 }
@@ -127,7 +171,14 @@ pub(crate) fn run_profile_with_waits<S: ProfileSnapshot>(
     wait_until: &mut impl FnMut(Duration),
 ) -> Result<ProfileRunSummary<S>, String> {
     host::with_profile_waits(backend, |host, scope| {
-        drive(host, scope, source, fuel, Some((clock, wait_until)))
+        drive(
+            host,
+            scope,
+            source,
+            fuel,
+            Some((clock, wait_until)),
+            Trace::Stdout,
+        )
     })
     .map_err(|e| e.to_string())?
 }
@@ -140,7 +191,14 @@ pub(crate) fn run_profile_with_state_waits<S: ProfileSnapshot>(
     wait_until: &mut impl FnMut(Duration),
 ) -> Result<ProfileRunSummary<S>, String> {
     host::with_profile_state_waits(backend, |host, scope| {
-        drive(host, scope, source, fuel, Some((clock, wait_until)))
+        drive(
+            host,
+            scope,
+            source,
+            fuel,
+            Some((clock, wait_until)),
+            Trace::Stdout,
+        )
     })
     .map_err(|e| e.to_string())?
 }
@@ -153,9 +211,17 @@ fn drive<S: ProfileSnapshot>(
     source: &str,
     budget: u64,
     waiting: Option<WaitCallbacks<'_>>,
+    trace: Trace,
 ) -> Result<ProfileRunSummary<S>, String> {
     let node = host.compile(source)?;
-    drive_node(host, scope, &node, Vec::new(), budget, waiting)
+    drive_node(
+        host,
+        scope,
+        &node,
+        Vec::new(),
+        DriveSettings { budget, trace },
+        waiting,
+    )
 }
 
 fn drive_node<'ir, S: ProfileSnapshot>(
@@ -163,9 +229,10 @@ fn drive_node<'ir, S: ProfileSnapshot>(
     scope: LocalExecutionScope,
     node: &'ir Node,
     bindings: RestoredEffectBindings<'ir, ProfileNativeValue<S>>,
-    budget: u64,
+    settings: DriveSettings,
     mut waiting: Option<WaitCallbacks<'_>>,
 ) -> Result<ProfileRunSummary<S>, String> {
+    let DriveSettings { budget, trace } = settings;
     let mut vm = LocalVm::new(scope, node, bindings, Fuel::new(budget), STACK);
     let mut effects = 0;
     let mut observations = Vec::new();
@@ -177,7 +244,7 @@ fn drive_node<'ir, S: ProfileSnapshot>(
             EffectSessionPoll::Request(work) => {
                 effects += 1;
                 let operation = work.operation();
-                println!("poll -> authorize -> dispatch: {operation}");
+                trace.line(format_args!("poll -> authorize -> dispatch: {operation}"))?;
                 let receipt = if work.is_source_wait() {
                     let (clock, wait_until) = waiting.as_mut().ok_or(
                         "source wait requires explicit host clock and scheduling callbacks",
@@ -191,10 +258,10 @@ fn drive_node<'ir, S: ProfileSnapshot>(
                             WaitStep::Ready(receipt) => break receipt,
                             WaitStep::Waiting(wait) => {
                                 let status = wait.status();
-                                println!(
+                                trace.line(format_args!(
                                     "wait: attempts={}, next_at={:?}, deadline={:?}",
                                     status.attempts, status.next_at, status.deadline
-                                );
+                                ))?;
                                 wait_until(status.next_at);
                                 progress = observation_wait::step(&mut vm, host, wait, &mut now)
                                     .map_err(|error| error.to_string())?;
@@ -205,21 +272,23 @@ fn drive_node<'ir, S: ProfileSnapshot>(
                     dispatch(&mut vm, host, work).map_err(|e| e.to_string())?
                 };
                 if let ProfileReply::Snapshot(snapshot) = &receipt.reply {
-                    println!(
+                    trace.line(format_args!(
                         "observe: {}, revision={}",
                         snapshot.data().describe(),
                         snapshot.revision()
-                    );
+                    ))?;
                     observations.push(snapshot.data().clone());
                 }
                 let receipt = if receipt.reply.is_submission() {
-                    println!("submitted: native work remains queued; explicit pump");
+                    trace.line(format_args!(
+                        "submitted: native work remains queued; explicit pump"
+                    ))?;
                     pump(&mut vm, host, receipt).map_err(|e| e.to_string())?
                 } else {
                     receipt
                 };
                 accept(&mut vm, host, receipt)?;
-                println!("accept: {operation}");
+                trace.line(format_args!("accept: {operation}"))?;
             }
             EffectSessionPoll::Value(PureValue::Scalar(value)) => {
                 return Ok(ProfileRunSummary {
