@@ -1,0 +1,47 @@
+fn press_key(identifier: string, label: string) = bind(
+    button: gui.select(role: "AXButton", identifier: identifier, label: label),
+    body: bind(
+        before: gui.observe(target: button),
+        body: gui.press(target: button, expected_revision: field(value: before, name: "revision")),
+    ),
+)
+
+fn main() = bind(
+    display: gui.select(role: "AXStaticText", identifier: "", label: "Edit field"),
+    body: bind(
+        before: gui.observe(target: display),
+        body: choose(
+            when: eq(left: value_or(left: field(value: before, name: "value"), right: ""), right: "0"),
+            then: bind(
+                eight: press_key(identifier: "Eight", label: ""),
+                body: bind(
+                    add: press_key(identifier: "Add", label: ""),
+                    body: bind(
+                        seven: press_key(identifier: "Seven", label: ""),
+                        body: bind(
+                            equals: press_key(identifier: "Equals", label: ""),
+                            body: bind(
+                                after: gui.observe(target: display),
+                                body: bind(
+                                    history: gui.select(role: "AXStaticText", identifier: "", label: "Last Expression"),
+                                    body: bind(
+                                        expression: gui.observe(target: history),
+                                        body: choose(
+                                            when: and(
+                                                left: eq(left: value_or(left: field(value: after, name: "value"), right: ""), right: "15"),
+                                                right: eq(left: value_or(left: field(value: expression, name: "value"), right: ""), right: "8 + 7"),
+                                            ),
+                                            then: "15",
+                                            otherwise: "verification failed",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            otherwise: "initial display mismatch",
+        ),
+    ),
+)

@@ -71,6 +71,31 @@ Leserpent remains a reference host, not a runtime dependency. Its product evalua
 compatibility facades, SQLite recovery, UI, authentication and orchestration remain
 in the product repository. Do not import them to make a native acceptance test pass.
 
+## Host Adapter Boundaries
+
+The language, independent consumer, AppKit host and macOS Accessibility host are
+four separate Cargo workspaces. They share the repository build cache and the
+`lean` profile, while keeping their manifests, lockfiles and acceptance suites
+independent. A shared output directory does not add host dependencies to the
+language. The [contributor guide](../CONTRIBUTING.md#build-output-and-cleanup)
+describes the cache layout and cleanup procedure.
+
+Within `hosts/macos-ax`, new profiles fit these existing responsibilities:
+
+| Layer | Responsibility |
+| --- | --- |
+| Portable profile models and backend traits | Describe snapshots, fields, supported actions and profile-specific validation without invoking AX. |
+| `host.rs` and its private modules | Keep the public protocol types, stable object owners and profile contracts together; `host/catalog.rs` defines operation schemas and bounded source compilation, while `host/session.rs` implements authorization, dispatch, explicit pumping and reply acceptance. `host/tests.rs` exercises those shared contracts. |
+| Native access modules | Own thread-affine connections and convert native results into validated profile values. `scope_access.rs` prepares exact window selectors once through `PreparedWindowSelector`; controls and widgets consume the same preparation rules. |
+| Private `transport.rs` | Share the actual wire layouts (`RawControl`, `RawScope`) and bounded UTF-8 decoding (`PackedStrings`). Callers retain their own status meanings, row validation and all-or-nothing snapshot publication. |
+| Objective-C bridge and profile includes | Perform AX traversal, identity and dependency checks, immediate native preflight and scoped mutations. Process grants and window ownership stay here and in the native access boundary. |
+
+The module split preserves public `host` paths and the original profile entry
+points. Sharing code does not merge profile catalogs, remove native validation
+or introduce a scheduler. The driver still follows explicit
+`poll → authorize → dispatch → accept`, with a host-controlled pump for queued
+delivery and a separate observation to verify a submitted action's result.
+
 ## Acceptance Limits
 
 The existing matrices cover native compilation, bounded control, typed host
@@ -93,14 +118,52 @@ Objective-C bridge and framework link flags stay outside the language dependency
 graph.
 
 The independent [`hosts/macos-ax`](macos-ax-host.md) workspace scopes cross-process
-Accessibility access to one TextEdit document. It checks the process instance,
-document URL and retained element identity, queues text replacement explicitly
-and verifies the result through a new observation. Its external state checks
+Accessibility access to a TextEdit document or a Calculator window.
+The profiles share a typed host/session driver while supplying distinct native
+snapshots, fields and mutation policies. Existing TextEdit backend and snapshot
+types remain available. TextEdit checks the process instance, document URL and
+retained element identity before queuing text replacement. Calculator checks
+its window, display and allowed button identities before queuing a named press;
+the display, optional last expression and all allowed button states are part of
+its observed dependency.
+An additive [controls profile](macos-ax-controls.md) discovers individual
+buttons and text controls under the same explicit window scope. Connection-local
+keys are metadata; fresh resolution issues native references with separate
+owners. A bounded registry retains retired identities instead of rebinding
+references to replacement controls. Each observation also retains the entire
+observed scope epoch, so changes to another control or dependency invalidate a
+queued operation. The same driver handles exact selectors, per-target reply
+domains and explicit press/text delivery through a portable `ControlsBackend`.
+The [application/window selector](macos-ax-applications.md) adds host-side
+admission for an exact application bundle and optional PID, followed by bounded
+window metadata discovery and exact unique selection. It pins the process's
+start identity/executable and retains the chosen native window, so title
+changes do not redirect it and same-title replacements do not inherit its
+authority. Connection-local window keys and retired entries stay separate
+from the execution-bound control references. This scope setup supplies another
+`ControlsAccess` to the existing catalog; it adds no application selection
+operation to language execution.
+The optional [widgets profile](macos-ax-widgets.md) adds scoped popup menus,
+desired checkbox state, native item selection and normalized scrollbar
+positioning through that shared session engine. It retains the old controls
+types and catalog. Widget observations include the relevant checked, selected,
+membership and range dependencies; menu and list items are native references,
+not serialized positions. Transient menu choices remain correlated with their
+stable owner while item identity is checked before delivery.
+Widget-only exact role/value discovery returns the same scoped native reference
+as other selectors, without treating a displayed file name as action authority.
+The Finder reference follows observed parent relationships from a name field
+to its actual row, then separately verifies row selection and scroll position.
+Explicit [auxiliary-process grants](macos-ax-auxiliary-processes.md) keep helper
+PID/start-time/executable checks in the native widget transport. A selected
+window remains the sole traversal root, and revocable process approval does
+not add a helper's other windows or new source-language operations.
+The profiles verify results through new observations. Their external state checks
 are snapshot based: they cannot detect an unseen A→B→A change or close the race
 between a final read and a native write. This limitation belongs to the adapter
 and does not weaken the own-process AppKit host's mutation tracking or the
 language's local lifetime, reply and Fuel contracts. A real desktop run requires
-the target document and permission for the executing host; model tests alone
+the supported application state and permission for the executing host; model tests alone
 do not establish it.
 
 Broader application or cross-platform GUI automation, a remote/durable host protocol,

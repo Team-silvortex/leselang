@@ -1,0 +1,11 @@
+fn hide_column(label: string) = bind(target: gui.select(role: "AXCheckBox", identifier: "", label: label), body:
+    bind(before: gui.observe(target: target), body:
+        bind(submitted: gui.set_checked(target: target, expected_revision: field(value: before, name: "revision"), checked: false), body:
+            bind(after: gui.observe(target: target), body:
+                eq(left: field(value: after, name: "check_state"), right: "unchecked")))))
+
+fn main() = bind(owner: gui.select(role: "AXPopUpButton", identifier: "Text size:", label: ""), body:
+    bind(state: gui.observe(target: owner), body:
+        choose(when: eq(left: value_or(left: field(value: state, name: "value"), right: ""), right: "16"), then:
+            bind(size: hide_column(label: "Size"), body:
+                choose(when: size, then: hide_column(label: "Kind"), otherwise: false)), otherwise: false)))

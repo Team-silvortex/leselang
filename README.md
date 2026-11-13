@@ -11,8 +11,15 @@ loop. The [local host protocol draft](docs/host-protocol.md) defines opaque
 object references, historical observations and revision-checked action attempts;
 the reference GUI and CLI models exercise the shared boundaries. The separate
 [AppKit host](docs/appkit-host.md) applies the protocol to real macOS buttons and
-editable text fields. The [Accessibility host](docs/macos-ax-host.md) provides a
-separate adapter for one explicitly selected TextEdit document in another process.
+editable text fields. The [Accessibility host](docs/macos-ax-host.md) provides
+scoped profiles for a TextEdit document and a Calculator window in other processes.
+Its opt-in [controls mode](docs/macos-ax-controls.md) discovers individual
+buttons and text controls and gives them native references. An explicit
+[application and window selector](docs/macos-ax-applications.md) connects that
+same catalog to other running macOS application bundles.
+The separate [widgets catalog](docs/macos-ax-widgets.md) adds scoped popup menus,
+checkbox state, item selection and scrollbar positioning without changing the
+existing controls interface.
 No Gewyvern, Leserpent, SQLite,
 Node.js, Python or shell runtime is required by this workspace.
 
@@ -91,10 +98,11 @@ execution boundaries and the scope of the real GUI tests.
 
 ## Run A Scoped External GUI Host
 
-The [macOS Accessibility adapter](docs/macos-ax-host.md) targets a plain-text
-document already open in TextEdit. It checks the exact document URL, process
-instance and Accessibility element before reading or replacing text, using the
-same native object and Effect boundaries.
+The [macOS Accessibility adapter](docs/macos-ax-host.md) has TextEdit and
+Calculator profiles using the same typed host driver. The TextEdit profile
+targets a plain-text document already open in the application. It checks the
+exact document URL, process instance and Accessibility element before reading
+or replacing text.
 
 ```sh
 cargo build --manifest-path hosts/macos-ax/Cargo.toml --locked --offline --profile lean
@@ -111,9 +119,79 @@ window. It requires Accessibility permission for the host process; the host
 checks access without prompting or changing permissions. `--prepare` refuses to
 overwrite an existing file. TextEdit may autosave the disposable test document.
 
+The Calculator profile uses a pinned Basic-mode window and real button actions:
+
+```sh
+target/lean/leselang-macos-ax-host --calculator
+```
+
+Open Calculator with the supported English Basic-mode UI and unit conversion
+off first. The default source requires display `0`, then explicitly presses
+`one`, `add`, `two` and `equals`, observing after each action to verify display
+`3` and last expression `1 + 2`.
+It does not clear an existing calculation or restore application state afterward.
+Calculator starts with 2,000 Fuel; TextEdit keeps its 1,000-Fuel budget.
+The ten-Effect Calculator flow has been verified against Calculator 12.0 on
+macOS 27.0.1, including separate inspection of the result and last expression
+in the real window. `--run FILE` supplies independent source for either selected profile.
+
+For individual control discovery, opt into the shared controls catalog:
+
+```sh
+target/lean/leselang-macos-ax-host --calculator --controls --discover
+target/lean/leselang-macos-ax-host --document /tmp/leselang-ax-demo.txt --controls --discover
+```
+
+This prints a read-only inventory of buttons, text areas, text fields and static
+text in the selected scope. Use exact role, identifier and label selectors in
+source, then run with `--controls --run FILE`. Each resolved control receives
+its own native reference; `gui.press` and `gui.set_text` require its observed
+revision. A change elsewhere in the observed scope also invalidates a queued
+action. Discovery keys belong to one connection and cannot be copied into a
+later CLI run. Controls mode requires explicit discovery or source, starts with
+10,000 Fuel and has no default action. See the [control guide](docs/macos-ax-controls.md)
+for selectors, limits, examples and failure behavior.
+The controls catalog has completed a real 17-Effect `8 + 7 = 15` Calculator
+flow and a four-Effect TextEdit replacement, each with separate desktop
+verification. A TextEdit source also exercised `list → find → observe` through
+connection-local keys.
+
+To inspect another running application's windows, select its exact bundle:
+
+```sh
+target/lean/leselang-macos-ax-host --app /System/Applications/Stickies.app --windows
+```
+
+Then combine `--app` with exact window title, identifier or local-document
+selectors and `--controls --discover` or `--controls --run FILE`. An optional
+PID disambiguates multiple instances of that same executable. The host pins
+the selected process and native window; it does not choose by focus or switch
+to a same-title replacement. See the [application selection guide](docs/macos-ax-applications.md)
+for the Rust API, window keys and independent desktop verification.
+The generic path has completed a six-Effect flow in Stickies 10.3 with two
+text replacements and separate result inspection. Its selected window remained
+bound while the note's content-derived title changed.
+
+For menus, checkboxes, list selection and scrolling, use the optional
+[`--widgets` catalog](docs/macos-ax-widgets.md) with the same explicit
+application/window selection. Inspect the actual widget capabilities before
+running source and request a new observation after each operation. Menu scope
+remains within the selected window's supported popup relationships.
+The Finder reference uses two explicitly selected windows: View Options for
+menu and checkbox changes, and the dedicated folder window for exact-value
+discovery, row selection and scrolling. Separate observations and desktop
+inspection confirmed the final state; the guide records the menu's delayed update and the
+explicit later read used before continuing.
+For windows with controls implemented by a helper process, the
+[auxiliary-process guide](docs/macos-ax-auxiliary-processes.md) describes explicit
+PID/start-time/executable grants and shared revocation. These grants retain the
+selected window boundary; default widget connections still require the same PID.
+The Preview reference completed two observed edits to its helper-owned Export
+name field in six Effects, with separate desktop verification and panel cancellation.
+
 Unlike the application-owned form, the external adapter can detect only
 observed changes. It cannot detect every intervening A→B→A change or make its
-read/write sequence atomic with TextEdit. Read the [adapter guide](docs/macos-ax-host.md)
+read/action sequence atomic with another application. Read the [adapter guide](docs/macos-ax-host.md)
 for the exact scope, failure behavior and separate desktop acceptance procedure.
 
 ## Packages
@@ -148,7 +226,7 @@ CI also builds and lints the AppKit host and runs its non-GUI package tests on
 macOS. Its real GUI self-test and native bridge tests require a desktop session
 and are separate explicit checks.
 The Accessibility host's deterministic backend and command-line tests run on
-Linux and macOS; its actual TextEdit workflow additionally requires a desktop
+Linux and macOS; its actual cross-process workflows additionally require a desktop
 and permission for the executing host. Its separate native boundary checks run
 on macOS without remote GUI calls.
 
@@ -158,8 +236,12 @@ This is the independent native language foundation, initially extracted from
 Gewyvern. It is not a complete replacement for Leserpent's product evaluator,
 SQLite journal, wire protocols or arbitrary GUI automation. The AppKit host
 controls its own application objects. The separate Accessibility host targets
-one configured TextEdit document and checks external state through bounded
-snapshots; it is not a general adapter for every application's GUI.
+a configured TextEdit document, Calculator window or explicitly selected
+running application/window and checks external state through bounded snapshots.
+The opt-in controls mode uses the same discovery and operation catalog inside
+each selected scope. Its selectors and admitted operations still depend on the
+application's actual Accessibility layout and the adapter's bounds. Each
+additional application and platform needs its own compatibility evidence.
 A general durable runtime,
 full declared-language parity and a stable FFI ABI remain separate milestones.
 Native callbacks are trusted Rust code; fuel is not a callback sandbox and
@@ -176,6 +258,10 @@ Use local paths now; a Git dependency must pin an actual commit after publicatio
 - [Local host protocol and acceptance gates](docs/host-protocol.md)
 - [Real macOS AppKit host](docs/appkit-host.md)
 - [Scoped macOS Accessibility host](docs/macos-ax-host.md)
+- [Scoped control discovery and operations](docs/macos-ax-controls.md)
+- [Selecting macOS applications and windows](docs/macos-ax-applications.md)
+- [Menus, checks, selection and scrolling](docs/macos-ax-widgets.md)
+- [Explicit auxiliary process grants](docs/macos-ax-auxiliary-processes.md)
 - [Language and CLI guide](docs/language.md)
 - [Embedding a host](docs/embedding.md)
 - [Extraction provenance and product handoff](docs/migration.md)

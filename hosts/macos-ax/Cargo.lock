@@ -3,13 +3,6 @@
 version = 4
 
 [[package]]
-name = "leselang-macos-ax-host"
-version = "0.1.0"
-dependencies = [
- "leselang-vm",
-]
-
-[[package]]
 name = "leselang-hir"
 version = "0.1.0"
 dependencies = [
@@ -26,6 +19,13 @@ dependencies = [
  "leselang-runtime-core",
  "leselang-syntax",
  "serde",
+]
+
+[[package]]
+name = "leselang-macos-ax-host"
+version = "0.1.0"
+dependencies = [
+ "leselang-vm",
 ]
 
 [[package]]

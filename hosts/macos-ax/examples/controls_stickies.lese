@@ -1,0 +1,31 @@
+fn main() = bind(
+    target: gui.select(role: "AXTextArea", identifier: "", label: ""),
+    body: bind(
+        before: gui.observe(target: target),
+        body: choose(
+            when: eq(left: value_or(left: field(value: before, name: "value"), right: ""), right: "LeseLang scope initial 20261113\n"),
+            then: bind(
+                first: gui.set_text(target: target, expected_revision: field(value: before, name: "revision"), text: "LeseLang scope intermediate\n"),
+                body: bind(
+                    middle: gui.observe(target: target),
+                    body: choose(
+                        when: eq(left: value_or(left: field(value: middle, name: "value"), right: ""), right: "LeseLang scope intermediate\n"),
+                        then: bind(
+                            second: gui.set_text(target: target, expected_revision: field(value: middle, name: "revision"), text: "LeseLang generic app window ✓\n"),
+                            body: bind(
+                                after: gui.observe(target: target),
+                                body: choose(
+                                    when: eq(left: value_or(left: field(value: after, name: "value"), right: ""), right: "LeseLang generic app window ✓\n"),
+                                    then: "LeseLang generic app window ✓\n",
+                                    otherwise: "final verification failed",
+                                ),
+                            ),
+                        ),
+                        otherwise: "intermediate verification failed",
+                    ),
+                ),
+            ),
+            otherwise: "initial note mismatch",
+        ),
+    ),
+)

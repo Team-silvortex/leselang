@@ -6,6 +6,8 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 enum { LL_TEXT_LIMIT = 4096, LL_CHILD_LIMIT = 64, LL_NODE_LIMIT = 128, LL_DEPTH_LIMIT = 16 };
 static uint64_t nextIdentity = 1; // Main-thread only; never wrap or reuse.
@@ -66,7 +68,16 @@ static int element(LLCF *item, pid_t pid, int32_t *detail) {
     pid_t actual = 0;
     int result = api(AXUIElementGetPid(raw, &actual), detail);
     if (result) return result;
-    if (actual != pid) return LL_AX_STALE;
+    if (actual != pid) {
+        // This is a local ownership refusal, not the last optional AX error.
+        // System panels can expose elements hosted by another process.
+        if (detail) *detail = 0;
+        const char *diagnostics = getenv("LESELANG_AX_DIAGNOSTICS");
+        if (diagnostics && strcmp(diagnostics, "1") == 0) {
+            fprintf(stderr, "AX element ownership refused: expected_pid=%d, actual_pid=%d\n", pid, actual);
+        }
+        return LL_AX_STALE;
+    }
     // Timeouts belong to each AX ref; the app ref's timeout does not configure
     // newly discovered children. No failed AX call is retried automatically.
     return api(AXUIElementSetMessagingTimeout(raw, 0.5f), detail);
@@ -90,8 +101,9 @@ static int stringAttribute(LLCF *item, CFStringRef name, NSString **out, int32_t
     *out = [text copy];
     return LL_AX_OK;
 }
-static int children(LLCF *item, CFStringRef name, pid_t pid,
-                    NSMutableArray<LLCF *> **out, int32_t *detail) {
+typedef int (*LLElementCheck)(LLCF *item, void *context, int32_t *detail);
+static int childrenChecked(LLCF *item, CFStringRef name, LLElementCheck check, void *context,
+                           NSMutableArray<LLCF *> **out, int32_t *detail) {
     CFIndex declaredCount = 0;
     AXError countError = AXUIElementGetAttributeValueCount((AXUIElementRef)item->value, name, &declaredCount);
     if (countError == kAXErrorNoValue || countError == kAXErrorAttributeUnsupported ||
@@ -121,12 +133,19 @@ static int children(LLCF *item, CFStringRef name, pid_t pid,
         if (!child) return LL_AX_INVALID;
         LLCF *owned = [LLCF new];
         owned->value = CFRetain(child);
-        result = element(owned, pid, detail);
+        result = check(owned, context, detail);
         if (result) return result;
         [items addObject:owned];
     }
     *out = items;
     return LL_AX_OK;
+}
+static int childSameProcess(LLCF *item, void *context, int32_t *detail) {
+    return element(item, *(pid_t *)context, detail);
+}
+static int children(LLCF *item, CFStringRef name, pid_t pid,
+                    NSMutableArray<LLCF *> **out, int32_t *detail) {
+    return childrenChecked(item, name, childSameProcess, &pid, out, detail);
 }
 static int canonicalFileURL(NSString *text, NSString **out) {
     int result = utf8(text, NULL);
@@ -167,13 +186,14 @@ static int processIdentity(pid_t pid, struct proc_bsdinfo *info, NSString **path
     *path = value.stringByResolvingSymlinksInPath.stringByStandardizingPath;
     return LL_AX_OK;
 }
-static int discoverProcess(LLAXContext *context, int32_t *detail) {
-    NSBundle *bundle = [NSBundle bundleWithPath:@"/System/Applications/TextEdit.app"];
-    if (!bundle || ![bundle.bundleIdentifier isEqualToString:@"com.apple.TextEdit"]) return LL_AX_UNAVAILABLE;
+static int discoverApp(LLAXContext *context, NSString *bundlePath, NSString *bundleIdentifier,
+                       int32_t *detail) {
+    NSBundle *bundle = [NSBundle bundleWithPath:bundlePath];
+    if (!bundle || ![bundle.bundleIdentifier isEqualToString:bundleIdentifier]) return LL_AX_UNAVAILABLE;
     NSString *expected = bundle.executableURL.path.stringByResolvingSymlinksInPath.stringByStandardizingPath;
     if (!expected || utf8(expected, NULL)) return LL_AX_UNAVAILABLE;
     // Launch Services may return processIdentifier == -1 for a visible app in
-    // command-line contexts. Select the system TextEdit executable directly;
+    // command-line contexts. Select the requested system executable directly;
     // retain the same PID/start/path guards, without focus or title fallbacks.
     enum { processLimit = 4096 };
     pid_t pids[processLimit + 1] = {0};
@@ -203,6 +223,9 @@ static int discoverProcess(LLAXContext *context, int32_t *detail) {
         context.startMicros = info.pbi_start_tvusec;
     }
     return matches == 1 ? LL_AX_OK : LL_AX_UNAVAILABLE;
+}
+static int discoverProcess(LLAXContext *context, int32_t *detail) {
+    return discoverApp(context, @"/System/Applications/TextEdit.app", @"com.apple.TextEdit", detail);
 }
 static int permission(LLAXContext *context, int32_t *detail) {
     if (![NSThread isMainThread]) return LL_AX_WRONG_THREAD;
@@ -398,3 +421,11 @@ int32_t ll_ax_set_text(void *raw, uint64_t identity,
         return LL_AX_OK;
     } @catch (NSException *exception) { (void)exception; if (detail) *detail = -1; return entered ? LL_AX_UNCERTAIN : LL_AX_API; } }
 }
+
+// A second scoped profile shares the same private transport ownership,
+// process checks and bounded AX readers without changing the TextEdit ABI.
+#include "calculator.inc"
+#include "controls.inc"
+#include "scope.inc"
+#include "auxiliary.inc"
+#include "widgets.inc"

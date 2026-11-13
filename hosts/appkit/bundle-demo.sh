@@ -3,10 +3,13 @@
 set -eu
 host_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$host_dir/../.."
-cargo build --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean
+repo_target="$PWD/target"
+# Keep the build and copy paths together even when CARGO_TARGET_DIR is set.
+cargo build --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean \
+    --target-dir "$repo_target"
 bundle="$PWD/target/LeseLang AppKit Host.app"
 mkdir -p "$bundle/Contents/MacOS"
-cp target/lean/leselang-appkit-host "$bundle/Contents/MacOS/host"
+cp "$repo_target/lean/leselang-appkit-host" "$bundle/Contents/MacOS/host"
 cat > "$bundle/Contents/MacOS/demo" <<'LAUNCHER'
 #!/bin/sh
 exec "$(dirname -- "$0")/host" --demo --hold

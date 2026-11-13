@@ -32,6 +32,15 @@ fn deployment_target() -> String {
 fn main() {
     println!("cargo:rerun-if-changed=native/bridge.m");
     println!("cargo:rerun-if-changed=native/bridge.h");
+    println!("cargo:rerun-if-changed=native/calculator.inc");
+    println!("cargo:rerun-if-changed=native/calculator.h");
+    println!("cargo:rerun-if-changed=native/controls.inc");
+    println!("cargo:rerun-if-changed=native/controls.h");
+    println!("cargo:rerun-if-changed=native/scope.inc");
+    println!("cargo:rerun-if-changed=native/scope.h");
+    println!("cargo:rerun-if-changed=native/widgets.inc");
+    println!("cargo:rerun-if-changed=native/auxiliary.inc");
+    println!("cargo:rerun-if-changed=native/widgets.h");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
         return;
     }

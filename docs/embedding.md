@@ -261,13 +261,54 @@ Its framework bridge does not alter the scalar convenience API or become a
 language dependency.
 
 The [macOS Accessibility host](macos-ax-host.md) adapts the same native contracts
-to an explicitly configured TextEdit document in another process. It retains
-local typed references, checks the process/document/element scope and live
-permission, then explicitly pumps a queued text replacement. A new observation
-verifies the resulting value. External AX snapshots cannot supply complete
+to a configured TextEdit document or a Calculator window in another
+process. Its profiles share the typed driver while retaining separate snapshot
+types and operation policies. TextEdit's existing `Backend` and `Snapshot`
+entry points remain available. The original Calculator profile exposes one window capability;
+button names are bounded metadata resolved only under that capability, rather
+than independent object references. Both profiles check the process and element
+scope and live permission, explicitly pump their queued native operation, then
+request a new observation to verify the resulting value. External AX snapshots cannot supply complete
 mutation history or an atomic read/write transaction, so this adapter documents
 its weaker freshness guarantee separately. The scalar convenience API and
 the application-owned AppKit host keep their existing contracts.
+
+Its additive [controls mode](macos-ax-controls.md) uses a portable
+`ControlsBackend` over the same driver to list controls, resolve a key or exact
+selector, observe a per-control native reference and queue a press or text
+replacement. Keys are connection-local metadata and never replace native
+authority. Result domains distinguish separate controls, and the expected
+snapshot includes the complete observed scope so a changed dependency can
+invalidate an otherwise unchanged target. This API belongs to the independent
+host workspace; it does not add GUI discovery or native operands to the scalar
+embedding convenience API. The original profile entry points remain usable.
+
+For another macOS application, the host workspace exposes
+[`ApplicationSpec`, `WindowInfo` and `WindowSelector`](../hosts/macos-ax/src/scope.rs),
+with `ApplicationAccess` as the native connection. An embedder selects an exact
+bundle path and optional PID, inspects bounded window metadata, then obtains
+`ControlsAccess` by a unique metadata selector or a key from that same
+connection. The selected native window remains pinned even if its title
+changes; removal or replacement refuses later access. The
+[application selection guide](macos-ax-applications.md) provides the CLI and
+Rust flow. These remain host-side decisions before the same controls session
+runs, with no framework dependency added to the language crates.
+
+An optional [widgets catalog](macos-ax-widgets.md) extends that host-side model
+to popup menus, checkbox state, item selection and scrollbar positioning. Its
+separate backend and snapshot types keep the existing `ControlsBackend` and
+control literals usable. Widget source still uses native references, historical
+observations, explicit revision-checked delivery and a separate postcondition
+observation. It does not add native GUI operands to the scalar embedding API.
+The 13-operation widget catalog also supports exact role/value discovery for
+controls whose text appears in `value` rather than their label. Its Finder
+reference uses separate explicit window sessions and verifies native item
+membership before selecting a row; the guide includes the public Rust API and
+the recorded desktop flow.
+An [explicit auxiliary-process grant](macos-ax-auxiliary-processes.md) extends
+only the widget connection's native process policy for embedded helper views.
+Its fixed process identities and shared monotonic revocation remain host
+configuration; the language catalog and scalar embedding API do not change.
 
 ## Dependency Setup
 

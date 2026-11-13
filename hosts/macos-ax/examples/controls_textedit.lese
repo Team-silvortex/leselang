@@ -1,0 +1,21 @@
+fn main() = bind(
+    target: gui.select(role: "AXTextArea", identifier: "", label: ""),
+    body: bind(
+        before: gui.observe(target: target),
+        body: choose(
+            when: eq(left: value_or(left: field(value: before, name: "value"), right: ""), right: "LeseLang AX initial\n"),
+            then: bind(
+                submitted: gui.set_text(target: target, expected_revision: field(value: before, name: "revision"), text: "LeseLang discovered controls ✓\n"),
+                body: bind(
+                    after: gui.observe(target: target),
+                    body: choose(
+                        when: eq(left: value_or(left: field(value: after, name: "value"), right: ""), right: "LeseLang discovered controls ✓\n"),
+                        then: "LeseLang discovered controls ✓\n",
+                        otherwise: "verification failed",
+                    ),
+                ),
+            ),
+            otherwise: "initial text mismatch",
+        ),
+    ),
+)

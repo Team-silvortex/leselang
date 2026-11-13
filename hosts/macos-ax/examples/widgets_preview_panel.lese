@@ -1,0 +1,34 @@
+// Use only with the dedicated Panel Fixture.png Export sheet.
+// The host must explicitly grant its discovered auxiliary process identity.
+// Each later edit depends on a fresh observation of the previous result.
+fn main() = bind(
+    target: gui.select(role: "AXTextField", identifier: "saveAsNameTextField", label: ""),
+    body: bind(
+        before: gui.observe(target: target),
+        body: choose(
+            when: eq(left: value_or(left: field(value: before, name: "value"), right: ""), right: "Panel Fixture"),
+            then: bind(
+                first: gui.set_text(target: target, expected_revision: field(value: before, name: "revision"), text: "LeseLang XPC draft"),
+                body: bind(
+                    middle: gui.observe(target: target),
+                    body: choose(
+                        when: eq(left: value_or(left: field(value: middle, name: "value"), right: ""), right: "LeseLang XPC draft"),
+                        then: bind(
+                            second: gui.set_text(target: target, expected_revision: field(value: middle, name: "revision"), text: "LeseLang XPC verified"),
+                            body: bind(
+                                after: gui.observe(target: target),
+                                body: choose(
+                                    when: eq(left: value_or(left: field(value: after, name: "value"), right: ""), right: "LeseLang XPC verified"),
+                                    then: "LeseLang XPC verified",
+                                    otherwise: "final verification failed",
+                                ),
+                            ),
+                        ),
+                        otherwise: "intermediate verification failed",
+                    ),
+                ),
+            ),
+            otherwise: "initial export name mismatch",
+        ),
+    ),
+)

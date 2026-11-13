@@ -1,4 +1,5 @@
-//! Cross-process adapter for one explicitly selected TextEdit document.
+//! Cross-process control discovery inside an explicit application/window scope,
+//! with TextEdit and Calculator compatibility profiles sharing one session engine.
 //!
 //! The native transport has observed-state freshness, not an atomic remote
 //! compare-and-set contract. The language's local object/session rules remain
@@ -8,8 +9,20 @@ use std::fmt;
 
 #[cfg(target_os = "macos")]
 pub mod access;
+pub mod calculator;
+#[cfg(target_os = "macos")]
+pub mod calculator_access;
+pub mod controls;
+#[cfg(target_os = "macos")]
+pub mod controls_access;
 pub mod driver;
 pub mod host;
+pub mod scope;
+#[cfg(target_os = "macos")]
+pub mod scope_access;
+#[cfg(target_os = "macos")]
+mod transport;
+pub mod widgets;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Snapshot {
@@ -77,3 +90,6 @@ impl fmt::Display for Error {
     }
 }
 impl std::error::Error for Error {}
+
+#[cfg(target_os = "macos")]
+pub mod widgets_access;

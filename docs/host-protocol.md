@@ -205,16 +205,63 @@ event delivery, identity tracking and the Objective-C bridge stay in the host
 workspace.
 
 The separate [macOS Accessibility host](macos-ax-host.md) scopes the same native
-flow to one TextEdit document in another process. Its three operations find the
-configured document's text area, observe it, and queue a complete text
-replacement. Process start identity, the exact document URL and retained AX
-element equality are checked again before delivery. A subsequent observation
-verifies the remote value.
+flow to one TextEdit document or a Calculator Basic-mode window in another
+process. Both profiles use the same typed session driver. TextEdit finds the
+configured document's text area, observes it and queues a complete text
+replacement. Calculator finds a window capability, observes the display and
+allowed buttons, and queues `gui.press` with a named button. Those names are
+metadata resolved under the live window capability, not serialized object
+references. Process start identity, the selected document or window and retained
+AX element equality are checked again before delivery. Calculator also compares
+the display, optional last expression and all allowed button states, since the
+meaning of a press depends on the current calculation. A changed expression can
+invalidate a queued press even when the displayed result stays the same.
+Subsequent observations verify the remote values.
+
+The opt-in [controls mode](macos-ax-controls.md) extends discovery within those
+same explicit process/window scopes. It lists connection-local keys or resolves
+exact role/identifier/label selectors into distinct per-control native
+references. Empty and ambiguous selectors fail; registry slots and retired
+keys are never reused. Discovery metadata is not serialized authority and a
+new connection cannot reuse an earlier key. Observe and action replies remain
+bound to the requested control's owner and execution lease. Presses and text
+replacements use the shared explicit queue and compare the full observed scope
+before native delivery, including other controls and non-target dependencies.
+An unchanged button cannot admit a stale action after an observed calculation
+context change.
+
+The [application/window selection layer](macos-ax-applications.md) extends the
+host's admission step to an exact running macOS bundle and optional PID. It
+lists bounded window metadata, requires a unique exact metadata match or a
+same-connection window key, and retains the resulting native window identity.
+A title change does not switch targets; disappearance or replacement refuses
+the selected connection. Process executable/start checks and window registry
+tombstones preserve that boundary. The resulting controls connection uses the
+same catalog and execution-bound object references; source cannot broaden its
+application or window scope through an Effect.
+
+The optional [widgets profile](macos-ax-widgets.md) uses the same boundaries for
+popup menus, explicit checkbox state, native item selection and scrollbar
+position. Its item arguments are scoped native references. The host validates
+current ownership and membership before delivery, including transient menu
+items whose acknowledgement must remain associated with a stable menu owner.
+Relevant checked, selected and scroll state are observation dependencies;
+operation support alone is not evidence that a requested postcondition holds.
+Its exact role/value selector is a read operation that returns a native
+reference under the existing execution lease. Zero or multiple matches fail,
+and finding a displayed value grants no additional write capability.
+An [auxiliary-process grant](macos-ax-auxiliary-processes.md) can explicitly
+admit helper-owned widget objects reachable within the same pinned window.
+The host approves fixed PID/start-time/executable identities and can revoke a
+shared grant. Discovery supplies metadata only; it does not authorize a helper
+or add that process's other windows. Process and grant checks also run when
+accepting targetless discovery replies. This is native transport policy and
+introduces no source-language operation.
 
 This external adapter advances revisions for observed changes and admitted
 attempts. It cannot observe all intervening remote mutations: an A→B→A change
-entirely between reads may be missed, and TextEdit can change after the final
-check but before the setter. The revision therefore does not establish atomic
+entirely between reads may be missed, and either application can change after
+the final check but before the native mutation. The revision therefore does not establish atomic
 remote compare-and-set. The application-owned AppKit host retains its stronger
 mutation tracking. Native object identity, execution leases, original Fuel,
 permission checks and reply correlation remain required for both adapters.
@@ -315,7 +362,11 @@ identity.
 | Local protocol draft | Opaque object identity, generation, execution lease, revision checks and historical observations are exercised through GUI/CLI headless host conformance tests with distinct native representations and explicit queues. |
 | Dynamic native object operands | Real source discovers and binds an object, then passes the typed result to observe/apply operations; two objects exercise identity-based routing. Scalar adapters reject native operands by default. |
 | Real GUI adapter | The separate macOS AppKit host binds actual `NSButton` and `NSTextField` objects to bounded discovery, text replacement and target/action dispatch through the existing VM protocol. Its form verifies edited and submitted values and tracks Save's dependency on the input revision. Its desktop self-test exercises the full source flow and live object/session fences; macOS CI builds, lints and runs the non-GUI package tests separately. This establishes an application-owned AppKit adapter, not cross-platform or other-process automation. |
-| Scoped cross-process GUI adapter | The separate macOS Accessibility host has completed a four-Effect find, observe, queued text replacement and observed-result verification flow against a real TextEdit document, with separate inspection of the resulting window text. It checks live permission, process identity, document URL and AX element identity. External freshness is snapshot based, with a remaining read/write race and no guarantee against unseen ABA changes. Repeating desktop acceptance requires the target application, document and host Accessibility permission. |
+| Scoped cross-process GUI adapter | The separate macOS Accessibility host has completed a four-Effect text replacement flow against a real TextEdit document and a ten-Effect `1 + 2 = 3` flow against Calculator 12.0 on macOS 27.0.1, each with separate window inspection. Calculator uses a window capability, observed display/last-expression/button dependencies and queued `AXPress` actions through the same typed driver. Both check live permission, process identity, scoped targets and AX element identity. External freshness is snapshot based, with a remaining read/action race and no guarantee against unseen ABA changes. Desktop acceptance requires the supported application state and host Accessibility permission. |
+| Scoped control discovery | The opt-in controls catalog supports bounded inventories, exact unique selectors, separate native references for buttons/text controls and explicit press/text operations under the existing TextEdit or Calculator window scope. Real controls-mode runs completed the 17-Effect `8 + 7 = 15` Calculator source and four-Effect TextEdit replacement, each with separate desktop verification. TextEdit also completed a three-Effect list/find/observe source; real ambiguous selectors and keys from earlier connections refused. Whole-scope observed changes fence queued actions under the declared attribute projection; this does not expand application scope or provide atomic remote state. See the control guide for the exact tested layouts and regression checks. |
+| Generic application/window selection | An explicit bundle path and optional matching PID admit one running same-user application instance. Bounded window metadata and exact unique selection or same-connection keys bind one native window independently of later title changes. The generic controls path completed a six-Effect two-replacement flow against a dedicated Stickies 10.3 note, retaining the selected window through changing titles and independently verifying its final text. Window/process replacement, permission loss and observed state changes still refuse stale work; this is macOS scope selection with per-application compatibility requirements, not atomic remote state or universal GUI coverage. See the application selection guide for the tested flow and boundaries. |
+| Common widget operations | The optional 13-operation widgets catalog adds exact role/value discovery, scoped menu operations, desired checkbox state, native item selection and normalized scrollbar position. A real Finder workflow used explicit View Options and folder-window sessions, opened/cancelled/chose a popup item, cleared Size/Kind checkboxes, selected one exact native row and scrolled from 0 to 1,000, with independent desktop inspection. The menu choice's immediate observation had not updated, so its source stopped; a later explicit read established the postcondition before the next session continued. The [widget guide](macos-ax-widgets.md) records each source result and the same-process boundary, including refusal of Preview's XPC Export panel. Portable and native tests separately preserve identity, failure, Fuel and session fences. |
+| Explicit auxiliary process scopes | A reviewed PID/start-time/executable grant admits helper-owned objects only through the selected window's bounded AX relationships, with shared monotonic revocation and repeated process checks. Preview's Export panel completed a six-Effect source flow that wrote and observed two successive export-name values in an AppKit helper, followed by independent desktop inspection and cancellation without exporting. Default ungranted access and a mismatched start time refused. The [auxiliary-process guide](macos-ax-auxiliary-processes.md) records the tested instance, embedding API and boundaries; the helper's other windows remain outside scope. |
 | Wider object language and remote/durable hosts | Native helper parameter annotations and object-valued field projections remain separate language extensions. Remote/durable hosts still require transport identity, version negotiation, failure recovery and compatibility decisions; local references cannot be reused as wire handles. |
 
 See the [embedding guide](embedding.md) for Rust host setup and the
