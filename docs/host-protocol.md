@@ -194,6 +194,31 @@ cargo run --example protocol_hosts --locked --offline --profile lean
 cargo run --manifest-path consumer/Cargo.toml --example protocol_hosts --locked --offline --profile lean
 ```
 
+The separate [AppKit host](appkit-host.md) uses the same typed object flow with
+real macOS `NSButton` and `NSTextField` controls. Its `gui.list` returns bounded
+identifier metadata, while `gui.set_text` and `gui.click` queue a value replacement
+or target/action invocation. The driver explicitly pumps each action and then
+requests a new observation to verify the edited value or Save's captured value
+and click count. Input edits also invalidate Save's earlier observation, so the
+form's dependency cannot silently admit a stale submission. Framework objects,
+event delivery, identity tracking and the Objective-C bridge stay in the host
+workspace.
+
+The separate [macOS Accessibility host](macos-ax-host.md) scopes the same native
+flow to one TextEdit document in another process. Its three operations find the
+configured document's text area, observe it, and queue a complete text
+replacement. Process start identity, the exact document URL and retained AX
+element equality are checked again before delivery. A subsequent observation
+verifies the remote value.
+
+This external adapter advances revisions for observed changes and admitted
+attempts. It cannot observe all intervening remote mutations: an A→B→A change
+entirely between reads may be missed, and TextEdit can change after the final
+check but before the setter. The revision therefore does not establish atomic
+remote compare-and-set. The application-owned AppKit host retains its stronger
+mutation tracking. Native object identity, execution leases, original Fuel,
+permission checks and reply correlation remain required for both adapters.
+
 There is no implicit `wait_until`, timer or polling service. A host that needs
 to wait owns its event loop, deadlines, cancellation delivery and bounded
 observation policy. A future wait contract needs explicit evidence for those
@@ -289,7 +314,8 @@ identity.
 | Standalone scalar CLI | `check` and `run` execute complete source programs; `std.print` is an explicitly granted reference host operation. |
 | Local protocol draft | Opaque object identity, generation, execution lease, revision checks and historical observations are exercised through GUI/CLI headless host conformance tests with distinct native representations and explicit queues. |
 | Dynamic native object operands | Real source discovers and binds an object, then passes the typed result to observe/apply operations; two objects exercise identity-based routing. Scalar adapters reject native operands by default. |
-| Real GUI adapter | Still requires one concrete framework integration proving thread affinity, event dispatch, object replacement, external state changes, cancellation and observed postconditions. The headless model is protocol evidence, not that integration. |
+| Real GUI adapter | The separate macOS AppKit host binds actual `NSButton` and `NSTextField` objects to bounded discovery, text replacement and target/action dispatch through the existing VM protocol. Its form verifies edited and submitted values and tracks Save's dependency on the input revision. Its desktop self-test exercises the full source flow and live object/session fences; macOS CI builds, lints and runs the non-GUI package tests separately. This establishes an application-owned AppKit adapter, not cross-platform or other-process automation. |
+| Scoped cross-process GUI adapter | The separate macOS Accessibility host has completed a four-Effect find, observe, queued text replacement and observed-result verification flow against a real TextEdit document, with separate inspection of the resulting window text. It checks live permission, process identity, document URL and AX element identity. External freshness is snapshot based, with a remaining read/write race and no guarantee against unseen ABA changes. Repeating desktop acceptance requires the target application, document and host Accessibility permission. |
 | Wider object language and remote/durable hosts | Native helper parameter annotations and object-valued field projections remain separate language extensions. Remote/durable hosts still require transport identity, version negotiation, failure recovery and compatibility decisions; local references cannot be reused as wire handles. |
 
 See the [embedding guide](embedding.md) for Rust host setup and the

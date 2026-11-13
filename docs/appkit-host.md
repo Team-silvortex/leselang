@@ -1,0 +1,231 @@
+# A Real macOS AppKit Host
+
+The standalone [`hosts/appkit`](../hosts/appkit/Cargo.toml) workspace connects
+LeseLang to actual AppKit controls in its own application. It creates a native
+window containing two `NSButton` objects, identified as `save` and `other`, and
+an editable `NSTextField` identified as `input`. The form program discovers the
+registered controls, observes the input, submits a text replacement, verifies
+the edit, clicks Save and verifies the value captured by its real target/action.
+The other button provides an independent target for routing and wrong-object checks.
+
+AppKit is the first concrete framework because the development host is macOS
+and its SDK already supplies native controls, object lifetimes and target/action
+dispatch. A small Objective-C bridge calls those APIs; the compiler, object
+protocol, Fuel and VM remain the existing Rust implementations. No GUI toolkit
+dependency is added to the five language crates.
+
+## Build And Run
+
+Requirements:
+
+- macOS 14 or later with an active, logged-in desktop session.
+- Rust 1.98.0, as pinned by the repository.
+- Xcode or Xcode Command Line Tools providing `xcrun`, `clang` and a macOS 14+
+  SDK. This reference adapter currently builds for the native host target.
+
+Run from the repository root:
+
+```sh
+cargo run --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean -- --demo --hold
+```
+
+The default demo runs the form workflow. `--hold` keeps its window available
+until it is closed; omit that option for a finite run. The buttons use real
+AppKit target/action callbacks, and `gui.set_text` replaces the real text field's
+value. Save copies the input into its submitted value when its target/action
+runs. A subsequent observation checks that captured value against the intended
+text. A queued acknowledgement does not establish that either operation ran.
+
+The original four-Effect button demonstration remains available:
+
+```sh
+cargo run --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean -- --button-demo --hold
+```
+
+Run an independent source file against the same host:
+
+```sh
+cargo run --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean -- --run hosts/appkit/examples/form.lese --hold
+```
+
+`--run` reads a UTF-8 source file of at most 16 KiB (16,384 bytes), before
+constructing native GUI resources. It uses the same compiler, explicit driver
+and operation catalog, with a fixed initial budget of 1,000 Fuel. It accepts
+any scalar final result, including a string list, and does not impose the
+demonstrations' button selection, expected value or state assertions. Returning
+a session-bound native object or observation is an error; project its scalar
+fields before returning. That final-result check does not undo earlier effects.
+Printed scalar values are human-readable, with string controls escaped, rather
+than a wire format. The selected host operations still act only on this
+application's registered controls. The scalar `leselang` CLI does not register
+these GUI operations.
+
+For a Finder-launchable local demo, run `hosts/appkit/bundle-demo.sh`. It builds
+`target/LeseLang AppKit Host.app`; opening that bundle runs the form demo with
+`--hold`. The bundle is a local development artifact, not an installed or signed
+release.
+
+Run the actual GUI acceptance checks separately:
+
+```sh
+cargo run --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean -- --self-test
+hosts/appkit/test-native.sh
+```
+
+Both commands exercise AppKit on the process's main thread. The self-test drives
+the complete Rust host and VM; the native bridge test checks framework edit
+notifications, discovery bounds, UTF-8 ingress and lifecycle behavior directly.
+Ordinary Rust test harness worker threads are not used for native GUI operations.
+A machine without the required desktop session cannot supply this verification;
+a successful compile is not a successful GUI run. Non-macOS execution reports
+that the framework is unavailable.
+
+Run the non-GUI command-line ingress tests and the compile-fail thread-affinity
+check through the normal package test command:
+
+```sh
+cargo test --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean
+```
+
+## Operations And Source Flow
+
+The host's catalog supplies five operations:
+
+| Operation | Inputs | Result |
+| --- | --- | --- |
+| `gui.list` | None | A bounded string list of registered control identifiers |
+| `gui.find` | `name`: a control identifier | An opaque native object reference bound to this execution |
+| `gui.observe` | `target`: that object reference | A historical observation with scalar state and identity-description fields |
+| `gui.set_text` | `target`, `expected_revision`, and `text` | A submission acknowledgement for replacing an editable text field's value |
+| `gui.click` | `target` and `expected_revision` | A submission acknowledgement for a button's target/action |
+
+Discovery walks actual registered controls. The identifier list is ordinary
+metadata, not a collection of object references or authority. A program can
+inspect it with existing `len`, `item_at`, `value_or` and bounded `fold` operators,
+then pass a chosen name to `gui.find`. Finding an object resolves its current
+instance under live host policy. Retained discovery names do not keep a control
+alive, freeze its state or authorize a future operation. Duplicate or invalid
+identifiers must not silently select an arbitrary control.
+
+An observation exposes these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `identifier` | The registered name observed for this control |
+| `role` | The host's control role, used to distinguish buttons from text input |
+| `title` | The native control's title or descriptive caption |
+| `value` | Current input text for the text field; captured submitted text for Save |
+| `enabled`, `editable` | Live state observed at capture time |
+| `clicks` | The button's target/action count |
+| `revision` | The local protocol revision associated with this observation |
+
+These descriptions are scalar data. The separate native object reference is
+still required by actions. The host rejects text replacement on a button and
+clicks on the text field before native work. `gui.set_text` means replacement of
+the whole value, not synthetic keyboard input, append, or focus manipulation.
+
+The complete [form source](../hosts/appkit/examples/form.lese) makes the workflow
+explicit: list identifiers, find the input, observe and check its role/editability,
+submit and pump the replacement, observe the edited value, find and observe Save,
+submit and pump its click, then observe the captured submitted value. The
+[host catalog](../hosts/appkit/src/host.rs) and
+[driver](../hosts/appkit/src/driver.rs) use the existing language implementation.
+The original button program remains in the same host as a compatibility example.
+
+## Thread, Identity And Event Boundaries
+
+The GUI wrapper owns the native context and is neither `Send` nor `Sync`.
+Creation, reads, mutations, event dispatch and destruction stay on the main
+thread. Apple documents main-thread restrictions for views and cells, and the
+main thread's responsibility for event delivery in its
+[thread safety guide](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/Multithreading/ThreadSafetySummary/ThreadSafetySummary.html).
+
+The bridge contains Objective-C exceptions at the FFI boundary. Rust receives
+an error instead of an exception unwinding through a Rust frame. Native work
+still remains trusted host code: Fuel meters the adapter's declared work and
+does not preempt arbitrary framework callbacks.
+
+Each host-owned object has a `LocalObjectOwner`. A replacement invalidates the
+previous generation even if the new control uses the same identifier. The
+bridge's per-instance identity is private metadata, not a serialized capability.
+Changes made through the controls or bridge advance a checked mutation serial,
+which is refreshed before revision-based admission. A title changed from A to B
+and back to A still invalidates an earlier observation. This is an
+application-owned adaptation obligation: every relevant
+mutation path must participate in change tracking.
+
+Save depends on the input's value. Input edits therefore also invalidate Save's
+observed revision, including edits that change A to B and back to A. A queued
+Save based on an older observation refuses after that dependency changes.
+This is explicit dependency tracking for this form; it does not make multiple
+objects a transaction or roll back an earlier accepted text replacement.
+
+The VM handoff remains explicit:
+
+1. `poll` produces a typed request.
+2. The driver authorizes that request under current host policy.
+3. `dispatch` either reads native state or queues the requested action.
+4. For a submitted text replacement or click, the driver explicitly pumps queued
+   work inside the same VM's metered host-work boundary. The pump rechecks the
+   lease, object, generation, revision, control role and permissions before
+   replacing text or invoking `performClick:`.
+5. The driver explicitly accepts the reply, then polls for the next request.
+
+The AppKit event step is also explicit. It requests at most one currently
+available event through
+[`nextEvent(matching:until:inMode:dequeue:)`](https://developer.apple.com/documentation/appkit/nsapplication/nextevent(matching:until:inmode:dequeue:)),
+then dispatches that event. Framework event handlers may do native work; this
+does not add a language scheduler or silently resume a pending VM.
+
+Cancellation closes the language execution and prevents its queued action from
+running. It cannot undo a text replacement or click already delivered to AppKit.
+A later observation is the evidence for the resulting widget state. Rejected
+replies preserve their native data and do not grant another object or execution
+authority.
+
+## Verification And Scope
+
+The main-thread self-test exercises actual controls, including the original
+button compatibility checks and the form workflow:
+
+| Group | Evidence |
+| --- | --- |
+| Native controls and source routing | Registered identifiers resolve to distinct instances; source selects the intended control and leaves unrelated controls unchanged. |
+| Submission, pump, acceptance and observation | Queue acknowledgement leaves native state unchanged; explicit pumps perform text replacement and target/action; new observations verify edited and submitted values. |
+| Live state and authority | External changes, A→B→A changes, host-controlled and externally detected replacement, revocation and disabled/editability state are checked before native mutation. Save also tracks relevant input changes. |
+| Cancellation and late replies | Cancellation prevents queued delivery; cancellation after delivery retains the real widget change and rejects the late reply. |
+| Fuel | Zero initial Fuel or exhausting the original budget before pumping prevents native work; queued text replacement and clicks use the original session budget. |
+| Exact reply identity | Another object's reference or snapshot payload is rejected while preserving the original reply, pending request and Fuel. |
+| Partial effects | Injected known or uncertain failure after an actual native click preserves the GUI mutation and selects the corresponding VM terminal state. |
+| Native boundaries | UTF-8 round-trips, oversized text refuses before mutation, and a worker-thread GUI constructor is rejected. |
+| Teardown | Closing the real window refuses pending work and closes the execution. |
+
+The retained button demo completes four Effects and returns `ready`; its button
+changes from `draft`/zero clicks to `ready`/one click. The form demo completes nine
+Effects and returns `LeseLang ✓`, after verifying the input edit and the value
+copied by Save. The main-thread self-test covers 15 groups, including 32
+stale-state, authority and dependency cases. The separate native bridge test
+covers four groups, including real edit-notification delivery and bounded native
+view traversal. Keep these state assertions separate from submission receipts.
+Neither a returned acknowledgement nor a successful compiler invocation is
+evidence that a control changed.
+
+The local form run was also checked through the real window's accessibility
+tree on 2026-11-13: input and saved values were both `LeseLang ✓`, Save showed
+`ready` with one callback, and Other remained `draft` with zero callbacks. That
+run reported nine Effects and 508 Fuel remaining. This desktop inspection
+complements the native state assertions and failure tests.
+
+CI checks the isolated host's formatting, builds and lints its native code, and
+runs its non-GUI package tests on macOS. It does not claim desktop execution
+from a headless runner. The independent Consumer's repository-boundary test
+also inspects this workspace's
+Cargo metadata, while continuing to require exactly five language packages in
+the main workspace.
+
+This adapter controls objects belonging to its own process. It does not provide
+system-wide accessibility automation, inspect another application's UI, or
+establish Windows/Linux GUI compatibility. It also does not define a wire
+protocol or stable FFI ABI. The Objective-C boundary is private to this host.
+The [local protocol](host-protocol.md) describes the reusable contracts for
+additional adapters.

@@ -1,0 +1,17 @@
+[package]
+name = "leselang-macos-ax-host"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "An explicit LeseLang Accessibility host for a scoped TextEdit document"
+
+[workspace]
+
+[dependencies]
+leselang-vm = { path = "../../crates/leselang-vm" }
+
+[profile.lean]
+inherits = "dev"
+debug = 0
+incremental = false

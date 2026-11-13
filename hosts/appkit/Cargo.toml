@@ -1,0 +1,17 @@
+[package]
+name = "leselang-appkit-host"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "An explicit local LeseLang host for real macOS AppKit controls"
+
+[workspace]
+
+[dependencies]
+leselang-vm = { path = "../../crates/leselang-vm" }
+
+[profile.lean]
+inherits = "dev"
+debug = 0
+incremental = false

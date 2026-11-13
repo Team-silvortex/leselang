@@ -1,0 +1,47 @@
+fn select(ids: string_list, wanted: string) = fold(
+    selected: "",
+    items: ids,
+    item: "candidate",
+    next: choose(when: eq(left: candidate, right: wanted), then: candidate, otherwise: selected),
+    limit: 64,
+)
+fn main() = bind(
+    ids: gui.list(),
+    body: bind(
+        input: gui.find(name: select(ids: ids, wanted: "input")),
+        body: bind(
+            before_input: gui.observe(target: input),
+            body: choose(
+                when: and(left: eq(left: field(value: before_input, name: "role"), right: "text_field"), right: field(value: before_input, name: "editable")),
+                then: bind(
+                    typed: gui.set_text(target: input, expected_revision: field(value: before_input, name: "revision"), text: "LeseLang ✓"),
+                    body: bind(
+                        after_input: gui.observe(target: input),
+                        body: choose(
+                            when: eq(left: field(value: after_input, name: "value"), right: "LeseLang ✓"),
+                            then: bind(
+                                save: gui.find(name: select(ids: ids, wanted: "save")),
+                                body: bind(
+                                    before_save: gui.observe(target: save),
+                                    body: bind(
+                                        clicked: gui.click(target: save, expected_revision: field(value: before_save, name: "revision")),
+                                        body: bind(
+                                            after_save: gui.observe(target: save),
+                                            body: choose(
+                                                when: and(left: eq(left: field(value: after_save, name: "value"), right: "LeseLang ✓"), right: eq(left: field(value: after_save, name: "clicks"), right: add(left: field(value: before_save, name: "clicks"), right: 1))),
+                                                then: field(value: after_save, name: "value"),
+                                                otherwise: "submission verification failed",
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            otherwise: "input verification failed",
+                        ),
+                    ),
+                ),
+                otherwise: "input is not editable",
+            ),
+        ),
+    ),
+)

@@ -252,6 +252,22 @@ For a GUI host, map each operation onto the framework's dispatcher and keep
 thread-affine objects local. A GUI event loop may drive polling, but Leselang
 does not automatically discover widgets or adapt a toolkit. The headless GUI
 consumer tests are protocol examples, not a shipping Avalonia/FFI integration.
+The separate [AppKit host](appkit-host.md) demonstrates the next concrete step:
+real application-owned macOS buttons and a text field, bounded control
+discovery, text replacement, native target/action dispatch, typed object operands
+and an explicit main-thread event pump. Its form verifies the edited value and
+the value captured by Save, with input changes invalidating stale Save actions.
+Its framework bridge does not alter the scalar convenience API or become a
+language dependency.
+
+The [macOS Accessibility host](macos-ax-host.md) adapts the same native contracts
+to an explicitly configured TextEdit document in another process. It retains
+local typed references, checks the process/document/element scope and live
+permission, then explicitly pumps a queued text replacement. A new observation
+verifies the resulting value. External AX snapshots cannot supply complete
+mutation history or an atomic read/write transaction, so this adapter documents
+its weaker freshness guarantee separately. The scalar convenience API and
+the application-owned AppKit host keep their existing contracts.
 
 ## Dependency Setup
 

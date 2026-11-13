@@ -87,12 +87,24 @@ fn metadata(manifest: &Path) -> Value {
 }
 
 #[test]
-fn both_workspaces_remain_native_mit_and_repository_local() {
+fn language_consumer_and_gui_hosts_remain_separate_mit_and_repository_local() {
     validate(&metadata(&root().join("Cargo.toml")), root(), CRATES).unwrap();
     validate(
         &metadata(&root().join("consumer/Cargo.toml")),
         root(),
         &["leselang-native-source-consumer"],
+    )
+    .unwrap();
+    validate(
+        &metadata(&root().join("hosts/appkit/Cargo.toml")),
+        root(),
+        &["leselang-appkit-host"],
+    )
+    .unwrap();
+    validate(
+        &metadata(&root().join("hosts/macos-ax/Cargo.toml")),
+        root(),
+        &["leselang-macos-ax-host"],
     )
     .unwrap();
 }

@@ -84,7 +84,26 @@ operation key. Native helper parameter annotations and native-valued field
 projections remain outside this milestone; scalar embedding remains a separate
 convenience profile.
 
-A concrete GUI framework adapter, remote/durable host protocol, full
-language/host parity and stable FFI ABI each require their own evidence and
+The separate [`hosts/appkit`](appkit-host.md) workspace adds a concrete macOS
+adapter for application-owned `NSButton` and `NSTextField` controls, with bounded
+identifier discovery, native text replacement, target/action dispatch and an
+explicit main-thread desktop self-test. Its form tracks Save's dependency on the
+input state so stale queued submissions refuse before native mutation. Its
+Objective-C bridge and framework link flags stay outside the language dependency
+graph.
+
+The independent [`hosts/macos-ax`](macos-ax-host.md) workspace scopes cross-process
+Accessibility access to one TextEdit document. It checks the process instance,
+document URL and retained element identity, queues text replacement explicitly
+and verifies the result through a new observation. Its external state checks
+are snapshot based: they cannot detect an unseen A→B→A change or close the race
+between a final read and a native write. This limitation belongs to the adapter
+and does not weaken the own-process AppKit host's mutation tracking or the
+language's local lifetime, reply and Fuel contracts. A real desktop run requires
+the target document and permission for the executing host; model tests alone
+do not establish it.
+
+Broader application or cross-platform GUI automation, a remote/durable host protocol,
+full language/host parity and stable FFI ABI each require their own evidence and
 release decisions. The current tests do not establish those milestones or a
 security sandbox for native callbacks.

@@ -9,8 +9,11 @@ and a validated reply resumes the same execution with its original Fuel budget.
 Hosts supply their operation catalog, object adapter, live authority and event
 loop. The [local host protocol draft](docs/host-protocol.md) defines opaque
 object references, historical observations and revision-checked action attempts;
-the reference GUI and CLI models exercise the shared boundaries. A concrete GUI
-framework integration remains a separate gate. No Gewyvern, Leserpent, SQLite,
+the reference GUI and CLI models exercise the shared boundaries. The separate
+[AppKit host](docs/appkit-host.md) applies the protocol to real macOS buttons and
+editable text fields. The [Accessibility host](docs/macos-ax-host.md) provides a
+separate adapter for one explicitly selected TextEdit document in another process.
+No Gewyvern, Leserpent, SQLite,
 Node.js, Python or shell runtime is required by this workspace.
 
 ## Try It
@@ -62,6 +65,57 @@ An action acknowledgement records submission; a later observation verifies the
 changed state. Native object operands are an explicit HIR adapter opt-in; the
 high-level embedding API remains scalar.
 
+## Run A Real GUI Host
+
+On macOS 14+ with Xcode Command Line Tools and a logged-in desktop session:
+
+```sh
+cargo run --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean -- --demo --hold
+cargo run --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean -- --self-test
+```
+
+The [AppKit adapter](hosts/appkit/Cargo.toml) opens a native form with two
+`NSButton` controls and an editable `NSTextField`. LeseLang lists registered
+controls, observes and edits the input, clicks Save, and verifies the value
+captured by its real target/action. Both actions require explicit native pumps.
+`--hold` keeps the window open; `--button-demo` retains the original button flow.
+Use `--run hosts/appkit/examples/form.lese` to execute an independent source file
+through this host's catalog with a 16 KiB UTF-8 source limit, 1,000 initial Fuel
+and a scalar final result. The file runner accepts programs with their own
+results and control choices; the built-in demonstrations add their own state
+assertions. `hosts/appkit/test-native.sh` checks the native bridge directly.
+The adapter is a separate workspace, so AppKit and its small Objective-C bridge
+do not become dependencies of the five language crates or the independent
+consumer. See the [AppKit guide](docs/appkit-host.md) for prerequisites,
+execution boundaries and the scope of the real GUI tests.
+
+## Run A Scoped External GUI Host
+
+The [macOS Accessibility adapter](docs/macos-ax-host.md) targets a plain-text
+document already open in TextEdit. It checks the exact document URL, process
+instance and Accessibility element before reading or replacing text, using the
+same native object and Effect boundaries.
+
+```sh
+cargo build --manifest-path hosts/macos-ax/Cargo.toml --locked --offline --profile lean
+target/lean/leselang-macos-ax-host --check-permission
+target/lean/leselang-macos-ax-host --prepare /tmp/leselang-ax-demo.txt
+```
+
+Open that newly created file in TextEdit, then run
+`target/lean/leselang-macos-ax-host --document /tmp/leselang-ax-demo.txt`.
+The default source finds and observes the document, explicitly pumps a text
+replacement, and observes again to verify `LeseLang cross-process ✓` followed by
+a newline. This four-Effect flow has been verified against a real TextEdit
+window. It requires Accessibility permission for the host process; the host
+checks access without prompting or changing permissions. `--prepare` refuses to
+overwrite an existing file. TextEdit may autosave the disposable test document.
+
+Unlike the application-owned form, the external adapter can detect only
+observed changes. It cannot detect every intervening A→B→A change or make its
+read/write sequence atomic with TextEdit. Read the [adapter guide](docs/macos-ax-host.md)
+for the exact scope, failure behavior and separate desktop acceptance procedure.
+
 ## Packages
 
 | Crate | Responsibility |
@@ -89,25 +143,39 @@ cargo test --manifest-path consumer/Cargo.toml --locked --offline --profile lean
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete local checks. CI runs
 formatting, tests, strict Clippy and example execution on Linux and macOS.
-Both workspaces share one ignored build directory to avoid duplicate caches.
+The workspaces share one ignored build directory to avoid duplicate caches.
+CI also builds and lints the AppKit host and runs its non-GUI package tests on
+macOS. Its real GUI self-test and native bridge tests require a desktop session
+and are separate explicit checks.
+The Accessibility host's deterministic backend and command-line tests run on
+Linux and macOS; its actual TextEdit workflow additionally requires a desktop
+and permission for the executing host. Its separate native boundary checks run
+on macOS without remote GUI calls.
 
 ## Scope And Status
 
 This is the independent native language foundation, initially extracted from
 Gewyvern. It is not a complete replacement for Leserpent's product evaluator,
-SQLite journal, wire protocols or GUI integration. A general durable runtime,
+SQLite journal, wire protocols or arbitrary GUI automation. The AppKit host
+controls its own application objects. The separate Accessibility host targets
+one configured TextEdit document and checks external state through bounded
+snapshots; it is not a general adapter for every application's GUI.
+A general durable runtime,
 full declared-language parity and a stable FFI ABI remain separate milestones.
 Native callbacks are trusted Rust code; fuel is not a callback sandbox and
 cancellation does not roll back committed external effects.
 
-The independent package line starts at **0.1.0**. All five crates and the separate
-consumer share this version; it is independent of Gewyvern's product numbering.
+The independent package line starts at **0.1.0**. All five crates, the separate
+consumer and the reference hosts share this version; it is independent of
+Gewyvern's product numbering.
 Historical extraction records retain their original source versions and hashes.
 Packages remain `publish = false` until a registry release is deliberately prepared.
 Use local paths now; a Git dependency must pin an actual commit after publication.
 
 - [Architecture and ownership](docs/architecture.md)
 - [Local host protocol and acceptance gates](docs/host-protocol.md)
+- [Real macOS AppKit host](docs/appkit-host.md)
+- [Scoped macOS Accessibility host](docs/macos-ax-host.md)
 - [Language and CLI guide](docs/language.md)
 - [Embedding a host](docs/embedding.md)
 - [Extraction provenance and product handoff](docs/migration.md)

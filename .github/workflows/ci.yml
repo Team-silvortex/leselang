@@ -15,12 +15,32 @@ jobs:
       - run: rustup toolchain install 1.98.0 --profile minimal --component clippy,rustfmt
       - run: cargo +1.98.0 fetch --locked
       - run: cargo +1.98.0 fetch --manifest-path consumer/Cargo.toml --locked
+      - run: cargo +1.98.0 fetch --manifest-path hosts/appkit/Cargo.toml --locked
+      - run: cargo +1.98.0 fetch --manifest-path hosts/macos-ax/Cargo.toml --locked
       - run: cargo +1.98.0 fmt --all -- --check
       - run: cargo +1.98.0 fmt --manifest-path consumer/Cargo.toml --all -- --check
+      - run: cargo +1.98.0 fmt --manifest-path hosts/appkit/Cargo.toml --all -- --check
+      - run: cargo +1.98.0 fmt --manifest-path hosts/macos-ax/Cargo.toml --all -- --check
       - run: cargo +1.98.0 test --workspace --all-features --locked --offline --profile lean
       - run: cargo +1.98.0 clippy --workspace --all-features --all-targets --locked --offline --profile lean -- -D warnings
       - run: cargo +1.98.0 test --manifest-path consumer/Cargo.toml --locked --offline --profile lean
       - run: cargo +1.98.0 clippy --manifest-path consumer/Cargo.toml --all-targets --locked --offline --profile lean -- -D warnings
+      - name: Build the real AppKit host
+        if: runner.os == 'macOS'
+        run: cargo +1.98.0 build --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean
+      - name: Lint the real AppKit host
+        if: runner.os == 'macOS'
+        run: cargo +1.98.0 clippy --manifest-path hosts/appkit/Cargo.toml --all-targets --locked --offline --profile lean -- -D warnings
+      - name: Test AppKit host ingress and ownership boundaries without a GUI
+        if: runner.os == 'macOS'
+        run: cargo +1.98.0 test --manifest-path hosts/appkit/Cargo.toml --locked --offline --profile lean
+      - name: Test Accessibility host contracts with a fake transport
+        run: cargo +1.98.0 test --manifest-path hosts/macos-ax/Cargo.toml --locked --offline --profile lean
+      - name: Lint Accessibility host
+        run: cargo +1.98.0 clippy --manifest-path hosts/macos-ax/Cargo.toml --all-targets --locked --offline --profile lean -- -D warnings
+      - name: Test Accessibility bridge boundaries without remote GUI calls
+        if: runner.os == 'macOS'
+        run: sh hosts/macos-ax/test-native.sh
       - run: cargo +1.98.0 run -p leselang-vm --bin leselang --locked --offline --profile lean -- check examples/arithmetic.lese
       - run: cargo +1.98.0 run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/arithmetic.lese
       - run: cargo +1.98.0 run -p leselang-vm --bin leselang --locked --offline --profile lean -- run examples/two_effects.lese --allow stdio

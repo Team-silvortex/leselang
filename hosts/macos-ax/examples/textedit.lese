@@ -1,0 +1,21 @@
+fn main() = bind(
+    target: gui.find(name: "document"),
+    body: bind(
+        before: gui.observe(target: target),
+        body: choose(
+            when: and(left: field(value: before, name: "editable"), right: eq(left: field(value: before, name: "value"), right: "LeseLang AX initial\n")),
+            then: bind(
+                submitted: gui.set_text(target: target, expected_revision: field(value: before, name: "revision"), text: "LeseLang cross-process ✓\n"),
+                body: bind(
+                    after: gui.observe(target: target),
+                    body: choose(
+                        when: eq(left: field(value: after, name: "value"), right: "LeseLang cross-process ✓\n"),
+                        then: field(value: after, name: "value"),
+                        otherwise: "verification failed",
+                    ),
+                ),
+            ),
+            otherwise: "initial content mismatch",
+        ),
+    ),
+)
