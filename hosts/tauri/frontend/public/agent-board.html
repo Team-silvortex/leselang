@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LeseLang 任务板助手</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="agent-layout">
+      <header>
+        <span class="eyebrow">LeseLang · 任务板助手</span>
+        <h1>让助手处理任务板。</h1>
+        <p>同一个助手读取任务板声明的能力，核对状态，执行操作并验证结果。</p>
+      </header>
+      <section class="card assistant-panel" aria-labelledby="assistant-title">
+        <div class="result-heading">
+          <h2 id="assistant-title">任务对话</h2>
+          <span id="provider-label" class="count">正在读取规划器配置…</span>
+        </div>
+        <label for="provider-mode">规划方式</label>
+        <select id="provider-mode">
+          <option value="offline">离线任务命令</option>
+          <option id="model-option" value="model" disabled>模型 · 自然语言</option>
+        </select>
+        <p id="provider-note" class="assistant-note">正在读取宿主的模型配置。</p>
+        <ul id="available-tasks" class="assistant-note" aria-label="应用声明的可用任务"></ul>
+        <ol id="conversation" class="conversation" aria-label="任务记录" aria-live="polite"></ol>
+        <form id="task-form">
+          <label for="task-message">交给助手的任务</label>
+          <textarea id="task-message" rows="3" maxlength="8192" placeholder="task read_review_status" spellcheck="false"></textarea>
+          <div class="actions">
+            <button id="task-submit" type="submit">执行任务</button>
+            <button id="task-cancel" class="secondary" type="button" disabled>取消任务</button>
+          </div>
+          <p id="task-status" role="status" aria-live="polite">正在连接应用…</p>
+        </form>
+        <details id="workflow-details" hidden>
+          <summary>查看本次工作流</summary>
+          <pre id="workflow-source"></pre>
+        </details>
+        <details id="report-details" hidden>
+          <summary>查看原始执行报告</summary>
+          <pre id="report-value"></pre>
+        </details>
+      </section>
+      <section class="card board-panel" aria-labelledby="board-title">
+        <div class="result-heading">
+          <h2 id="board-title">示例任务板</h2>
+          <span class="count">2 条独立任务</span>
+        </div>
+        <p class="assistant-note">每条任务只能完成一次。你可以手动操作，也可以让助手先读取状态，再完成指定任务。</p>
+        <ul class="board-tasks" aria-label="任务板中的任务">
+          <li aria-labelledby="review-title">
+            <h3 id="review-title">核对示例报告</h3>
+            <p>状态：<span id="review-state">pending</span></p>
+            <p class="quiet">完成次数：<span id="review-count">0</span></p>
+            <button id="review-complete" type="button" aria-label="完成核对示例报告">标记完成</button>
+          </li>
+          <li aria-labelledby="archive-title">
+            <h3 id="archive-title">整理示例资料</h3>
+            <p>状态：<span id="archive-state">pending</span></p>
+            <p class="quiet">完成次数：<span id="archive-count">0</span></p>
+            <button id="archive-complete" type="button" aria-label="完成整理示例资料">标记完成</button>
+          </li>
+        </ul>
+        <p id="status" role="status" aria-live="polite">两个示例任务均待完成。</p>
+      </section>
+    </main>
+    <script type="module" src="./agent-board-app.js"></script>
+  </body>
+</html>

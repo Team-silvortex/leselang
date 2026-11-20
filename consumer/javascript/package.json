@@ -5,7 +5,9 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "test": "node --test test.mjs"
+    "check:catalogs": "node ../../packages/javascript/node_modules/typescript/bin/tsc --project tsconfig.authoring.json",
+    "test": "npm run check:catalogs && node --test test.mjs agent/*.test.mjs",
+    "agent-demo": "node agent.mjs"
   },
   "dependencies": {
     "@leselang/bridge": "file:../../packages/javascript"

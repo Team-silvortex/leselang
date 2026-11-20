@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { createSemanticProvider } from "../dist/index.js";
+import { createSemanticProvider } from "@leselang/bridge";
 
 const original = await readFile(new URL("../../../fixtures/host-semantics/tauri-semantics-v1.json", import.meta.url), "utf8");
 const calculator = await readFile(new URL("../../../fixtures/host-semantics/calculator-semantics-v1.json", import.meta.url), "utf8");

@@ -240,37 +240,4 @@ and immediate-read widget examples remain separate regression coverage.
 
 ## Recorded Desktop Check
 
-On 2026-11-13, the CLI ran against Finder 27.0 on macOS 27.0.1 with existing
-Accessibility access. The new `target/source-wait-fixture` contained three
-empty subfolders. Exact selection used title `source-wait-fixture` and
-identifier `ViewOptions`. Initial discovery admitted 30 widgets, reported text
-size 13 and showed Size and Kind checked.
-
-Three separate CLI runs established the catalog and execution boundaries:
-
-| Run | Observed result |
-| --- | --- |
-| Menu source without `--wait-values` | Exit status 1 with an operation-signature rejection during compilation; the log contained no Effect poll or action delivery. |
-| Read-only timeout source with `--wait-values` | `gui.select` followed by `gui.wait_value`; attempts one and two remained waiting, then the deadline expired with exit status 1 and no mutation. |
-| Menu source with `--wait-values` | 11 Effects, one delivered menu choice, an initial `Waiting` result, then a matching `Some("16")` snapshot at revision 12; explicit acceptance let source return `true`, with 9,078 of the original 10,000 Fuel remaining. |
-
-The successful source wait needed two predicate observations. Its first attempt
-was nonmatching, but that sample's value was not printed; the record does not
-identify it as 13. An ordinary observation before the menu choice did report
-13. The expected optional value and 16-attempt/50-ms/2,000-ms budget came from
-the `.lese` source, and the CLI used its generic wait driver.
-
-A separate new CLI connection independently confirmed text size 16 and that
-Size and Kind remained checked. Desktop screenshot inspection showed larger
-text in the dedicated folder's main window; the exact value 16 came from the
-independent AX connection, not from a screenshot or a View Options field read
-by the computer-use tool. The previous dedicated Finder fixture and its
-historical verification were left intact.
-
-At this milestone, the Accessibility package passed 184 Rust tests, the
-language workspace passed 2,303 tests and the independent Consumer passed 735,
-all with zero failures and zero ignored tests. The 37 native boundary groups
-also passed. Formatting and strict all-targets Clippy passed for the
-Accessibility package, and the Rust embedding snippet above compiled to
-metadata without executing native calls. This addition changed the Rust host,
-catalog and CLI; it introduced no native bridge, HIR or VM changes.
+The dated evidence is preserved in [Source Value Waiting](acceptance/macos-ax.md#source-value-waiting).

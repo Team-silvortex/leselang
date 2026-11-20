@@ -1,5 +1,5 @@
 /** Check fresh host evidence against the task's admitted report contract. */
-import type { Catalog } from "./catalog.js";
+import { verificationResultType, type Catalog } from "./catalog.js";
 import { bool, decode, encoder, fail, list, record, require_, text, uint, U64_MAX, type Json, type RecordValue, type ScalarType } from "./json.js";
 
 function scalar(value: Json | undefined, type: ScalarType): Json {
@@ -70,7 +70,15 @@ export function verify(catalog: Catalog, task: RecordValue, args: Readonly<Recor
     require_(uint(report.effects) === BigInt(effects) && uint(report.fuel_remaining) <= uint(contract.max_fuel), "report budget");
     if (contract.require_verified) require_(report.verified === true, "host verification");
     const result = record(report.result), expected = record(contract.result);
-    require_(result.type === expected.kind && Object.hasOwn(result, "value") && equal(result.value!, literalJson(expected)), "typed report result");
+    const resultType = verificationResultType(expected, catalog.semanticVersion);
+    if (expected.kind === "observed") {
+      require_(result.type === resultType && Object.hasOwn(result, "value"), "typed observed result");
+      const actual = scalar(result.value, resultType);
+      const evidence = scalar(path(report, list(expected.path, 8, true)), resultType);
+      require_(equal(actual, evidence), "observed result evidence mismatch");
+    } else {
+      require_(result.type === resultType && Object.hasOwn(result, "value") && equal(result.value!, literalJson(expected)), "typed report result");
+    }
     for (const raw of list(contract.predicates, 64)) {
       const predicate = record(raw), relation = record(predicate.relation);
       const left = reportTerm(report, predicate.left, args), right = reportTerm(report, predicate.right, args);

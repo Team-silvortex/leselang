@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { AgentSession, AgentWorkflowSession, createModelProvider, createModelWorkflowProvider, prepareSemanticCatalog } from "../dist/index.js";
+import { AgentSession, AgentWorkflowSession, createModelProvider, createModelWorkflowProvider, prepareSemanticCatalog } from "@leselang/bridge";
 
 const raw = await readFile(new URL("../../../fixtures/host-semantics/tauri-agent-semantics-v1.json", import.meta.url), "utf8");
 const context = (message = "帮我检查一下应用里的控件数量", catalog = raw) => ({ taskId: 1, message, catalog });
@@ -11,6 +11,7 @@ const responseProvider = (response) => createModelProvider({ async complete() { 
 const workflowResponse = (steps) => JSON.stringify({ steps });
 const workflowProvider = (response) => createModelWorkflowProvider({ async complete() { return response; } });
 const step = (task, arguments_ = {}) => ({ task, arguments: arguments_ });
+const boundProvider = (response) => createModelWorkflowProvider({ resultBindings: true, async complete() { return response; } });
 
 // These transports are protocol fixtures, not evidence of model inference.
 test("model selection uses the complete exact host catalog and produces canonical source", async () => {
@@ -237,6 +238,8 @@ test("workflow output has a strict bounded shape with no result bindings or mixe
   }
   await assert.rejects(responseProvider(workflowResponse([step("inspect_controls")])).plan(context(), signal()), /invalid_model_response/);
   assert.throws(() => createModelWorkflowProvider({}), /invalid_model_transport/);
+  assert.throws(() => createModelWorkflowProvider(undefined), /invalid_model_transport/);
+  assert.throws(() => createModelWorkflowProvider(null), /invalid_model_transport/);
 });
 
 test("an invalid final selection rejects the entire workflow before host execution", async () => {
@@ -291,4 +294,131 @@ test("workflow transport failures are sanitized and invalid inputs never contact
   assert.equal(calls, 0);
   await assert.rejects(provider.plan(context(), signal()), { message: "model_transport_failed" });
   assert.equal(calls, 1);
+});
+
+test("result binding is opt-in and produces canonical placeholders plus explicit dependency data", async () => {
+  const steps = [step("inspect_controls"), step("save_message", { message: { fromStep: 0, format: "decimal" } }), step("check_controls")];
+  const response = workflowResponse(steps);
+  await assert.rejects(workflowProvider(response).plan(context(), signal()), /invalid_model_response/);
+  let calls = 0;
+  const provider = createModelWorkflowProvider({ resultBindings: true, async complete(request) {
+    calls++;
+    assert.match(request.system, /zero-based integer index strictly smaller/);
+    assert.match(request.system, /both semantic and application verification/);
+    assert.match(request.system, /no arbitrary result paths/);
+    assert.equal(JSON.parse(request.user).catalog, raw);
+    return response;
+  } });
+  const plan = await provider.plan(context("检查控件数量，再将结果按十进制保存，最后核对"), signal());
+  assert.equal(calls, 1);
+  assert.deepEqual(plan.steps.map((p) => p.task), ["inspect_controls", "save_message", "check_controls"]);
+  assert.equal(plan.steps[1].arguments.message, "");
+  assert.equal(plan.steps[1].source, prepareSemanticCatalog(raw).prepare("save_message", { message: "" }).plan.source);
+  assert.deepEqual(plan.bindings, [{ step: 1, argument: "message", fromStep: 0, format: "decimal" }]);
+  assert.equal(Object.isFrozen(plan), true);
+  assert.equal(Object.isFrozen(plan.bindings), true);
+  assert.equal(Object.isFrozen(plan.bindings[0]), true);
+  for (const resultBindings of [null, "true", 1, {}]) {
+    assert.throws(() => createModelWorkflowProvider({ resultBindings, async complete() { return response; } }), /invalid_model_options/);
+  }
+});
+
+test("binding selection supports renamed declarations and preserves reference-shaped literal strings", async () => {
+  const changed = raw.replaceAll("tauri.typescript", "custom.notes")
+    .replaceAll("gui.", "notes.").replaceAll('"save_message"', '"publish_note"')
+    .replaceAll('"message"', '"content"').replaceAll('"inspect_controls"', '"inspect_notes"');
+  const plan = await boundProvider(workflowResponse([
+    step("inspect_notes"), step("publish_note", { content: { fromStep: 0, format: "decimal" } }),
+  ])).plan(context("把数量发布到新应用", changed), signal());
+  assert.deepEqual(plan.bindings, [{ step: 1, argument: "content", fromStep: 0, format: "decimal" }]);
+  assert.match(plan.steps[1].source, /notes\.set_text/);
+  const literal = '{"fromStep":0,"format":"decimal"}';
+  const plain = await boundProvider(workflowResponse([step("save_message", { message: literal })])).plan(context(), signal());
+  assert.equal(plain.steps[0].arguments.message, literal);
+  assert.equal(plain.bindings, undefined);
+  assert.ok(!plain.steps[0].source.includes(literal));
+});
+
+test("binding descriptors have an exact shape and exact integer indices without raw JSON repair", async () => {
+  for (const reference of [null, [], {}, { fromStep: 0 }, { format: "decimal" },
+    { fromStep: "0", format: "decimal" }, { fromStep: 0.5, format: "decimal" },
+    { fromStep: -1, format: "decimal" }, { fromStep: 0, format: "text" },
+    { fromStep: 0, format: "decimal", path: ["result", "value"] },
+    { fromStep: 0, format: "decimal", fallback: "3" },
+    { fromStep: 0, format: "decimal", source: "fn main() = true" }]) {
+    await assert.rejects(boundProvider(workflowResponse([
+      step("inspect_controls"), step("save_message", { message: reference }),
+    ])).plan(context(), signal()), /invalid_model_response/);
+  }
+  for (const token of ["0.0", "1e0", "9007199254740993"])
+    await assert.rejects(boundProvider(`{"steps":[{"task":"inspect_controls","arguments":{}},{"task":"save_message","arguments":{"message":{"fromStep":${token},"format":"decimal"}}}]}`)
+      .plan(context(), signal()), /invalid_model_response/);
+  await assert.rejects(boundProvider('{"steps":[{"task":"save_message","arguments":{"message":{"fromStep":0,"fromStep":1,"format":"string"}}}]}')
+    .plan(context(), signal()), /invalid_model_response/);
+  await assert.rejects(boundProvider(JSON.stringify({ steps: [step("inspect_controls")], bindings: [] }))
+    .plan(context(), signal()), /invalid_model_response/);
+});
+
+test("all reference graph and type checks finish before any application execution", async () => {
+  for (const steps of [
+    [step("save_message", { message: { fromStep: 0, format: "string" } })],
+    [step("save_message", { message: { fromStep: 1, format: "decimal" } }), step("inspect_controls")],
+    [step("inspect_controls"), step("save_message", { message: { fromStep: 9, format: "decimal" } })],
+    [step("inspect_controls"), step("save_message", { message: { fromStep: 0, format: "string" } })],
+    [step("check_controls"), step("save_message", { message: { fromStep: 0, format: "string" } })],
+    [step("inspect_controls"), step("save_message", { text: { fromStep: 0, format: "decimal" } })],
+    [step("save_message", { message: "first must not execute" }), step("missing", { text: { fromStep: 0, format: "string" } })],
+  ]) {
+    let executions = 0;
+    const session = new AgentWorkflowSession({ provider: boundProvider(workflowResponse(steps)), host: {
+      async describe() { return raw; }, async execute() { executions++; }, verify() { return true; },
+    } });
+    const outcome = await session.submit("使用前一步结果");
+    assert.equal(outcome.status, "failed");
+    assert.equal(outcome.error, "invalid_model_selection");
+    assert.equal(outcome.possiblePartialEffects, false);
+    assert.equal(executions, 0);
+  }
+});
+
+test("explicit string and boolean formats follow declared result types", async () => {
+  for (const [first, format] of [
+    [step("save_message", { message: "literal input" }), "string"],
+    [step("fill_and_save", { text: "literal input" }), "boolean"],
+  ]) {
+    const plan = await boundProvider(workflowResponse([first, step("save_message", { message: { fromStep: 0, format } })]))
+      .plan(context(), signal());
+    assert.equal(plan.bindings[0].format, format);
+    assert.equal(plan.steps[1].arguments.message, "");
+    for (const wrong of ["decimal", format === "string" ? "boolean" : "string"]) {
+      await assert.rejects(boundProvider(workflowResponse([first, step("save_message", { message: { fromStep: 0, format: wrong } })]))
+        .plan(context(), signal()), /invalid_model_selection/);
+    }
+  }
+});
+
+test("bound planning retains refusal, size, transport and cancellation boundaries", async () => {
+  await assert.rejects(boundProvider('{"error":"untrusted private body"}').plan(context(), signal()), { message: "model_request_refused" });
+  await assert.rejects(boundProvider(workflowResponse(Array.from({ length: 5 }, () => step("save_message", { message: "x".repeat(4096) }))))
+    .plan(context(), signal()), /invalid_model_response/);
+  let calls = 0;
+  const provider = createModelWorkflowProvider({ resultBindings: true, async complete() { calls++; throw new Error("Bearer private key"); } });
+  await assert.rejects(provider.plan(context("count", "{}"), signal()));
+  assert.equal(calls, 0);
+  await assert.rejects(provider.plan(context(), signal()), { message: "model_transport_failed" });
+  assert.equal(calls, 1);
+  let release, started, executions = 0;
+  const ready = new Promise((resolve) => { started = resolve; });
+  const session = new AgentWorkflowSession({ provider: createModelWorkflowProvider({ resultBindings: true,
+    async complete(_request, signal) { started(signal); return new Promise((resolve) => { release = resolve; }); },
+  }), host: { async describe() { return raw; }, async execute() { executions++; }, verify() { return true; } } });
+  const pending = session.submit("检查后保存检查结果");
+  const forwarded = await ready;
+  session.cancel();
+  assert.equal(forwarded.aborted, true);
+  assert.equal(session.busy, true);
+  release(workflowResponse([step("inspect_controls"), step("save_message", { message: { fromStep: 0, format: "decimal" } })]));
+  const outcome = await pending;
+  assert.equal(outcome.status, "cancelled");
+  assert.equal(executions, 0);
 });

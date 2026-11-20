@@ -2,7 +2,7 @@
 //! Tauri transports JSON; each blocking worker exclusively owns its LocalVm.
 use super::model;
 use super::wire::*;
-use leselang_tauri_host::Scope;
+use leselang_tauri_host::{AgentApplication, Scope};
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
@@ -16,6 +16,7 @@ const MAX_PAGE_SESSIONS: usize = 64;
 
 struct Run {
     scope: Scope,
+    application: AgentApplication,
     report_kind: &'static str,
     live: Arc<AtomicBool>,
     pending: Arc<Mutex<Option<Correlation>>>,
@@ -68,6 +69,7 @@ impl Run {
 
 #[derive(Default)]
 struct Registry {
+    application: AgentApplication,
     epoch: Option<String>,
     used: Vec<String>,
     active: Option<Arc<Run>>,
@@ -85,6 +87,9 @@ impl Registry {
         text: &str,
         outgoing: Channel<Value>,
     ) -> Result<(Arc<Run>, Endpoint), String> {
+        if self.application != AgentApplication::Form {
+            return Err("the legacy form runner is unavailable in this application".into());
+        }
         if text.len() > 4096 || text.contains('\0') {
             return Err("workflow text exceeds 4096 UTF-8 bytes or contains NUL".into());
         }
@@ -132,6 +137,7 @@ impl Registry {
         };
         let run = Arc::new(Run {
             scope: scope.clone(),
+            application: self.application,
             report_kind,
             live: Arc::new(AtomicBool::new(true)),
             pending: Arc::new(Mutex::new(None)),
@@ -184,32 +190,58 @@ impl Registry {
             .is_some_and(|active| Arc::ptr_eq(active, run));
         let report = if run.cancelled.load(Ordering::Acquire) {
             failure(
+                run.application,
                 run.report_kind,
                 "cancelled",
                 "workflow cancelled; earlier effects may remain",
             )
         } else if run.expired.load(Ordering::Acquire) {
             failure(
+                run.application,
                 run.report_kind,
                 "failed",
                 "workflow execution deadline exceeded",
             )
         } else if self.retired || !current {
             failure(
+                run.application,
                 run.report_kind,
                 "failed",
                 "application page lifetime has been retired",
             )
         } else if !run.live.load(Ordering::Acquire) {
             failure(
+                run.application,
                 run.report_kind,
                 "failed",
                 "workflow bridge retired before final acceptance",
             )
         } else {
             match result {
-                Ok(report) => report,
-                Err(error) => failure(run.report_kind, "failed", &error),
+                Ok(mut report) => {
+                    if report
+                        .get("profile")
+                        .is_some_and(|profile| profile.as_str() != Some(run.application.profile()))
+                    {
+                        failure(
+                            run.application,
+                            run.report_kind,
+                            "failed",
+                            "worker report belongs to another application",
+                        )
+                    } else if let Some(fields) = report.as_object_mut() {
+                        fields.insert("profile".into(), json!(run.application.profile()));
+                        report
+                    } else {
+                        failure(
+                            run.application,
+                            run.report_kind,
+                            "failed",
+                            "worker report is not an object",
+                        )
+                    }
+                }
+                Err(error) => failure(run.application, run.report_kind, "failed", &error),
             }
         };
         // Retirement precedes admission of a later workflow and IPC completion.
@@ -219,6 +251,7 @@ impl Registry {
         }
         if bounded(&report, REPORT_LIMIT).is_err() {
             failure(
+                run.application,
                 run.report_kind,
                 "failed",
                 "workflow report exceeded 128 KiB",
@@ -271,26 +304,36 @@ impl Registry {
 #[derive(Default)]
 struct Shared(Mutex<Registry>);
 
-fn failure(kind: &str, status: &str, error: &str) -> Value {
-    json!({"schema_version":1,"kind":kind,"status":status,"error":error,
+fn failure(application: AgentApplication, kind: &str, status: &str, error: &str) -> Value {
+    json!({"schema_version":1,"kind":kind,"profile":application.profile(),"status":status,"error":error,
         "possible_partial_effects":true})
 }
 
-fn local_asset(url: &tauri::Url) -> bool {
+fn local_asset_for(application: AgentApplication, url: &tauri::Url) -> bool {
     ((url.scheme() == "tauri" && url.host_str() == Some("localhost"))
         || (url.scheme() == "http" && url.host_str() == Some("tauri.localhost")))
-        && url.path() == "/agent.html"
+        && url.path().strip_prefix('/') == Some(application.asset())
         && url.query().is_none()
         && url.port().is_none()
         && url.username().is_empty()
         && url.password().is_none()
 }
 
-fn caller(webview: &WebviewWindow) -> Result<(), String> {
-    if webview.label() != "main" || !webview.url().is_ok_and(|url| local_asset(&url)) {
+#[cfg(test)]
+fn local_asset(url: &tauri::Url) -> bool {
+    local_asset_for(AgentApplication::Form, url)
+}
+
+fn caller(webview: &WebviewWindow) -> Result<AgentApplication, String> {
+    let application = *webview.state::<AgentApplication>();
+    if webview.label() != "main"
+        || !webview
+            .url()
+            .is_ok_and(|url| local_asset_for(application, &url))
+    {
         return Err("agent commands require the bundled main agent page".into());
     }
-    Ok(())
+    Ok(application)
 }
 
 #[tauri::command]
@@ -362,16 +405,51 @@ fn agent_describe(
     shared: State<'_, Shared>,
     raw: Option<bool>,
     task_catalog: Option<bool>,
+    observed_results: Option<bool>,
 ) -> Result<Value, String> {
-    caller(&webview)?;
+    let application = caller(&webview)?;
     if shared.0.lock().map_err(|_| "page lock failed")?.retired {
         return Err("application page lifetime has been retired".into());
     }
-    description_value(raw.unwrap_or(false), task_catalog.unwrap_or(false))
+    description_value_for(
+        application,
+        raw.unwrap_or(false),
+        task_catalog.unwrap_or(false),
+        observed_results.unwrap_or(false),
+    )
 }
 
+#[cfg(test)]
 fn description_value(raw: bool, task_catalog: bool) -> Result<Value, String> {
-    let description = if task_catalog {
+    description_value_with_observed(raw, task_catalog, false)
+}
+
+#[cfg(test)]
+fn description_value_with_observed(
+    raw: bool,
+    task_catalog: bool,
+    observed_results: bool,
+) -> Result<Value, String> {
+    description_value_for(AgentApplication::Form, raw, task_catalog, observed_results)
+}
+
+fn description_value_for(
+    application: AgentApplication,
+    raw: bool,
+    task_catalog: bool,
+    observed_results: bool,
+) -> Result<Value, String> {
+    if observed_results && !task_catalog {
+        return Err("observed results require the explicit task catalog".into());
+    }
+    let description = if application == AgentApplication::TaskBoard {
+        if !task_catalog || !observed_results {
+            return Err("the task board requires its explicit observed task catalog".into());
+        }
+        leselang_tauri_host::describe_agent_board()?
+    } else if observed_results {
+        leselang_tauri_host::describe_agent_observed()?
+    } else if task_catalog {
         leselang_tauri_host::describe_agent()?
     } else {
         leselang_tauri_host::describe()?
@@ -443,7 +521,7 @@ async fn agent_start_task(
     source: String,
     arguments: Value,
 ) -> Result<String, String> {
-    caller(&webview)?;
+    let application = caller(&webview)?;
     // Compile and bind the complete task before registry admission, transport
     // creation or application reads. Rejected work consumes no page session.
     let task = prepare_task_input(&source, arguments)?;
@@ -454,7 +532,12 @@ async fn agent_start_task(
         .start_task(epoch, session, &source, on_request)?;
     let report = complete(&shared, run, move || {
         let scope = endpoint.scope.clone();
-        leselang_tauri_host::run_prepared_task(&mut endpoint, scope, task)
+        leselang_tauri_host::run_prepared_task_for_application(
+            &mut endpoint,
+            scope,
+            task,
+            application,
+        )
     })
     .await?;
     serde_json::to_string(&report).map_err(|error| error.to_string())
@@ -543,8 +626,20 @@ fn agent_closed(
 }
 
 pub fn launch() -> Result<(), String> {
+    launch_application(AgentApplication::Form)
+}
+
+pub fn launch_board() -> Result<(), String> {
+    launch_application(AgentApplication::TaskBoard)
+}
+
+fn launch_application(application: AgentApplication) -> Result<(), String> {
     let app = tauri::Builder::default()
-        .manage(Shared::default())
+        .manage(application)
+        .manage(Shared(Mutex::new(Registry {
+            application,
+            ..Registry::default()
+        })))
         .manage(model::Settings::from_env())
         .invoke_handler(tauri::generate_handler![
             agent_describe,
@@ -557,19 +652,23 @@ pub fn launch() -> Result<(), String> {
             agent_model_complete,
             agent_model_cancel
         ])
-        .setup(|app| {
-            tauri::WebviewWindowBuilder::new(app, "main", WebviewUrl::App("agent.html".into()))
-                .title("LeseLang — Agent workflow")
-                .inner_size(1000.0, 850.0)
-                .on_navigation(local_asset)
-                .on_page_load(|webview, payload| {
-                    if payload.event() == tauri::webview::PageLoadEvent::Started
-                        && let Ok(mut registry) = webview.state::<Shared>().0.lock()
-                    {
-                        registry.navigation_started();
-                    }
-                })
-                .build()?;
+        .setup(move |app| {
+            tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                WebviewUrl::App(application.asset().into()),
+            )
+            .title(application.title())
+            .inner_size(1000.0, 850.0)
+            .on_navigation(move |url| local_asset_for(application, url))
+            .on_page_load(|webview, payload| {
+                if payload.event() == tauri::webview::PageLoadEvent::Started
+                    && let Ok(mut registry) = webview.state::<Shared>().0.lock()
+                {
+                    registry.navigation_started();
+                }
+            })
+            .build()?;
             Ok(())
         })
         .on_window_event(|window, event| {

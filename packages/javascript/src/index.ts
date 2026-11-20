@@ -1,19 +1,47 @@
 /** Public package entry. Implementation modules are not package subpath APIs. */
-export { AgentSession } from "./agent.js";
-export { AgentWorkflowSession } from "./workflow.js";
+export { AgentSession } from "./agent/session.js";
+export { createRegisteredAgentHost } from "./agent/registered-host.js";
+export { createRegisteredApplication } from "./agent/registered-application.js";
+export type {
+  RegisteredActionContext, RegisteredControl, RegisteredApplicationObservation, RegisteredApplication,
+} from "./agent/registered-application.js";
+export type {
+  RegisteredApplicationConnection, RegisteredAgentTransport, RegisteredAgentRun,
+  RegisteredAgentEndpoint, RegisteredAgentHostOptions, RegisteredAgentHost,
+} from "./agent/registered-host.js";
+export { AgentWorkflowSession } from "./agent/workflow.js";
 export type {
   AgentWorkflowPlan, AgentWorkflowProvider, AgentWorkflowState, AgentWorkflowOutcome,
   AgentWorkflowSessionOptions,
-} from "./workflow.js";
-export { prepareSemanticCatalog } from "./semantics.js";
-export type { SemanticCatalog, SemanticTaskInfo, PreparedSemanticTask } from "./semantics.js";
-export { createSemanticProvider } from "./semantic-provider.js";
-export type { SemanticProviderOptions } from "./semantic-provider.js";
-export { createModelProvider, createModelWorkflowProvider } from "./model-provider.js";
-export type { ModelRequest, ModelProviderOptions } from "./model-provider.js";
+} from "./agent/workflow.js";
+export { prepareSemanticWorkflow } from "./agent/workflow-bindings.js";
+export type {
+  AgentWorkflowBinding, WorkflowResultFormat, WorkflowResultReference, SemanticWorkflowStep,
+  WorkflowResultRequirement, AgentWorkflowRequirement, AgentWorkflowRequirementOutcome,
+} from "./agent/workflow-bindings.js";
+export { prepareSemanticCatalog } from "./semantics/index.js";
+export type { SemanticCatalog, SemanticTaskInfo, PreparedSemanticTask } from "./semantics/index.js";
+export { defineSemanticCatalog } from "./semantics/authoring.js";
+export { defineRegisteredTask } from "./semantics/registered-task.js";
+export type {
+  RegisteredTaskDefinition, RegisteredTaskStep, RegisteredReadControlStep,
+  RegisteredSetControlTextStep, RegisteredClickControlStep,
+} from "./semantics/registered-task.js";
+export type {
+  SemanticInteger, SemanticScalarType, SemanticLiteral, SemanticOperationSemantics,
+  SemanticTaskInput, SemanticTaskArgument, SemanticTerm, SemanticCondition, SemanticTaskStep,
+  SemanticReportSegment, SemanticReportTerm, SemanticReportRelation, SemanticReportPredicate,
+  SemanticObservedResult, SemanticResultContract, SemanticReportContractV1, SemanticReportContractV2,
+  SemanticReportContract, SemanticTaskDescriptionV1, SemanticTaskDescriptionV2, SemanticTaskDescription,
+  SemanticDescriptionV1, SemanticDescriptionV2, SemanticDescription,
+} from "./semantics/declarations.js";
+export { createSemanticProvider } from "./providers/semantic.js";
+export type { SemanticProviderOptions } from "./providers/semantic.js";
+export { createModelProvider, createModelWorkflowProvider } from "./providers/model.js";
+export type { ModelRequest, ModelProviderOptions, ModelWorkflowProviderOptions } from "./providers/model.js";
 export type {
   AgentContext, AgentHost, AgentJson, AgentOutcome, AgentPhase, AgentProvider,
   AgentSessionOptions, AgentState, WorkflowPlan,
-} from "./agent.js";
+} from "./agent/session.js";
 export { Bridge } from "./bridge.js";
 export type { Scope, ControlState, ActionContext, Adapter, Target, Snapshot, Request, Reply } from "./bridge.js";

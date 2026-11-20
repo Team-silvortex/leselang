@@ -7,7 +7,7 @@ provider, its credentials and conversation context. LeseLang supplies the typed
 execution boundary; the JavaScript SDK coordinates one explicit submission at a time.
 
 The [Tauri reference application](typescript-host.md) demonstrates this entry
-with selectable model and offline planners backed by the host's `semantics v1`
+with selectable model and offline planners backed by the host's versioned semantic
 catalog. The [model provider](model-provider.md) accepts natural language through
 an application-configured service, then generates source for one or more selected
 declarations. The page uses the bounded [workflow session](agent-workflows.md)
@@ -18,6 +18,12 @@ adds `保存：…` and `save:…` as local aliases for its declared `fill_and_s
 task. This offline provider makes no model call and does not interpret unrestricted natural language.
 Application-specific operation names, control names, guards and verification
 predicates come from the catalog rather than from the provider.
+
+The [task board reference](taskboard-host.md) uses the same conversation module,
+providers and host verifier with a second application's registrations and
+catalog. It has no text form: it observes task status and completes a pending
+item once, then disables its control. Native startup pins each application's
+page and report identity; the original form entry remains compatible.
 
 ## Responsibilities
 
@@ -93,6 +99,18 @@ through `createModelProvider` selects one declared task with zero or one named
 string input. The additive `createModelWorkflowProvider` selects up to eight
 declared tasks for `AgentWorkflowSession`; see [sequential workflows](agent-workflows.md).
 Neither provider invents new tasks or uses earlier turns as implicit arguments.
+The Tauri workflow provider explicitly enables verified result bindings. It can
+use an earlier step's accepted string, integer or Boolean result as a later
+string argument through a declared conversion. The source must pass semantic
+and application verification first; see [result binding](agent-workflows.md#bind-a-verified-result-to-a-later-input).
+The ordinary `createModelWorkflowProvider` factory still defaults to literal
+arguments unless its application passes `resultBindings: true`.
+Tauri also explicitly enables `resultRequirements: true`: a selected task may
+require an earlier verified scalar result to equal specified text before it
+executes. The default factory rejects this additional vocabulary unless enabled.
+See [verified-result requirements](agent-workflows.md#require-a-verified-result-before-continuing)
+for type admission, exact comparisons and failure evidence. A failed condition
+stops the remaining work; it does not undo earlier effects or lock GUI state.
 
 ## Semantic Planning And Host Verification
 
@@ -109,11 +127,14 @@ const report = await applicationExecute(prepared.plan);
 const declaredConditionsPassed = prepared.verify(report);
 ```
 
-The semantic API requires a valid `semantics v1` declaration. It has no hidden
+The semantic API requires a valid `semantics v1` or `v2` declaration. It has no hidden
 form fallback. It supports the same finite call/guard vocabulary and report
 predicates as the [Rust catalog agent](host-semantics.md), including typed
 fields, unique object selection, integer increases and upper bounds. The task
 input remains data. A plan contains no provider-selected verification contract.
+Version 1 keeps fixed scalar results. Version 2 additionally permits a typed
+result that must equal a declared actual observation in the report, preserving
+all other predicates and fresh-state checks; see [observed results](host-semantics.md#version-2-observed-results).
 
 Prefer the original JSON text for catalogs and reports. The semantic decoder
 checks duplicate keys and preserves integer tokens as internal `BigInt` values;
@@ -138,13 +159,14 @@ renaming it to `text`. Before contacting the application, Rust compiles the
 complete program, admits its scalar result type, and binds exactly the required
 arguments. Missing, extra, malformed or mismatched arguments fail before
 transport bootstrap or VM execution. The string remains bounded to 4,096 UTF-8
-bytes; multi-parameter tasks and other input types are outside this v1 contract.
+bytes; multi-parameter tasks and other input types are outside this carrier contract.
 
 The task carrier returns all six existing scalar types: `integer`, `boolean`,
 `string`, `none`, `optional_string` and `string_list`. Native objects and snapshots
 cannot leave the worker as final results. Semantic v1's literal-result vocabulary
-still covers integer, Boolean, string and `none`; this carrier change does not
-extend that schema or the language's scalar limits.
+still covers integer, Boolean, string and `none`. Semantic v2 keeps that fixed
+vocabulary and adds observed string, integer and Boolean result contracts;
+neither changes the carrier or the language's scalar limits.
 
 The additive `agent_start_task` command accepts a named `arguments` map and
 returns raw JSON with `kind: "tauri_task_run"`, `profile: "tauri.typescript"`,
@@ -159,9 +181,17 @@ integer verification. The UI does not display rounded integers as exact values;
 the original report remains available in a collapsed detail view.
 
 Existing `agent_start(text)` and its object report remain compatible. Request
-`agent_describe` with `{raw: true, taskCatalog: true}` for the new task contracts;
-omitting `taskCatalog` retains the original catalog. Offline callers can use
-`--describe-agent` or Rust `describe_agent()`. Rust embedders can call
+`agent_describe` with `{raw: true, taskCatalog: true}` for the original four-task
+v1 catalog; omitting `taskCatalog` retains the one-shot catalog. Offline callers
+can use `--describe-agent` or Rust `describe_agent()` for that same v1 contract.
+
+The conversation explicitly requests
+`{raw: true, taskCatalog: true, observedResults: true}` for its separate five-task
+v2 catalog. `observedResults` requires `taskCatalog: true`. Offline callers use
+`--describe-agent-observed`, and Rust callers use `describe_agent_observed()`.
+The added `read_message` task reads current input text without mutation, with
+an observed result contract rather than a fixed expected string. The original
+four-task v1 catalog and fixtures remain unchanged. Rust embedders can call
 `prepare_task(source, arguments)` before starting a worker, then move the owned
 `PreparedTask` into `run_prepared_task`; `run_task` combines those steps. These
 functions use the registered-object gateway and do not assume form control names.
@@ -171,10 +201,12 @@ functions use the registered-object gateway and do not assume form control names
 Build the frontend and desktop host from the repository root:
 
 ```sh
+npm ci --prefix packages/javascript --ignore-scripts
 npm ci --prefix hosts/tauri --ignore-scripts
 npm run build --prefix hosts/tauri
 cargo build --manifest-path hosts/tauri/Cargo.toml --locked --offline --profile lean
 target/lean/leselang-tauri-host --describe-agent
+target/lean/leselang-tauri-host --describe-agent-observed
 target/lean/leselang-tauri-host --agent
 ```
 
@@ -191,12 +223,13 @@ natural-language requests:
 | Command | Input | Verified result | Application work |
 | --- | --- | --- | --- |
 | `task inspect_controls` | None | `integer: 3` | Discover and observe the controls; preserve all state |
+| `task read_message` | None | `string`: current input value | Find and observe the input; match the returned string to current report evidence and preserve state (v2 catalog) |
 | `task save_message:新的消息` | `message: string` | `string: "saved"` | Set the input and save once; check saved text and unrelated controls |
 | `task check_controls` | None | `none` | Check the controls; preserve all state |
 | `保存：另一条消息` or `task fill_and_save:另一条消息` | `text: string` | `boolean: true` | Preserve the existing save workflow |
 
-Each task starts from current application state. Read-only tasks use three VM
-Effects, and save tasks use nine; bootstrap and final host observations remain
+Each task starts from current application state. Control checks use three VM
+Effects, `read_message` uses two, and save tasks use nine; bootstrap and final host observations remain
 separate. Unsupported tasks and wrong input shapes are rejected by the offline
 planner without executing application operations. Available tasks and summaries
 come from the host catalog. The page displays the plan, verified return type
@@ -230,6 +263,13 @@ verified steps and their reports remain in the aggregate outcome; they are not
 rolled back. Every step receives a fresh description that must match the
 workflow's pinned catalog, including its verification metadata. For admission,
 progress, evidence and cancellation details, see [sequential workflows](agent-workflows.md).
+When a step binds an earlier result, the aggregate plan retains the symbolic
+reference and each attempted step records its actual resolved arguments. A
+failed, cancelled or unverified source cannot feed a later task.
+For a result requirement, the plan retains the required value and the outcome
+records each comparison actually made. A mismatch stops before the target
+executes and appears explicitly in the conversation alongside the earlier
+verified result. Unvisited requirements do not count as failed comparisons.
 
 Cancellation closes the frontend bridge and retires the matching Rust
 transport. These are separate events across runtimes. Deferred JavaScript work
@@ -244,58 +284,11 @@ and native GUI boundaries, see the [TypeScript host guide](typescript-host.md).
 
 ## Recorded Desktop Acceptance
 
+The dated evidence is preserved in [Application Conversation Entry](acceptance/agents.md#application-conversation-entry).
 ### Generic Task Entry
 
-On 2026-11-13 the rebuilt macOS WebView displayed all four declarations from
-the new task catalog. The same conversation entry then generated, executed and
-verified these workflows in sequence:
-
-| Submission | Observed outcome |
-| --- | --- |
-| `task inspect_controls` | Verified `integer: 3`; no Save or Other action |
-| `task save_message:命名参数 "message" \\ 路径` plus a newline and `通用返回值 ✓` | Verified `string: "saved"`; literal input and saved content matched; Save count became one |
-| `task check_controls` | Verified `none`; saved content and all counts stayed unchanged |
-| `保存：兼容入口 ✓` | Verified `boolean: true`; Save count became two |
-| `task inspect_controls:不应接受参数` | Rejected before execution: the task takes no input |
-| `task save_message` | Rejected before execution: the required input was missing |
-
-The final input and saved value were `兼容入口 ✓`, Save count was two and
-Other remained zero. The Accessibility tree showed all four verified typed
-results and both admission failures; the page was also inspected visually.
-The worker trace recorded 24 VM Effects across the four executed tasks
-(3 + 9 + 3 + 9). The two rejected submissions added no Effects. Each workflow
-used the same shared provider and an independently described host contract.
-
-The automated Rust tests additionally execute all six scalar result types,
-including exact `u64::MAX`, through the real VM; test signature admission before
-any transport request; and compare legacy/new Fuel and Effect counts for the
-same program. Cancellation, late replies and partial mutations are covered by
-the transport and frontend suites, not by manually timed desktop cancellation.
+The dated evidence is preserved in [Generic Task Entry](acceptance/agents.md#generic-task-entry).
 
 ### Original Semantic Provider Entry
 
-On 2026-11-13 the rebuilt macOS `--agent` WebView was exercised through its
-conversation UI with the shared semantic provider:
-
-1. The available task list displayed `fill_and_save` and its actual
-   host-declared summary before a workflow was submitted.
-2. `task fill_and_save:目录驱动的工作流 ✓` produced a verified result and one Save.
-3. `保存：第二轮 "引号" \\ 路径` followed by a newline and `语义目录 ✓` produced
-   another verified result through the application alias. The input and saved
-   content matched exactly, the accumulated Save count became two, and Other
-   remained at zero.
-4. `task missing_task:不应执行` was rejected because the host had not declared
-   that task. The conversation stated that application operations had not
-   started; the saved value and counts remained unchanged.
-
-These results were observed in the native Accessibility tree of
-`tauri://localhost/agent.html`; the loaded page was also inspected visually.
-Cancellation and late-completion coverage comes from SDK, frontend connection
-and Rust registry tests. This desktop record does not claim a manually timed
-cancellation or a connection to a live model service.
-
-The same public provider also passed the independent Node Consumer's
-`publish_article` workflow against the real Rust VM and five application-owned
-objects. Its tests include a mutation followed by failure, and a successful VM
-report rejected by a stronger declared application postcondition. This is
-separate-process application evidence, not another desktop GUI acceptance.
+The dated evidence is preserved in [Original Semantic Provider Entry](acceptance/agents.md#original-semantic-provider-entry).

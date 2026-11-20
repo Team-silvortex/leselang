@@ -552,6 +552,91 @@ exit "$(cat "$0.exit")"
         }
     }
 
+    fn observed_message_fixture(message: &str) -> Fixture {
+        let fixture = Fixture::new();
+        fixture.write(
+            "host.catalog",
+            include_bytes!("../../../fixtures/host-semantics/tauri-agent-semantics-v2.json"),
+        );
+        fixture.report(message);
+        let mut report: serde_json::Value =
+            serde_json::from_slice(&fs::read(fixture.0.join("host.report")).unwrap()).unwrap();
+        report["profile"] = json!("tauri.typescript");
+        report["kind"] = json!("tauri_task_run");
+        report["effects"] = json!(2);
+        report["result"] = json!({"type":"string","value":message});
+        report["native_before"] = report["native_after"].clone();
+        fixture.write("host.report", &serde_json::to_vec(&report).unwrap());
+        fixture
+    }
+
+    fn observation_options(fixture: &Fixture) -> Options {
+        let mut options = fixture.options(true, "");
+        options.task = "read_message".into();
+        options.text = None;
+        options
+    }
+
+    #[test]
+    fn v2_observation_uses_real_catalog_no_input_argv_and_records_its_contract_version() {
+        for message in ["first observed text", "second \"\\\n✓"] {
+            let fixture = observed_message_fixture(message);
+            let directory = run(observation_options(&fixture)).unwrap();
+            assert_eq!(fixture.calls(), "describe\nrun\n");
+            assert_eq!(fixture.result()["status"], "verified");
+            assert_eq!(fixture.result()["effects"], 2);
+            let plan: serde_json::Value =
+                serde_json::from_slice(&fs::read(directory.join("plan.json")).unwrap()).unwrap();
+            assert_eq!(plan["planning_contract"], "catalog_semantics_v2");
+            assert_eq!(plan["arguments"], json!({}));
+            let argv = fs::read(fixture.0.join("host.args")).unwrap();
+            let argv: Vec<_> = argv
+                .split(|byte| *byte == 0)
+                .filter(|arg| !arg.is_empty())
+                .collect();
+            assert_eq!(argv.len(), 3);
+            assert_eq!(argv[0], b"--run");
+            assert_eq!(argv[2], b"--report-json");
+            assert_eq!(
+                fs::read_to_string(directory.join("program.lese")).unwrap(),
+                include_str!("../../../fixtures/host-semantics/tauri-read-message.lese")
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_observation_contract_prevents_execution_and_mismatched_evidence_remains_a_failed_run()
+     {
+        let fixture = observed_message_fixture("actual");
+        let mut catalog: serde_json::Value =
+            serde_json::from_slice(&fs::read(fixture.0.join("host.catalog")).unwrap()).unwrap();
+        let task = catalog["semantics"]["tasks"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|task| task["id"] == "read_message")
+            .unwrap();
+        task["verification"]["result"]["path"] =
+            json!([{"kind":"field","name":"result"},{"kind":"field","name":"value"}]);
+        fixture.write("host.catalog", &serde_json::to_vec(&catalog).unwrap());
+        assert!(run(observation_options(&fixture)).is_err());
+        assert_eq!(fixture.calls(), "describe\n");
+        assert_eq!(fixture.result()["phase"], "planning");
+        assert_eq!(fixture.result()["possible_partial_effects"], false);
+
+        let fixture = observed_message_fixture("actual");
+        let mut report: serde_json::Value =
+            serde_json::from_slice(&fs::read(fixture.0.join("host.report")).unwrap()).unwrap();
+        report["result"]["value"] = json!("predicted");
+        fixture.write("host.report", &serde_json::to_vec(&report).unwrap());
+        assert!(run(observation_options(&fixture)).is_err());
+        assert_eq!(fixture.calls(), "describe\nrun\n");
+        assert_eq!(fixture.result()["status"], "failed");
+        assert_eq!(fixture.result()["phase"], "verification");
+        assert_eq!(fixture.result()["possible_partial_effects"], true);
+        assert!(fixture.0.join("artifacts/run.json").is_file());
+    }
+
     #[test]
     fn input_presence_is_checked_against_the_selected_task_before_execution() {
         for calculator in [false, true] {

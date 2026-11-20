@@ -236,40 +236,4 @@ behavior or add operations to the original catalogs.
 
 ## Recorded Desktop Check
 
-On 2026-11-13, the reference ran against Finder 27.0 on macOS 27.0.1 with
-existing Accessibility access. Its dedicated
-`target/observation-wait-fixture` contained three empty subfolders. Exact
-selection used the title `observation-wait-fixture` and identifier
-`ViewOptions`; initial widget discovery admitted 30 widgets and reported text
-size 13.
-
-The read-only `--timeout-check` ran first. Its predicate remained unmatched,
-reported attempts one and two, and ended with `TimedOut` and exit status 1.
-It issued no mutation. The normal reference then ran the unchanged
-`widgets_finder_options.lese` source in one session:
-
-| Check | Observed result |
-| --- | --- |
-| Language Effects | 11 |
-| Delivered `gui.choose_menu_item` calls | Exactly one |
-| First post-choice observation | `Some("13")` |
-| Explicit wait | Attempt one returned `Waiting`; the next step observed `Some("16")` at revision 14 |
-| Acceptance and source result | The matching receipt was explicitly accepted, then source returned `true` |
-| Original Fuel remaining | 9,086 of the initial 10,000 |
-
-This run exercised actual delayed publication: it needed two predicate
-observations, without repeating the chosen action or starting another VM.
-Afterward, a separate CLI connection independently discovered text size 16
-and confirmed that Size and Kind remained checked. Desktop screenshot
-inspection showed the dedicated folder's larger text, but did not expose the
-View Options field; the exact value 16 was verified by that separate AX
-connection. The check does not claim rendering synchronization or a hard
-wall-clock bound on AX calls.
-
-At this milestone, the Accessibility package passed 161 Rust tests, including
-18 external wait-contract tests and five internal wait tests; all had zero
-failures or ignored tests. The 37 native boundary groups, language workspace's
-2,303 tests and independent Consumer's 735 tests also passed. Formatting and
-strict all-targets Clippy passed for the Accessibility package. The Rust
-embedding snippet above compiled to metadata without invoking native code.
-The unchanged AppKit host was not rerun for this waiting milestone.
+The dated evidence is preserved in [Host-Driven Observation Waiting](acceptance/macos-ax.md#host-driven-observation-waiting).

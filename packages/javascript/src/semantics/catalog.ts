@@ -6,6 +6,7 @@ interface Parameter { name: string; required: boolean; types: Type[] }
 interface Operation { name: string; capability: string; parameters: Parameter[]; result: Type }
 export interface Catalog {
   profile: string;
+  semanticVersion: bigint;
   operations: Map<string, Operation>;
   natives: Map<string, Map<string, ScalarType>>;
   tasks: Map<string, RecordValue>;
@@ -41,6 +42,32 @@ function literalType(value: Json | undefined): ScalarType {
   else if (kind === "boolean") bool(data.value);
   else if (kind !== "none") fail("unsupported semantic literal");
   return kind;
+}
+
+function validateReportPath(value: Json | undefined): Json[] {
+  const segments = list(value, 8, true);
+  for (const raw of segments) {
+    const segment = record(raw);
+    if (segment.kind === "field") {
+      record(segment, ["kind", "name"]); text(segment.name, 128, true);
+    } else if (segment.kind === "match") {
+      record(segment, ["kind", "field", "value"]); text(segment.field, 128, true); text(segment.value, 4096);
+    } else fail("report path segment");
+  }
+  return segments;
+}
+
+/** Fixed v1 results or explicitly typed independent observations in v2. */
+export function verificationResultType(value: Json | undefined, version: bigint): ScalarType {
+  const result = record(value);
+  if (result.kind !== "observed") return literalType(result);
+  require_(version === 2n, "observed results require semantic version 2");
+  record(result, ["kind", "scalar_type", "path"]);
+  require_(result.scalar_type === "string" || result.scalar_type === "integer" || result.scalar_type === "boolean", "observed result scalar type");
+  const segments = validateReportPath(result.path);
+  const first = record(segments[0]);
+  require_(first.kind === "field" && first.name !== "result", "observed result must select independent report evidence");
+  return result.scalar_type as ScalarType;
 }
 function nativeType(value: Json | undefined, natives: Catalog["natives"]): Type {
   const data = record(value);
@@ -119,14 +146,7 @@ function reportTermType(value: Json | undefined, input?: string): ScalarType | u
       record(term, ["kind", "name"]); require_(input !== undefined && term.name === input, "report input"); return "string";
     case "path": case "length": case "scalar": {
       record(term, term.kind === "scalar" ? ["kind", "path", "scalar_type"] : ["kind", "path"]);
-      for (const raw of list(term.path, 8, true)) {
-        const segment = record(raw);
-        if (segment.kind === "field") {
-          record(segment, ["kind", "name"]); text(segment.name, 128, true);
-        } else if (segment.kind === "match") {
-          record(segment, ["kind", "field", "value"]); text(segment.field, 128, true); text(segment.value, 4096);
-        } else fail("report path segment");
-      }
+      validateReportPath(term.path);
       return term.kind === "length" ? "integer" : term.kind === "scalar" ? scalarType(term.scalar_type) : undefined;
     }
     default: return fail("report term kind");
@@ -150,7 +170,7 @@ function validateTask(task: RecordValue, catalog: Catalog, operations: Set<strin
   const verification = record(task.verification, ["kind", "max_fuel", "result", "require_verified", "predicates"]);
   text(verification.kind, 128, true); require_(uint(verification.max_fuel, 1_000_000n) > 0n, "Fuel ceiling");
   bool(verification.require_verified);
-  const resultType = literalType(verification.result);
+  const resultType = verificationResultType(verification.result, catalog.semanticVersion);
   const bindings = new Map<string, Type>();
   let calls = 0;
   for (const raw of list(task.steps, 21, true)) {
@@ -219,7 +239,8 @@ export function validate(raw: Json): Catalog {
       parameters: [...parameters.values()], result: nativeType(operation.result, natives) };
   }), (operation) => operation.name);
   const semantics = record(data.semantics, ["version", "operations", "tasks"]);
-  require_(uint(semantics.version) === 1n, "semantic version");
+  const semanticVersion = uint(semantics.version);
+  require_(semanticVersion === 1n || semanticVersion === 2n, "semantic version");
   const claims = unique(list(semantics.operations, 64).map((raw) => {
     const operation = record(raw, ["operation", "summary", "effect", "completion"]);
     const name = text(operation.operation, 128, true);
@@ -229,7 +250,7 @@ export function validate(raw: Json): Catalog {
     return operation;
   }), (operation) => operation.operation as string);
   const tasks = unique(list(semantics.tasks, 8, true).map((raw) => record(raw)), (task) => semanticName(task.id));
-  const catalog: Catalog = { profile, operations, natives, tasks };
+  const catalog: Catalog = { profile, semanticVersion, operations, natives, tasks };
   for (const task of tasks.values()) validateTask(task, catalog, new Set(claims.keys()));
   return catalog;
 }

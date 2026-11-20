@@ -1,0 +1,19 @@
+[package]
+name = "leselang-registered-host"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "Portable LeseLang execution for application-owned registered objects"
+
+[workspace]
+
+[dependencies]
+leselang-vm = { path = "../../crates/leselang-vm" }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+
+[profile.lean]
+inherits = "dev"
+debug = 0
+incremental = false

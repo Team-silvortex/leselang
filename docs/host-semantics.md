@@ -3,8 +3,9 @@
 An operation signature answers which values a host accepts. The optional
 `semantics` catalog extension describes what an operation means, which finite
 task the host offers, and what evidence establishes the task's result. The
-independent `catalog_agent` can consume these declarations without adding an
-application name, operation name or control identifier to its planner.
+independent `catalog_agent` and JavaScript SDK consume these declarations without
+adding an application name, operation name or control identifier to their
+planners. Consumers must explicitly support the semantic version they accept.
 
 This is host-authored metadata. It is not a permission grant, an authenticated
 claim about another process, or a way to infer arbitrary application behavior.
@@ -15,7 +16,7 @@ enforce identity, revision, scope and current authority when executing Effects.
 
 `CatalogDescription` and `OperationDescription` keep their existing fields.
 `CatalogDescription::to_json()` keeps its original schema-version 1 output.
-Hosts opt in using:
+The existing version-1 API remains available unchanged:
 
 ```rust,ignore
 use leselang_runtime_core::discovery::semantics::SemanticDescription;
@@ -25,7 +26,7 @@ let semantics: SemanticDescription = /* application-owned task declarations */;
 let json = catalog.to_json_with_semantics(&semantics)?;
 ```
 
-The new method validates the existing catalog and the semantic references,
+This method validates the existing catalog and the semantic references,
 then appends a top-level `semantics` object with its own `version: 1`.
 The complete output remains at most 256 KiB, including its trailing LF.
 No backend, permission query, session, callback or GUI operation is needed.
@@ -38,7 +39,38 @@ type catalog. The reference agent keeps its original strategies when
 unsupported semantic declaration fails planning; it never silently falls
 back to an old application-specific strategy.
 
+Version 2 is a separate opt-in description and serializer. It retains the base
+catalog schema and finite task vocabulary while adding a result contract that
+compares the returned value with declared observation evidence. Fixed result
+contracts retain their existing JSON shape in both semantic versions. Existing
+v1 types, `to_json_with_semantics`, catalogs and byte-for-byte goldens remain
+unchanged; a host does not acquire v2 behavior merely by upgrading the SDK.
+Only `semantics.version` changes. The base catalog schema, execution report
+schema and transport protocol retain their existing versions.
+
+```rust,ignore
+use leselang_runtime_core::discovery::semantics::{self, v2};
+
+let legacy: semantics::SemanticDescription = /* existing fixed declarations */;
+let upgraded = v2::SemanticDescription::from(legacy);
+let json = catalog.to_json_with_semantics_v2(&upgraded)?;
+```
+
+`semantics::v2` provides `SemanticDescription`, `TaskDescription`, `ReportContract`
+and `ResultContract`. The three description/contract structs implement conversion
+from their v1 counterparts; fixed results become `ResultContract::Exact` and
+keep their old wire shape without an `exact` wrapper. `ResultContract` also
+converts from `ScalarValue`. Conversion selects `semantics.version: 2` but does
+not establish validity: declarations still require validation against the real
+catalog. `to_json_with_semantics_v2` performs that validation and preserves the
+same complete-output bound.
+
 ## Describe Meaning And Completion
+
+JavaScript and TypeScript hosts can use the public
+[`defineSemanticCatalog`](semantic-authoring.md) authoring interface. It checks
+readonly v1/v2 declarations against the actual base catalog and writes exact
+integer JSON, without changing this vocabulary or execution semantics.
 
 Each described operation names an actual entry in `operations` and supplies:
 
@@ -75,11 +107,11 @@ references, duplicate bindings, unknown fields and incompatible argument
 types are rejected before source generation. Native objects remain native
 references; metadata cannot manufacture an object handle or compare objects
 as scalar values.
-Version 1 literals support integer, Boolean, string and `none`. Optional strings
+Both versions' literals support integer, Boolean, string and `none`. Optional strings
 and string lists can be observed and used in conditions, but cannot yet be
 supplied as declaration literals.
 
-Version 1 supports equality, string-list membership, an unsigned integer
+The finite task vocabulary supports equality, string-list membership, an unsigned integer
 increase, and optional-string equality. Optional-string equality checks
 presence first, so absent text never equals an empty string. There are no
 loops, branches that select alternative actions, retry rules, source snippets,
@@ -95,16 +127,21 @@ budget is never raised to accommodate it.
 The task's `execution` field chooses one of three existing reference-host
 argument conventions: `named_text`, `text` or `no_text`. It cannot select an
 executable or supply arbitrary process arguments. The user still supplies
-`--host`, literal `--host-arg` selectors, task and task input. Version 1 accepts
+`--host`, literal `--host-arg` selectors, task and task input. Both versions accept
 zero inputs or one named string input, passed through `--text` as data.
 
 ## Declare Independent Verification
 
-The verification contract states a report kind, expected typed scalar result,
+The verification contract states a report kind, typed result contract,
 Fuel ceiling, whether the host must report `verified: true`, and named
 predicates over the report. The agent always checks the report's schema and
 catalog profile, typed result, Fuel and the number of calls in the declared
 task before checking those predicates.
+
+Version 1 requires the existing fixed scalar result, for example
+`{"kind":"integer","value":3}`. Version 2 also accepts that unchanged fixed
+shape. A fixed result is still compared exactly; declaring v2 does not loosen
+it into a type-only expectation.
 
 Report paths contain only explicit field names and unique string-key matches
 within arrays. A match must identify exactly one object; a missing or duplicate
@@ -148,9 +185,78 @@ named predicate prevent success. Native instance continuity remains inside
 the host; public scalar evidence does not replace those checks or make a GUI
 read/write sequence atomic.
 
+## Version 2 Observed Results
+
+A task can already return a declared scalar field from an observed snapshot.
+With a fixed result contract, the expected value must be known in advance.
+The v2 `observed` contract instead requires the returned value to equal a
+separate declared observation in the actual execution report:
+
+```json
+{
+  "kind": "observed",
+  "scalar_type": "string",
+  "path": [
+    { "kind": "field", "name": "native_after" },
+    { "kind": "match", "field": "identifier", "value": "input" },
+    { "kind": "field", "name": "value" }
+  ]
+}
+```
+
+This object is the task's `verification.result`. The task's own `result` remains
+an ordinary typed term, such as the `value` field of the snapshot returned by
+`gui.observe`. The host must declare matching types for that result term and
+the observed result contract. No new LeseLang expression, branching form or
+runtime type is introduced.
+
+In Rust, use `v2::ResultContract::Observed { scalar_type, path }`. Its
+`scalar_type()` method reports the declaration's type, not evidence that an
+execution returned that type. The admitted observed `scalar_type` is exactly
+`string`, `integer` or `boolean`. `none`, optional strings, string lists and
+native values are not observed-result kinds.
+
+The path uses the existing `ReportSegment` vocabulary and contains one to eight
+segments. Its first segment must be a field other than `result`; a path into the
+returned result itself cannot establish independent observation evidence.
+Field names and match-field names are nonempty and bounded to 128 UTF-8 bytes;
+match values retain the 4,096-byte string bound. Empty paths, unknown fields in
+the contract, unsupported types and invalid selectors are rejected when
+admitting the catalog. Runtime path lookup still requires every field and
+exactly one object for each array match.
+
+Verification checks all of the following:
+
+1. The report has the required schema, profile and kind, valid Fuel and expected
+   Effect count, and any required host `verified` flag.
+2. The report's typed `result` has the declared scalar type, and its value equals
+   the actual value selected by the observed path. Integers are compared without
+   passing through JavaScript `Number`; missing or differently typed evidence
+   fails rather than being coerced.
+3. Every original named report predicate passes. An observed result does not
+   remove before/after state, count, role or unrelated-control checks.
+4. The application independently checks fresh state and binds the report to the
+   execution being verified. The Tauri adapter retains this separate check.
+
+The catalog supplies a path, not the value that should appear at that path.
+For a `read_message` task, one run may return `first note` and another `second
+note` using the same catalog, but each returned string must match that run's
+observed input. A report containing the right scalar type with the wrong value
+is rejected. Matching two fabricated report fields is also insufficient to
+replace the host's independent fresh-state check.
+
+The JavaScript `prepareSemanticCatalog` API and independent Rust catalog agent
+dispatch explicitly on semantic version 1 or 2. They reject `observed` under v1
+and keep fixed v2 comparisons strict. Source generation uses the same finite
+task terms and existing compiler limits.
+[Workflow result bindings](agent-workflows.md#bind-a-verified-result-to-a-later-input)
+use `scalar_type` to admit an observed source's explicit conversion. They still
+extract the value from the accepted typed result only after both semantic and
+application verification; the observation path is not a general binding path.
+
 ## Bounds And Compatibility
 
-| Semantic item | Version 1 limit |
+| Semantic item | Version 1 and 2 limit |
 | --- | --- |
 | Operation descriptions | 64, each referring to an actual operation |
 | Tasks | 1–8, with unique identifiers |
@@ -158,6 +264,7 @@ read/write sequence atomic.
 | Guard conditions | 1–8 |
 | Report predicates | 1–64, with unique identifiers |
 | Report path segments | 1–8 |
+| Observed result type (v2 only) | `string`, `integer` or `boolean`; first path segment is a non-`result` field |
 | Task inputs | Zero or one string input |
 | Summary | 1–1,024 UTF-8 bytes |
 | Scalar string | At most 4,096 UTF-8 bytes |
@@ -175,10 +282,22 @@ uses the same declaration vocabulary. Its generator is checked against the
 Rust source fixtures. Original JSON text preserves exact integer tokens and
 duplicate-key checks; already-rounded JavaScript numbers are rejected.
 
-The Tauri conversation entry requests its task catalog explicitly
-(`agent_describe` with `taskCatalog: true`, or offline `--describe-agent`). That
-catalog covers no-input checks and a differently named string input, with
-Boolean, string, integer and `none` results. Its `tauri_task_run` evidence has
+The original four-task Tauri catalog remains available through `describe_agent`,
+`--describe-agent`, or `agent_describe` with `taskCatalog: true`. It retains its
+v1 bytes, fixed result contracts and original golden fixture.
+
+The conversation opts into a separate five-task v2 catalog through
+`describe_agent_observed`, `--describe-agent-observed`, or `agent_describe` with
+both `taskCatalog: true` and `observedResults: true`. Its additional no-input
+`read_message` task finds the registered input, observes it and returns its
+current value. Its observed-result contract matches that string to the actual
+input observation and retains the unchanged-state predicates. Reading uses two
+VM Effects and no mutations. The existing tasks retain their fixed contracts
+within the v2 catalog. The separate fixtures are
+[`tauri-agent-semantics-v2.json`](../fixtures/host-semantics/tauri-agent-semantics-v2.json)
+and [`tauri-read-message.lese`](../fixtures/host-semantics/tauri-read-message.lese).
+
+Both catalogs' `tauri_task_run` evidence has
 no business `verified` flag: the host's declared predicates and fresh frontend
 observations establish success. The original one-shot catalog and `tauri_run`
 report remain unchanged. See the [task carrier contract](agent-entry.md#semantic-planning-and-host-verification)

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { offlineProvider } from "../dist/offline-provider.js";
+import { offlineProvider } from "../dist/agent/offline-provider.js";
 
 const catalog = await readFile(new URL("../../../../fixtures/host-semantics/tauri-semantics-v1.json", import.meta.url), "utf8");
 const signal = () => new AbortController().signal;

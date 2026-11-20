@@ -229,41 +229,4 @@ delivered effects even though cancelling dismisses the temporary panel.
 
 ## Recorded Desktop Check
 
-On 2026-11-13, Preview 11.0 on macOS 27.0.1 exposed the prepared Export panel
-inside its `PVDocumentWindow` titled `Panel Fixture.png`. The primary process
-was PID 88883. Read-only boundary discovery reported one helper, PID 3538, with
-start seconds `1794551094`, start microseconds `584858` and this executable:
-
-```text
-/System/Library/Frameworks/AppKit.framework/Versions/C/XPCServices/com.apple.appkit.xpc.openAndSavePanelService.xpc/Contents/MacOS/com.apple.appkit.xpc.openAndSavePanelService
-```
-
-These values record the tested instance; they are not reusable setup values.
-With that exact explicit grant, widget discovery admitted 29 widgets. The
-cross-process `AXParent` check matched the already visited parent without an
-exception or alternate lookup path. The same widget discovery without a grant
-refused the foreign PID. A grant with start seconds increased by one also
-failed, with no fallback to the currently running service.
-
-Running the repository's `widgets_preview_panel.lese` completed six Effects
-with 9,472 Fuel remaining. Its three observations matched `Panel Fixture`,
-`LeseLang XPC draft` and `LeseLang XPC verified`, and the returned string matched
-the final value. Independent Accessibility inspection and a screenshot
-confirmed that final name in the real Export panel. The panel was then
-cancelled and the original `Panel Fixture.png` document remained open; no
-export was saved.
-
-This desktop check establishes discovery, explicit helper authorization,
-native input-field edits and result verification for this Preview layout.
-
-The Accessibility package passed 136 Rust tests, including auxiliary-grant
-input validation, shared revocation, dispatch/delivery/acceptance fences,
-targetless replies, callback lifetime and the actual Preview reference source.
-Its 37 pure native boundary groups passed without remote GUI calls. The new
-native groups cover process identity changes, typed boundary discovery without
-foreign AX property reads, cross-process parent checks, thread constraints,
-revocation and owner-PID observation dependencies.
-The language workspace's 2,303 tests, independent Consumer's 735 tests and
-AppKit host's five tests also passed. The host's final build and strict Clang
-checks passed, as did formatting and strict Clippy. The Rust embedding example
-in this guide compiled against the public API without executing native calls.
+The dated evidence is preserved in [Auxiliary Process Grants](acceptance/macos-ax.md#auxiliary-process-grants).

@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc --project ../../packages/javascript/tsconfig.json && tsc && node frontend/build.mjs",
-    "test": "npm run build && node --test ../../packages/javascript/test/*.test.mjs frontend/tests/*.test.mjs"
+    "build": "node ../../packages/javascript/clean.mjs && node frontend/clean.mjs && tsc --project ../../packages/javascript/tsconfig.json && tsc && node frontend/build.mjs",
+    "test": "npm run build && node --test frontend/tests/*.test.mjs",
+    "test:all": "npm run build && node --test ../../packages/javascript/test/*.test.mjs frontend/tests/*.test.mjs"
   },
   "devDependencies": {
     "typescript": "https://registry.npmjs.org/typescript/-/typescript-5.9.3.tgz"

@@ -1,0 +1,17 @@
+[workspace]
+
+[package]
+name = "leselang-registered-host-consumer"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[dependencies]
+leselang-registered-host = { path = "../.." }
+serde_json = "=1.0.150"
+
+[profile.lean]
+inherits = "dev"
+debug = 0
+incremental = false

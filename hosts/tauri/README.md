@@ -1,63 +1,99 @@
 # Tauri Reference Host
 
-The application owns the registered TypeScript objects; Rust owns compilation,
+The application owns registered TypeScript objects; Rust owns compilation,
 the VM, Fuel and explicit Effect authorization. This independent workspace
-contains both a portable execution adapter and an optional macOS desktop shell.
+contains a portable execution adapter and an optional macOS desktop shell.
+
+## Choose An Entry
+
+| Goal | Guide |
+| --- | --- |
+| Run the original one-shot form | [TypeScript host](../../docs/typescript-host.md#build-and-run) |
+| Use the application conversation with offline or model planning | [Agent entry](../../docs/agent-entry.md#run-the-interactive-reference) |
+| Use the same agent with a second TypeScript GUI | [Task board](../../docs/taskboard-host.md) |
+| Register objects in another JS/TS application | [JavaScript SDK](../../docs/javascript-sdk.md) |
+| Run the same bridge without a WebView | [Independent Node consumer](../../consumer/README.md) |
+| Launch one real VM worker per task from an existing Node application | [Node-owned agent](../../docs/node-agent-host.md) |
+
+The conversation uses [sequential workflows](../../docs/agent-workflows.md) for
+up to eight declared tasks per plan. Each step has its own VM, Fuel and authority;
+verification must finish before the next step starts. Earlier effects remain
+when a later step fails or is cancelled. Offline commands are one-step workflows.
+Model mode enables verified-result bindings and explicit result requirements:
+a later task can consume an earlier result or require its exact value before
+executing. A failed requirement stops the workflow before the target action;
+the conversation retains the comparison and earlier execution evidence.
+Natural-language planning uses an explicitly configured
+[model transport](../../docs/model-provider.md); failure does not select another
+planner or replay application work.
+
+## Build And Inspect
+
+From the repository root, with pinned Rust/npm dependencies already installed:
+
+```sh
+npm run build --prefix hosts/tauri
+cargo build --manifest-path hosts/tauri/Cargo.toml --locked --offline --profile lean
+target/lean/leselang-tauri-host --describe-agent
+target/lean/leselang-tauri-host --describe-agent-observed
+```
+
+`--describe-agent` retains the original four-task v1 catalog.
+`--describe-agent-observed` adds the opt-in v2 `read_message` observation contract;
+the conversation page explicitly selects this five-task catalog. Both metadata
+commands work without launching a GUI. On a logged-in macOS desktop, launch the
+conversation explicitly with `target/lean/leselang-tauri-host --agent`.
+
+The separate `--agent-board` entry opens an in-memory task board with its own
+five-task v2 catalog, available offline through `--describe-agent-board`.
+The two applications share the conversation, provider and verifier while native
+startup pins each application's page and report identity; see the
+[task board guide](../../docs/taskboard-host.md).
+
+## Source Map
 
 | Location | Responsibility |
 | --- | --- |
-| `src/lib.rs`, `catalog.rs`, `gateway.rs`, `host.rs`, `task.rs` | Portable declarations, bounded transport, native identities and explicit VM driving |
-| `src/agent_semantics.rs` | The reference application's declared agent tasks |
-| `src/desktop/mod.rs` | Single desktop module boundary used by the executable |
-| `src/desktop/agent.rs` | Conversation IPC and workflow/page lifetimes |
-| `src/desktop/model.rs` | Native model configuration, bounded HTTP requests and planning cancellation |
-| `src/desktop/form.rs` | Original one-shot form WebView |
-| `src/desktop/wire.rs` | Shared desktop transport and correlation checks |
-| `src/desktop/*/tests.rs` | Tests of the corresponding private desktop modules |
-| `frontend/src/` | TypeScript application model, views and agent connection |
-| `frontend/public/` | HTML pages and styles |
-| `frontend/tests/` | Application tests and local fixtures |
-| `tests/model-service.mjs` | Explicit loopback protocol fixture for desktop checks without model credits |
-| `frontend/build.mjs` | Copy pages and the public SDK's compiled module tree |
-| `frontend/dist/` | Ignored generated WebView assets; edit source instead |
-| `tests/` | Public Rust, CLI and explicit desktop acceptance tests |
-| `examples/` | One-shot form program and standalone Node carrier |
+| `src/lib.rs`, `catalog.rs`, `gateway.rs`, `host.rs`, `task.rs` | Application wrappers and compatible re-exports of the standalone registered-object core |
+| `src/agent_semantics.rs`, `board_semantics.rs`, `application.rs` | Form/board declarations and host-selected application identity |
+| `src/desktop/mod.rs` | Conditional desktop module boundary |
+| `src/desktop/agent.rs`, `model.rs` | Conversation IPC/lifetimes and native model transport |
+| `src/desktop/form.rs`, `wire.rs` | Original form and shared transport correlation |
+| `src/desktop/*/tests.rs` | Tests of the corresponding private modules |
+| `frontend/src/app.ts`, `agent-app.ts`, `agent-board-app.ts` | One-shot, form chat and board chat entry points |
+| `frontend/src/form/`, `board/` | Separate application models and views |
+| `frontend/src/agent/` | Host/provider adapters and task/workflow result displays |
+| `frontend/src/bridge.ts`, `tauri-api.ts` | SDK exports and typed Tauri IPC boundary |
+| `frontend/public/`, `frontend/tests/` | Static pages and application tests |
+| `frontend/{build,clean}.mjs` | Build assets and clear only generated frontend output |
+| `frontend/dist/` | Ignored generated assets; edit source instead |
+| `tests/model-service.mjs` | Labelled loopback protocol fixture; no online model inference |
+| `tests/`, `examples/` | Public Rust/CLI tests, explicit desktop tests and standalone carriers |
 | `capabilities/`, `permissions/`, `tauri.conf.json` | Desktop IPC exposure and local page policy |
 
-The frontend imports the public
-[`@leselang/bridge`](../../packages/javascript/README.md) package. The build
-copies its compiled modules into `frontend/dist/sdk/` for the local WebView,
-preserving relative imports. Shared catalog and source goldens live in
+The frontend imports the public [`@leselang/bridge`](../../packages/javascript/README.md)
+entry. The build copies its compiled browser module tree into `frontend/dist/sdk/`
+so private relative imports resolve. Shared catalog and source goldens live in
 [`fixtures/host-semantics/`](../../fixtures/host-semantics/README.md).
 
-From the repository root, with pinned dependencies already installed:
+The portable gateway, native authority, task compiler and VM driver live in
+[`../registered`](../registered/README.md). Tauri's existing Rust APIs re-export
+those exact types and preserve their behavior. Form and task-board identities,
+semantic catalogs, desktop IPC and report naming remain here. The old
+`examples/agent_worker.rs` delegates to the standalone `leselang-agent-worker`;
+Node applications no longer need this workspace to build their execution worker.
+
+## Check Changes
 
 ```sh
-npm test --prefix hosts/tauri
-cargo test --manifest-path hosts/tauri/Cargo.toml --no-default-features --locked --offline --profile lean
+sh scripts/check.sh javascript
+sh scripts/check.sh tauri-portable
+sh scripts/check.sh tauri-desktop
 ```
 
-For a macOS desktop session, build the frontend first, then:
-
-```sh
-cargo build --manifest-path hosts/tauri/Cargo.toml --locked --offline --profile lean
-target/lean/leselang-tauri-host --describe-agent
-target/lean/leselang-tauri-host --agent
-```
-
-See the [TypeScript host guide](../../docs/typescript-host.md) for setup and
-one-shot behavior, the [agent-entry guide](../../docs/agent-entry.md) for the
-conversation contract, and the [JavaScript SDK guide](../../docs/javascript-sdk.md)
-for application adapter responsibilities.
-
-For natural-language planning, configure the native model service as described
-in the [model provider guide](../../docs/model-provider.md). The same conversation
-entry retains the explicitly labelled offline command mode. Model failure does
-not retry application work or switch planners automatically.
-
-The conversation uses the SDK's [sequential workflow session](../../docs/agent-workflows.md)
-to execute up to eight declared tasks from one model plan. It validates the
-complete plan before execution and verifies each step before starting the next.
-Offline commands remain one-step workflows. Each step uses an ordinary Rust VM
-session with its own Fuel and authorization; failure or cancellation preserves
-earlier results and stops the remaining steps.
+Run the last group on macOS after building frontend assets. The
+[check guide](../../scripts/README.md) defines each group's prerequisites.
+`npm test --prefix hosts/tauri` checks the frontend only; `npm run test:all --prefix hosts/tauri` retains the combined SDK/frontend npm check. Neither these checks
+nor the desktop group launches the interactive GUI. Separate desktop procedures
+are in the host guides, with dated [JavaScript/Tauri](../../docs/acceptance/javascript.md)
+and [agent](../../docs/acceptance/agents.md) evidence in the archive.

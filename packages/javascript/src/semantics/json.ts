@@ -23,6 +23,16 @@ export function text(value: unknown, limit: number, nonempty = false): string {
 
 /** Preserve integer tokens exactly; never recover a u64 from a rounded Number. */
 export function decode(value: unknown, limit: number): Json {
+  return decodeValue(value, limit, false);
+}
+
+/** Authoring alone admits exact u64 bigint fields; ordinary JSON ingress does not. */
+export function ownDeclaration(value: unknown, limit: number): Json {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) fail("semantic declaration record expected");
+  return decodeValue(value, limit, true);
+}
+
+function decodeValue(value: unknown, limit: number, allowBigInt: boolean): Json {
   let nodes = 0;
   const node = (depth: number) => {
     if (++nodes > 65_536 || depth > 32) fail("JSON structure bound");
@@ -104,6 +114,9 @@ export function decode(value: unknown, limit: number): Json {
       if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) fail("unsafe JSON number");
       spend(String(value).length);
       return Number.isInteger(value) ? BigInt(value) : value;
+    }
+    if (allowBigInt && typeof value === "bigint") {
+      uint(value); spend(value.toString().length); return value;
     }
     if (typeof value !== "object" || seen.has(value)) fail("JSON value or cycle");
     seen.add(value);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { AgentWorkflowSession, prepareSemanticCatalog } from "../dist/index.js";
+import { AgentWorkflowSession, prepareSemanticCatalog } from "@leselang/bridge";
 
 const raw = await readFile(new URL("../../../fixtures/host-semantics/tauri-agent-semantics-v1.json", import.meta.url), "utf8");
 const task = (id, args = {}, catalog = raw) => prepareSemanticCatalog(catalog).prepare(id, args).plan;

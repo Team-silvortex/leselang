@@ -98,3 +98,24 @@ test("one public provider selects zero-input, renamed-input and legacy commands 
     await assert.rejects(provider.plan({ taskId: 2, message, catalog: raw }, signal));
   }
 });
+
+test("the v2 interactive catalog preserves all fixed source goldens and adds a current-input observation", () => {
+  const old = prepareSemanticCatalog(raw);
+  const current = prepareSemanticCatalog(fixture("tauri-agent-semantics-v2.json"));
+  assert.deepEqual(current.tasks.map((task) => task.id), [...old.tasks.map((task) => task.id), "read_message"]);
+  for (const [task, args] of [["fill_and_save", { text }], ["save_message", { message: text }],
+    ["inspect_controls", {}], ["check_controls", {}]]) {
+    assert.deepEqual(current.prepare(task, args).plan, old.prepare(task, args).plan);
+  }
+  const observed = current.prepare("read_message", {});
+  assert.equal(observed.plan.source, fixture("tauri-read-message.lese"));
+  assert.equal(observed.expectedEffects, 2);
+  for (const value of ["first observed text", "second observed text ✓"]) {
+    const evidence = report("string", value);
+    evidence.effects = 2;
+    evidence.native_before[2].value = evidence.native_after[2].value = value;
+    assert.equal(observed.verify(evidence), true);
+    evidence.native_after[2].value = "different evidence";
+    assert.equal(observed.verify(evidence), false);
+  }
+});

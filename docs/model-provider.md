@@ -1,7 +1,7 @@
 # Model Planning Through A Host Semantic Catalog
 
 The Tauri conversation entry can use a configured model service to interpret
-natural language. The model selects declared tasks and their literal arguments
+natural language. The model selects declared tasks and their arguments
 from the current host's semantic catalog. The JavaScript SDK generates the
 corresponding LeseLang programs, and the application independently admits,
 executes and verifies them through the existing host boundary.
@@ -9,7 +9,7 @@ executes and verifies them through the existing host boundary.
 ```text
 Natural-language request + host semantic catalog
   → application-owned model transport
-  → declared task selection + literal arguments
+  → declared task selection + arguments + optional result requirements
   → catalog-generated LeseLang programs
   → host plan comparison, compilation and authorization
   → explicit VM Effect delivery
@@ -18,7 +18,7 @@ Natural-language request + host semantic catalog
 ```
 
 The reusable provider has no form, control-name or application-profile branches.
-It uses the same `semantics v1` declarations as the
+It uses the same `semantics v1` and opt-in `v2` declarations as the
 [offline provider](agent-entry.md) and [independent catalog agent](agent-workflow.md).
 `createModelProvider` retains its single-task contract. The additive
 `createModelWorkflowProvider` selects an ordered list of one to eight declared
@@ -26,12 +26,24 @@ tasks for an [`AgentWorkflowSession`](agent-workflows.md), as used by the Tauri
 conversation. Every task accepts zero inputs or one named string input. Neither
 provider invents tasks from arbitrary operations or supplies conversation history.
 A declared task may itself contain several host Effects and guards.
+Version 2 can bind a task's returned scalar to a declared observed report value,
+allowing tasks such as reading current application text. The model supplies no
+expected runtime value for such a task; the SDK and application verify its
+actual report. See [observed result contracts](host-semantics.md#version-2-observed-results).
+Workflow arguments are literal by default. An application can enable explicit
+references to verified earlier results with `resultBindings: true`; the Tauri
+conversation enables that mode. See [verified result bindings](agent-workflows.md#bind-a-verified-result-to-a-later-input).
+The independent `resultRequirements: true` option allows a later step to require
+an earlier verified result to equal specified text. Tauri enables both options;
+a failed requirement stops execution before that target task.
 
 ## SDK Integration
 
 The public `@leselang/bridge` entry exports both model provider factories with
-the same `ModelRequest` and `ModelProviderOptions` transport. Existing
-single-task callers can continue using `createModelProvider` with `AgentSession`:
+the same `ModelRequest` transport. `ModelWorkflowProviderOptions` extends the
+single-task `ModelProviderOptions` with optional `resultBindings` and
+`resultRequirements`, each defaulting to `false`. Existing single-task callers
+can continue using `createModelProvider` with `AgentSession`:
 
 ```ts
 import {
@@ -84,6 +96,48 @@ shape; this is an explicit API choice, not an automatic fallback. See the
 [workflow integration example](agent-workflows.md#model-planning) for constructing
 an `AgentWorkflowSession` and retaining each step's result.
 
+When `createModelWorkflowProvider` is constructed with `resultBindings: true`,
+a task argument may instead contain a backward reference and explicit format:
+
+```json
+{"steps":[{"task":"inspect_controls","arguments":{}},{"task":"save_message","arguments":{"message":{"fromStep":0,"format":"decimal"}}},{"task":"check_controls","arguments":{}}]}
+```
+
+This references step 0's verified integer result; it does not supply the number
+to save. The SDK checks the complete dependency graph before execution and
+resolves the target input from the actual accepted report only after both
+semantic and application verification succeed for the source. Supported formats
+are `string`, `decimal` and `boolean`, matching string, integer and Boolean
+results respectively. References to later steps, unsupported source types,
+arbitrary field paths, implicit conversions and a top-level `bindings` field
+are rejected. The opt-in does not change the single-task provider's contract.
+
+For a v2 source with `verification.result.kind: "observed"`, reference admission
+uses its declared `scalar_type`. For example, the Tauri `read_message` task
+returns a verified current string, so a later Save can use
+`{"fromStep":0,"format":"string"}`. The source's actual typed result must equal
+its declared observation, pass the remaining predicates and pass the host's
+fresh-state verification before it can feed the binding. A model is neither
+asked to guess that text nor allowed to replace it with a predicted result.
+
+With `resultRequirements: true`, each selected step may additionally contain one
+`requires` object. This example also needs `resultBindings: true` for its input:
+
+```json
+{"steps":[{"task":"read_message","arguments":{}},{"task":"save_message","arguments":{"message":{"fromStep":0,"format":"string"}},"requires":{"fromStep":0,"format":"string","equals":"条件执行回归 ✓"}},{"task":"check_controls","arguments":{}}]}
+```
+
+`equals` is explicit expected text, not a claimed observation. The SDK admits
+the complete requirement graph against declared result types before executing
+any step, then compares the actual earlier result only after semantic and host
+verification. A mismatch stops the workflow without dispatching the target.
+`requires` is rejected when its option is disabled; top-level `requirements`
+and model-supplied `actual` or `satisfied` fields are always rejected. Decimal
+expectations use exact canonical `u64` text, Boolean expectations use `"true"`
+or `"false"`, and strings preserve exact text. This condition does not make a
+later action atomic with the earlier observation. See the complete
+[requirement contract](agent-workflows.md#require-a-verified-result-before-continuing).
+
 These identifiers are examples from the Tauri reference catalog. Another
 application can declare different tasks, parameters and operations without
 changing the provider. The prompt asks the model to refuse missing or ambiguous
@@ -95,7 +149,9 @@ are not copied into application errors.
 
 The model cannot supply source, permissions, verification predicates or a
 `verified` flag. `catalog.prepare(task, arguments)` produces canonical source and
-the host-authored summary for each task. Literal input stays in the argument map. The Tauri
+the host-authored summary for each task. Literal and resolved input stays in the
+argument map. A reference is normalized by `prepareSemanticWorkflow` into a
+canonical template plus a binding; its runtime value never becomes source text. The Tauri
 host independently rebuilds that plan from its own described catalog before
 execution and compares the source and arguments. A successful model response
 alone performs no application work. A workflow admits all selected tasks before
@@ -253,6 +309,12 @@ callers; it is not the current conversation page's workflow response format.
 | `测试模型服务限流` | HTTP 429 becomes planning failure; no retry and no new application Effects |
 | `先检查控件，再保存“多步骤工作流 ✓”，最后核对控件。` | Three verified steps in order: `integer: 3`, `string: "saved"`, `none`; one additional Save and 15 VM Effects |
 | `测试后续步骤无效` | Invalid second task rejects the whole plan before the otherwise valid first save; no new application Effects |
+| `先检查控件数量，把这个数量保存为文本，再核对控件。` | Verify the integer count, bind its decimal text into the save input, then check controls; saved text is `3`, with one additional Save and 15 VM Effects |
+| `测试结果引用类型错误` | An integer source requested with string format rejects the complete plan before execution |
+| `测试引用尚未完成的步骤` | A forward reference rejects the complete plan before execution |
+| `读取当前输入框的文本，原样保存，再核对控件。` | The v2 read task returns the current input; a verified string binding supplies Save; the final check completes with no state changes beyond the one Save (14 VM Effects) |
+| `读取当前文本，只有它等于“条件执行回归 ✓”时才原样保存，再核对控件。` | Matching input permits one Save and final verification (14 VM Effects); different input stops after the verified read, with no Save (two VM Effects) |
+| `测试条件结果类型错误` | A requirement with the wrong source-result format rejects the whole plan before any Effect |
 
 Keep the fixture terminal open for the test and stop it with Ctrl-C afterward.
 Its log records request identity, response status and connection completion,
@@ -268,19 +330,4 @@ without recording credentials.
 
 ### Recorded macOS WebView Check
 
-On 2026-11-13, the single-task version of the bundled Tauri agent page was driven
-through the first six fixture submissions above, using
-`protocol-fixture-not-a-model`. The native HTTP transport contacted the loopback service once
-per submission. Save returned verified `string: "saved"`; inspection returned
-verified `integer: 3`. Refusal, undeclared selection, cancellation during planning
-and HTTP 429 all reported that application operations had not started. The
-cancelled request's connection closed before its delayed response completed.
-
-After those requests, an explicit switch to offline mode ran
-`task check_controls` and returned verified `none`. The application retained
-`模型接入回归 ✓` in both input and saved output, one Save, and zero Other-control
-clicks. Native tracing contained exactly 15 authorized/accepted Effects: nine
-for Save, three for model-selected inspection and three for the offline check.
-There were six model HTTP requests, with no retry after rate limiting and no
-model request for the offline command. This records real WebView/VM execution
-against predetermined model-protocol replies, not live model inference.
+The dated evidence is preserved in [Model Protocol Transport](acceptance/agents.md#model-protocol-transport).

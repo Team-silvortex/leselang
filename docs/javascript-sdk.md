@@ -12,6 +12,11 @@ consumer uses a Node.js process with its own application model, without a
 WebView or a Tauri runtime. The Rust compiler and VM still execute LeseLang.
 The package does not evaluate JavaScript supplied by an agent.
 
+For application-owned task catalogs, the public
+[`defineSemanticCatalog`](semantic-authoring.md) writer accepts readonly
+TypeScript declarations, checks them against the real base catalog and returns
+exact raw JSON. Plain JavaScript can use the same types through JSDoc/checkJs.
+
 For an application-owned conversation entry, the same package exports
 `AgentSession`, `createSemanticProvider`, `prepareSemanticCatalog` and a
 provider/host contract. The shared offline provider compiles host-declared
@@ -23,6 +28,21 @@ The Tauri task carrier now accepts no input or one exact named string and
 returns any existing scalar result type. Its raw report preserves full `u64`
 values; the in-app host checks declared predicates and fresh observations.
 The Node reference below retains its existing Boolean publication contract.
+The additional [Node-owned agent](node-agent-host.md) uses the public registered
+host and the optional `@leselang/bridge/node` transport with typed task reports,
+verified-result bindings and a fresh Rust worker for each task while retaining
+its JavaScript model across submissions. The Node entry uses built-in process
+APIs; the browser root entry remains independent of them.
+
+For registered applications, [`createRegisteredAgentHost`](registered-agent-host.md)
+now provides the common host implementation: catalog and source admission,
+per-execution bridges, cancellation fencing and independent before/current
+observations. [`createRegisteredApplication`](registered-agent-host.md#declare-the-application-controls)
+builds its application connection from a static map of `read`, `click` and
+`setText` handlers, including exclusive attachment, cleanup and fresh state
+observations. An application supplies those handlers and a trusted transport;
+it need not copy the Tauri reference's evidence and lifetime code. The original
+`AgentHost` and `Bridge` interfaces remain available for other host contracts.
 
 ## Register An Application Adapter
 
@@ -72,12 +92,28 @@ mutation made through an asynchronous adapter must enter the synchronous
 grant, object generation, observation revision and deadline. A Promise returned
 from the commit callback is invalid; place asynchronous preparation outside it.
 
+An action may disable its own control or make it read-only inside a successful
+commit. Actionability is required before invocation and before every mutation;
+final settlement permits that committed transition while still checking live
+authority, cancellation, deadline, object identity and the captured revision.
+External disabling outside the commit changes the revision and remains stale.
+A further commit on the disabled/read-only control is refused. The
+[task board reference](taskboard-host.md) exercises this completion lifecycle.
+
 Call `bridge.changed(name)` when an external application change or dependency
 must invalidate an earlier observation, including A → B → A changes. For example,
 changing a draft also invalidates a publish control whose action depends on
 that draft. Use `replace(name, adapter)` for a new object instance, and
 `unregister(name)` when an instance is removed. Do not silently redirect a
 registered adapter to a different DOM node or application object.
+
+When using `createRegisteredApplication`, call `context.changed(...names)`
+inside that action's synchronous `context.commit` to notify dependencies.
+The notification is bound to the captured execution, including after an await.
+Use `application.changed(...names)` for manual application events affecting the
+currently attached execution. The helper's readers must still check the real
+model and control instances; the helper does not provide DOM discovery or
+automatic dependency tracking.
 
 These are contracts for trusted application code. The bridge cannot stop an
 adapter that bypasses `context.commit`, undo network requests, or preempt
@@ -183,16 +219,4 @@ changing the SDK's browser integration.
 
 ## Recorded Acceptance
 
-On 2026-11-13, the standalone Node application ran on macOS using the package
-entry and the real Rust compiler/VM. A task containing Chinese text, quotes,
-a backslash and a newline returned Boolean `true`, nine Effects and 9,149
-remaining Fuel. Its five-object report passed the caller's publish, callback
-count and unchanged-control checks. The consumer tests also established that a
-throw after commit preserves one publication and exits with failure.
-
-The packed-package JavaScript execution and TypeScript declaration checks
-passed independently of the repository's source imports. Explicit Node
-transport tests passed for pre-sent replies and a stalled child. After migrating
-the Tauri frontend to this same package, the real macOS WebView acceptance
-passed both successful execution and failure after Save. Linux coverage is
-configured in CI; this local record does not claim a Linux run.
+The dated evidence is preserved in [Standalone JavaScript Consumer](acceptance/javascript.md#standalone-javascript-consumer).

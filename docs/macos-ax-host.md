@@ -333,49 +333,7 @@ implementation is compiled on macOS; portable backend tests on Linux do not
 execute the Apple frameworks. No CI test claims an authorized application desktop
 session.
 
-The 2026-11-13 local acceptance run used the dedicated
-`target/ax-demo/LeseLang-AX-20261113.txt` document in the real TextEdit application.
-The host found and observed `LeseLang AX initial\n`, explicitly delivered the
-replacement, then observed `LeseLang cross-process ✓\n`. It completed four
-Effects; the observation revision advanced from 0 to 3, and 651 Fuel remained
-for that run. A separate desktop accessibility inspection confirmed the same
-final text in the actual TextEdit window. The run used existing Accessibility
-access without granting new system permission.
-
-Two real negative checks also passed: selecting an existing but unopened test
-file refused without falling back to the current window, and rerunning the
-default demo against the already changed document stopped after its two read
-Effects without issuing `gui.set_text`. A final external source-file run read
-the same resulting text through two Effects, confirming that these refusal
-paths left it intact.
-
-The Calculator profile was separately verified on 2026-11-13 with Calculator
-12.0 on macOS 27.0.1. An external run of `calculator.lese` started at display
-`0`, pressed the four permitted buttons, and returned display `3` with
-`last_expression` equal to `1 + 2`. It completed ten Effects with 1,656 Fuel
-remaining; observation revisions progressed from 0 to 12. A separate desktop
-accessibility inspection confirmed both the result and last expression in the
-real Calculator window. The run used existing Accessibility access and did
-not grant new system permission.
-
-Rerunning the default Calculator demonstration at display `3` refused its
-initial-state condition after two read Effects without pressing a button.
-The existing TextEdit document also passed a two-Effect read-only source run
-after the shared-driver refactor, returning its earlier verified text with
-860 Fuel remaining.
-
-Earlier on 2026-11-13, before controls mode was added, the host package passed
-42 tests on macOS: 33 library tests, six
-command-line tests, one external TextEdit API compatibility test and two
-compile-fail ownership tests. Fourteen of the library tests exercise the
-Calculator profile, including 14 before/after-queue dependency and authority
-cases. The [external compatibility check](../hosts/macos-ax/tests/textedit_api.rs)
-also preserves unannotated TextEdit
-reply, native-value and empty run-summary construction alongside the existing
-backend and snapshot interfaces. Strict Clippy, formatting checks and the six
-pure native boundary groups passed. These results complement the real runs;
-deterministic tests cover failure paths without manipulating other applications
-or changing OS permissions.
+The dated evidence is preserved in [TextEdit And Calculator Profiles](acceptance/macos-ax.md#textedit-and-calculator-profiles).
 
 The original profiles target a plain-text TextEdit document or the supported
 Calculator Basic-mode window on macOS. The opt-in controls mode also accepts

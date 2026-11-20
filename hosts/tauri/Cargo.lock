@@ -1665,6 +1665,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "leselang-registered-host"
+version = "0.1.0"
+dependencies = [
+ "leselang-vm",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "leselang-runtime-core"
 version = "0.1.0"
 dependencies = [
@@ -1682,6 +1691,7 @@ dependencies = [
 name = "leselang-tauri-host"
 version = "0.1.0"
 dependencies = [
+ "leselang-registered-host",
  "leselang-vm",
  "serde",
  "serde_json",

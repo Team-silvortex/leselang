@@ -118,6 +118,31 @@ fn task_catalog_is_opt_in_and_matches_the_generic_report_contract() {
 }
 
 #[test]
+fn observed_catalog_requires_explicit_opt_in_and_preserves_old_responses() {
+    assert!(description_value_with_observed(true, false, true).is_err());
+    assert_eq!(
+        description_value_with_observed(true, true, false).unwrap(),
+        description_value(true, true).unwrap()
+    );
+    let raw = description_value_with_observed(true, true, true).unwrap();
+    assert_eq!(
+        raw.as_str().unwrap(),
+        leselang_tauri_host::describe_agent_observed().unwrap()
+    );
+    let value = description_value_with_observed(false, true, true).unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(raw.as_str().unwrap()).unwrap(),
+        value
+    );
+    assert_eq!(value["semantics"]["version"], 2);
+    assert_eq!(value["semantics"]["tasks"].as_array().unwrap().len(), 5);
+    assert_eq!(
+        value["semantics"]["tasks"][4]["verification"]["result"]["kind"],
+        "observed"
+    );
+}
+
+#[test]
 fn typed_command_admission_rejects_malformed_inputs_and_signatures() {
     assert!(prepare_task_input("fn main() = 3", json!({})).is_ok());
     assert!(
@@ -398,5 +423,158 @@ fn agent_page_url_is_separate_from_legacy_and_remote_pages() {
         "tauri://user@localhost/agent.html",
     ] {
         assert!(!local_asset(&denied.parse().unwrap()));
+    }
+}
+
+#[test]
+fn application_configuration_pins_exact_page_and_catalog_without_form_fallback() {
+    for application in [AgentApplication::Form, AgentApplication::TaskBoard] {
+        for scheme in ["tauri://localhost", "http://tauri.localhost"] {
+            let selected: tauri::Url = format!("{scheme}/{}", application.asset()).parse().unwrap();
+            assert!(local_asset_for(application, &selected));
+            let other = match application {
+                AgentApplication::Form => AgentApplication::TaskBoard,
+                AgentApplication::TaskBoard => AgentApplication::Form,
+            };
+            let foreign: tauri::Url = format!("{scheme}/{}", other.asset()).parse().unwrap();
+            assert!(!local_asset_for(application, &foreign));
+        }
+        for denied in [
+            format!(
+                "tauri://localhost/{}?application=other",
+                application.asset()
+            ),
+            format!("tauri://user@localhost/{}", application.asset()),
+            format!("tauri://localhost:1234/{}", application.asset()),
+            format!("https://example.com/{}", application.asset()),
+            "tauri://localhost/index.html".into(),
+        ] {
+            assert!(
+                !local_asset_for(application, &denied.parse().unwrap()),
+                "{denied}"
+            );
+        }
+    }
+    for (task_catalog, observed) in [(false, false), (true, false), (false, true)] {
+        assert!(
+            description_value_for(AgentApplication::TaskBoard, true, task_catalog, observed)
+                .is_err()
+        );
+    }
+    let board = description_value_for(AgentApplication::TaskBoard, true, true, true).unwrap();
+    assert_eq!(
+        board.as_str().unwrap(),
+        leselang_tauri_host::describe_agent_board().unwrap()
+    );
+    let parsed: Value = serde_json::from_str(board.as_str().unwrap()).unwrap();
+    assert_eq!(parsed["profile"], "tauri.taskboard");
+    assert_eq!(parsed["semantics"]["version"], 2);
+    assert_eq!(
+        description_value_for(AgentApplication::TaskBoard, false, true, true).unwrap(),
+        parsed
+    );
+    assert_eq!(
+        description_value_for(AgentApplication::Form, true, true, true)
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        leselang_tauri_host::describe_agent_observed().unwrap()
+    );
+}
+
+#[test]
+fn board_registry_cannot_admit_the_legacy_form_runner() {
+    let mut registry = Registry {
+        application: AgentApplication::TaskBoard,
+        ..Registry::default()
+    };
+    assert!(
+        registry
+            .start(
+                "page-1".into(),
+                "one".into(),
+                "fn main(text: string) = true",
+                "literal",
+                channel()
+            )
+            .is_err()
+    );
+    assert!(registry.epoch.is_none());
+    assert!(registry.used.is_empty());
+    assert!(registry.active.is_none());
+    let (run, _) = registry
+        .start_task("page-1".into(), "one".into(), "fn main() = none", channel())
+        .unwrap();
+    assert_eq!(run.application, AgentApplication::TaskBoard);
+    assert_eq!(
+        registry.finish(
+            &run,
+            Ok(json!({"kind":"tauri_task_run", "result":{"type":"none", "value":null}}))
+        )["profile"],
+        "tauri.taskboard"
+    );
+}
+
+#[test]
+fn host_application_identity_is_preserved_on_success_and_every_failure_path() {
+    for application in [AgentApplication::Form, AgentApplication::TaskBoard] {
+        for mode in [
+            "success",
+            "error",
+            "cancel",
+            "deadline",
+            "closed",
+            "retired",
+            "oversized",
+            "foreign_profile",
+            "not_object",
+        ] {
+            let mut registry = Registry {
+                application,
+                ..Registry::default()
+            };
+            let (run, endpoint) = registry
+                .start_task("page-1".into(), "one".into(), "fn main() = none", channel())
+                .unwrap();
+            match mode {
+                "cancel" => run.cancel(),
+                "deadline" => run.expired.store(true, Ordering::Release),
+                "closed" => registry.close(),
+                "retired" => run.retire(),
+                _ => {}
+            }
+            let result = match mode {
+                "error" => Err("host rejected action".into()),
+                "oversized" => Ok(json!({"payload":"x".repeat(REPORT_LIMIT)})),
+                "foreign_profile" => Ok(
+                    json!({"profile": if application == AgentApplication::Form { "tauri.taskboard" } else { "tauri.typescript" }, "verified":true}),
+                ),
+                "not_object" => Ok(json!(null)),
+                _ => Ok(
+                    json!({"kind":"tauri_task_run", "profile":application.profile(), "result":{"type":"none", "value":null}}),
+                ),
+            };
+            let report = registry.finish(&run, result);
+            assert_eq!(report["profile"], application.profile(), "{mode}");
+            if mode == "success" {
+                assert_eq!(report["result"]["type"], "none");
+                assert!(report.get("status").is_none());
+            } else {
+                assert_eq!(
+                    report["status"],
+                    if mode == "cancel" {
+                        "cancelled"
+                    } else {
+                        "failed"
+                    },
+                    "{mode}"
+                );
+                assert_eq!(report["possible_partial_effects"], true);
+                assert!(report.get("result").is_none());
+                assert!(report.get("verified").is_none());
+            }
+            assert!(!endpoint.is_live());
+            assert!(registry.active.is_none());
+        }
     }
 }

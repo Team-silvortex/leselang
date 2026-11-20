@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { AgentSession, AgentWorkflowSession } from "../dist/bridge.js";
-import { createTauriModelProvider, createTauriModelWorkflowProvider, modelInfo } from "../dist/model-provider.js";
+import { createTauriModelProvider, createTauriModelWorkflowProvider, modelInfo } from "../dist/agent/model-provider.js";
 
 const catalog = await readFile(new URL("../../../../fixtures/host-semantics/tauri-agent-semantics-v1.json", import.meta.url), "utf8");
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -147,5 +147,47 @@ test("one native planning request drives a sequence and all steps are admitted b
       assert.deepEqual(verified, executed);
       assert.equal(result.steps.length, 3);
     }
+  }
+});
+
+test("the Tauri workflow planner explicitly enables typed result references", async () => {
+  const calls = [];
+  const provider = createTauriModelWorkflowProvider({ core: { invoke: async (command, args) => {
+    calls.push({ command, args });
+    return JSON.stringify({ steps: [
+      { task: "inspect_controls", arguments: {} },
+      { task: "save_message", arguments: { message: { fromStep: 0, format: "decimal" } } },
+    ] });
+  } } }, { epoch: "binding-page" });
+  const plan = await provider.plan({ taskId: 1, message: "保存观察到的数量", catalog }, new AbortController().signal);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, "agent_model_complete");
+  assert.deepEqual(plan.bindings, [{ step: 1, argument: "message", fromStep: 0, format: "decimal" }]);
+  assert.equal(plan.steps[1].arguments.message, "");
+  assert.equal(Object.isFrozen(plan.bindings[0]), true);
+});
+
+test("the Tauri workflow planner admits explicit result requirements and rejects mismatched declared types", async () => {
+  for (const invalid of [false, true]) {
+    const calls = [];
+    const provider = createTauriModelWorkflowProvider({ core: { invoke: async (command, args) => {
+      calls.push({ command, args });
+      return JSON.stringify({ steps: [
+        { task: "inspect_controls", arguments: {} },
+        { task: "save_message", arguments: { message: { fromStep: 0, format: "decimal" } },
+          requires: { fromStep: 0, format: invalid ? "string" : "decimal", equals: "3" } },
+      ] });
+    } } }, { epoch: "requirements-page" });
+    const pending = provider.plan({ taskId: 1, message: "只有控件数量为 3 时才保存这个数量", catalog }, new AbortController().signal);
+    if (invalid) await assert.rejects(pending, /invalid_model_selection/u);
+    else {
+      const plan = await pending;
+      assert.deepEqual(plan.requirements, [{ step: 1, fromStep: 0, format: "decimal", equals: "3" }]);
+      assert.deepEqual(plan.bindings, [{ step: 1, argument: "message", fromStep: 0, format: "decimal" }]);
+      assert.equal(Object.isFrozen(plan.requirements[0]), true);
+      assert.equal(plan.steps[1].arguments.message, "");
+    }
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].command, "agent_model_complete");
   }
 });

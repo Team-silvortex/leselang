@@ -337,48 +337,4 @@ only when all these postconditions hold. Selection does not open the folder.
 
 ## Recorded Desktop Check
 
-On 2026-11-13, this workflow ran against Finder 27.0 on macOS 27.0.1 with existing
-Accessibility access and dedicated temporary folders. The initial options
-phase used five folders; the fixture was expanded to 12 after hiding Size and
-Kind and choosing large icons. A reproduction can prepare all 12 first, as
-long as it completes the View Options phase before discovering the main window.
-
-| Source and window | Effects | Fuel remaining | Observed result |
-| --- | --- | --- | --- |
-| Original guarded menu phase, `ViewOptions` | 11 | 9,340 | Open and cancel succeeded; choosing 16 was acknowledged, but the immediate owner observation remained 13, so source returned `false` |
-| `widgets_finder_columns.lese`, a new `ViewOptions` session | 10 | 9,359 | A fresh observation confirmed 16; Size and Kind each became `unchecked`, and source returned `true` |
-| `widgets_finder_selection.lese`, `FinderWindow` | 15 | 8,871 | The exact row became the sole selected item; scrollbar position changed from 0 to 1,000, and source returned `true` |
-
-The menu phase was subsequently extracted into `widgets_finder_options.lese`.
-Its original source had guarded follow-up branches that were not reached after
-the false result. The recorded menu Fuel belongs to that original source; the
-current standalone example preserves the 11-Effect behavior but can have a
-slightly different Fuel cost. The other two rows used the current source flows.
-
-The menu result establishes the distinction between delivery and the observed
-postcondition. A separate later read confirmed 16 before the checkbox session;
-the chosen menu action was not retried. No scheduler or waiting loop was added
-to the host to make the immediate check pass.
-
-Independent desktop inspection confirmed that row 01 and its cell/text field
-were selected, Finder reported `1 of 12 selected`, and the native scrollbar
-value was 1, corresponding to normalized position 1,000. A screenshot showed
-the bottom of the list with folder 12, the large icons and changed text size,
-and the absence of Size and Kind columns. These checks verify this Finder
-layout and the explicit two-window workflow.
-
-The same development pass tested Preview's Export panel and refused it because
-some children belonged to the AppKit open/save-panel XPC process rather than
-Preview's pinned PID. That panel remains outside the default same-process
-widget scope; the separate [auxiliary-process guide](macos-ax-auxiliary-processes.md)
-describes explicit opt-in authorization. Finder also returned its desktop `AXScrollArea` in `AXWindows`;
-the inventory now validates native role metadata and admits actual `AXWindow`
-objects only. Neither case broadens the selected process or window authority.
-
-At this Finder milestone, the Accessibility package passed 123 Rust tests, including direct
-reference-source tests for the delayed menu observation and stopping after a
-failed checkbox postcondition. Its 30 native boundary groups passed without
-remote GUI calls. The language workspace's 2,303 tests, independent Consumer's
-735 tests and AppKit host's five tests passed, and formatting and strict Clippy
-passed across all four workspaces. The Rust embedding example in this guide
-also compiled without executing native calls.
+The dated evidence is preserved in [Widgets](acceptance/macos-ax.md#widgets).

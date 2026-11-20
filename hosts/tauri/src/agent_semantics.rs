@@ -74,6 +74,39 @@ fn rename_input(term: &mut Term) {
     }
 }
 
+/// Opt-in v2 tasks keep the original fixed-result catalog available unchanged.
+pub(crate) fn describe_observed()
+-> leselang_vm::native::core::discovery::semantics::v2::SemanticDescription {
+    use leselang_vm::native::core::discovery::semantics::v2;
+    let mut description = v2::SemanticDescription::from(describe());
+    let mut read = v2::TaskDescription::from(inspect(
+        "read_message",
+        "Read the current input text without changing any registered control; return the actual observed text, verified against application evidence.",
+        ScalarValue::String(String::new()),
+        ScalarValue::String(String::new()),
+    ));
+    read.steps = vec![
+        call("input_object", "gui.find", vec![("name", text("input"))]),
+        call(
+            "input_state",
+            "gui.observe",
+            vec![("target", binding("input_object"))],
+        ),
+    ];
+    read.result = Term::Field {
+        binding: "input_state".into(),
+        name: "value".into(),
+    };
+    let mut path = object("native_after", "input");
+    path.push(segment("value"));
+    read.verification.result = v2::ResultContract::Observed {
+        scalar_type: ScalarType::String,
+        path,
+    };
+    description.tasks.push(read);
+    description
+}
+
 fn literal(value: ScalarValue) -> Term {
     Term::Literal { value }
 }
@@ -243,6 +276,27 @@ mod tests {
         assert_eq!(
             crate::describe().unwrap(),
             include_str!("../../../fixtures/host-semantics/tauri-semantics-v1.json")
+        );
+    }
+
+    #[test]
+    fn observed_agent_catalog_is_additive_and_has_a_stable_public_fixture() {
+        let catalog = crate::catalog::describe().unwrap();
+        let description = super::describe_observed();
+        description.validate(&catalog).unwrap();
+        assert_eq!(description.version, 2);
+        assert_eq!(description.tasks.len(), 5);
+        assert_eq!(
+            crate::describe_agent_observed().unwrap(),
+            include_str!("../../../fixtures/host-semantics/tauri-agent-semantics-v2.json")
+        );
+        let value: serde_json::Value =
+            serde_json::from_str(&crate::describe_agent_observed().unwrap()).unwrap();
+        let previous: serde_json::Value =
+            serde_json::from_str(&crate::describe_agent().unwrap()).unwrap();
+        assert_eq!(
+            &value["semantics"]["tasks"].as_array().unwrap()[..4],
+            previous["semantics"]["tasks"].as_array().unwrap()
         );
     }
 }

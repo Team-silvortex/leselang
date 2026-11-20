@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { describeVerifiedResult } from "../dist/result-display.js";
+import { describeVerifiedResult } from "../dist/agent/result-display.js";
 
 test("verified result display preserves scalar meaning without rounding exact integer evidence", () => {
   for (const [type, value, expected] of [

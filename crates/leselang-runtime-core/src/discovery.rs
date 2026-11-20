@@ -188,6 +188,22 @@ impl CatalogDescription {
         Ok(output.0)
     }
 
+    /// Encode opt-in semantic version 2, retaining discovery protocol version 1.
+    /// Observed result contracts describe evidence; they grant no authority.
+    pub fn to_json_with_semantics_v2(
+        &self,
+        semantics: &semantics::v2::SemanticDescription,
+    ) -> Result<String, DescriptionError> {
+        semantics.validate(self)?;
+        let mut base = self.to_json()?;
+        base.truncate(base.len() - 2);
+        let mut output = Encoder(base);
+        output.push(",\"semantics\":")?;
+        semantics.encode(&mut output)?;
+        output.push("}\n")?;
+        Ok(output.0)
+    }
+
     /// Emit schema-version 1 metadata in declaration order, with one trailing LF.
     ///
     /// Operation names use dot-separated ASCII identifiers, at most 128 bytes in

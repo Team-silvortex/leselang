@@ -22,6 +22,14 @@ Older catalogs without semantic metadata retain the original strategies for
 the three profiles above. Other AX profiles currently publish only their type
 catalogs and have no legacy strategy in this example.
 
+The semantic reader dispatches explicitly on versions 1 and 2. Version 1's fixed
+results remain unchanged; version 2 additionally supports
+[observed result contracts](host-semantics.md#version-2-observed-results). Such a
+contract compares the actual typed result with a declared actual report path,
+then retains the original report predicates and bounds. It does not accept
+an arbitrary value merely because its type matches. Unsupported versions still
+fail without falling back to a legacy profile strategy.
+
 The example belongs to the separate Consumer workspace. It depends on the five
 language crates and their existing JSON dependencies, and invokes the selected
 host as a subprocess. It has no AppKit/Tauri/Accessibility dependency or GUI
@@ -287,82 +295,15 @@ proof of its author's claims and does not grant runtime authority.
 
 ## Recorded Desktop Verification
 
-On 2026-11-13, the complete agent command was exercised against the real AppKit
-host on a logged-in macOS desktop:
-
-| Task input | Observed outcome |
-| --- | --- |
-| `保存 ✓` | The program returned `true` after nine Effects, with 433 Fuel remaining. Native input and Save values matched the input, Save's callback count became one, and `other` retained its public scalar state. |
-| Text containing quotes, a backslash and a newline | The program returned `true` after nine Effects, with 417 Fuel remaining. The same native postconditions passed. Its generated source was byte-for-byte identical to the first run's source. |
-| 128 ASCII `x` characters | The host trace showed text replacement and the Save click pumped and accepted before the final `gui.observe` failed for insufficient Fuel. The agent exited with code 1 and recorded `status: "failed"` and `possible_partial_effects: true`. It produced no success report and did not retry. |
-
-The first generated task also ran through the host's default text-output mode:
-both that mode and JSON reporting returned `true` after nine Effects with the
-same 433 Fuel remaining. The native AppKit conformance checks also passed.
-
-The third run demonstrates a real partially completed task: accepted input can
-fit the text-size bound while exhausting the original Fuel after native work.
-The failure outcome retains that distinction instead of inferring that no
-action occurred from the missing final result. These are macOS runtime results;
-Linux coverage for this workflow remains configured CI checks, not a claim of
-a local Linux or GUI run.
+The dated evidence is preserved in [Independent Catalog Agent](acceptance/agents.md#independent-catalog-agent).
 
 ### Same Agent Across Tauri And Calculator
 
-On 2026-11-13, the same built `target/lean/examples/catalog_agent` executable
-completed these three invocations on the macOS desktop, using each host's
-actual offline catalog and newly generated source:
-
-| Application and initial state | Observed outcome |
-| --- | --- |
-| Tauri form, text `统一 Lese ✓` | `true`, nine Effects, 9,421 Fuel remaining. Input and saved value matched, Save ran exactly once, and `other` was unchanged. |
-| Calculator displaying `8 + 7 = 15` | `initial display mismatch`, two read Effects, 1,940 Fuel remaining, no presses. Both native snapshots remained `15` / `8 + 7`; the host and agent exited with code 1. |
-| Calculator after an explicitly authorized clear to `0` | `"3"`, ten Effects, 1,646 Fuel remaining. Both the native report and independent desktop inspection showed display `3` with last expression `1 + 2`. |
-
-The operator restored Calculator's original `8 + 7 = 15` display from its
-history and closed the sidebar after verification. The test's new `1 + 2`
-history entry remains; the agent itself performs neither reset nor restoration.
-The failed initial-state run records `possible_partial_effects: true` because
-the generic subprocess boundary conservatively marks any failed execution;
-its report and trace establish that this particular program made no presses.
-
-Local evidence is retained under the ignored build directory in
-`target/cross-gui-tauri-20261113`,
-`target/cross-gui-calculator-initial-20261113` and
-`target/cross-gui-calculator-20261113`. Each includes the actual catalog,
-generated source, plan, execution report, trace and independent verification.
-These runs demonstrate one discovery/execution/verification pipeline with two
-different GUI adapters and known task semantics; they do not establish
-automatic understanding of arbitrary applications.
+The dated evidence is preserved in [Same Agent Across Tauri And Calculator](acceptance/agents.md#same-agent-across-tauri-and-calculator).
 
 ### Catalog-Declared Tasks
 
-On 2026-11-13, the generic semantic planner was exercised against the real
-AppKit and Tauri hosts. Both plans recorded
-`planning_contract: "catalog_semantics_v1"`; their generated LeseLang source
-was byte-for-byte identical. The application-specific report kind, input
-convention, Fuel ceiling and predicates came from each actual catalog.
-
-| Desktop run | Outcome |
-| --- | --- |
-| AppKit, text `语义 ✓` | Nine Effects, 448 of the original 1,000 Fuel remaining, and all 36 declared report predicates passed. |
-| Tauri, the same text | Nine Effects, 9,456 of the original 10,000 Fuel remaining, and all 36 declared report predicates passed. |
-| AppKit, 128 ASCII `x` characters | The trace showed text replacement and Save submitted, pumped and accepted before the final observation exhausted Fuel. The agent exited 1, retained `possible_partial_effects: true` and did not retry. |
-
-Evidence is retained locally in `target/semantic-appkit-20261113`,
-`target/semantic-tauri-20261113` and `target/semantic-appkit-fuel-20261113`.
-Calculator was closed during this acceptance run and was not reopened. Its
-new semantic source ran through the actual VM and Calculator driver with a
-fake backend: ten Effects and four presses on success, two read Effects and
-zero presses for a nonzero initial state, plus wrong-expression, revocation
-and uncertain-action failures that preserve already completed presses.
-
-Portable tests also change the profile, task, operation names, control names
-and input name to a synthetic notes application and drive the same subprocess
-pipeline without a planner branch. A separate unfamiliar scalar host executes
-a generated two-Effect task through the real VM and returns `42`. These tests
-establish declaration-driven integration; the synthetic app fixtures are not
-additional live GUI applications.
+The dated evidence is preserved in [Catalog-Declared Tasks](acceptance/agents.md#catalog-declared-tasks).
 
 ## Verify Changes To The Workflow
 

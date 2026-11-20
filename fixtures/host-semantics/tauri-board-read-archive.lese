@@ -1,0 +1,2 @@
+// Generated from validated host semantic metadata; no retry or scheduler.
+fn main() = bind(task_object: gui.find(name: "archive"), body: bind(task_state: gui.observe(target: task_object), body: field(value: task_state, name: "value")))

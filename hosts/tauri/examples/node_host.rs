@@ -1,13 +1,8 @@
 //! A portable Rust VM owner controlling a separate, application-owned JS process.
 //! This example deliberately has no Tauri runtime or JavaScript evaluator.
 use leselang_tauri_host::{Scope, Transport, describe_registered, run_registered};
-use serde::{
-    Deserialize, Deserializer,
-    de::{self, MapAccess, SeqAccess, Visitor},
-};
-use serde_json::{Map, Number, Value, json};
+use serde_json::{Value, json};
 use std::{
-    fmt,
     io::{BufRead, BufReader, Read, Write},
     path::Path,
     process::{Child, Command, ExitCode, Stdio},
@@ -37,126 +32,18 @@ fn read_source(reader: impl Read) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| "source is not valid UTF-8".into())
 }
 
-/// JSON objects must not contain duplicate fields, including nested objects.
-/// Parsing Value directly would discard that evidence before gateway validation.
-struct StrictValue(Value);
-impl<'de> Deserialize<'de> for StrictValue {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        struct Json;
-        impl<'de> Visitor<'de> for Json {
-            type Value = StrictValue;
-            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("unambiguous JSON")
-            }
-            fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
-                Ok(StrictValue(Value::Bool(v)))
-            }
-            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
-                Ok(StrictValue(Value::Number(v.into())))
-            }
-            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
-                Ok(StrictValue(Value::Number(v.into())))
-            }
-            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
-                Number::from_f64(v)
-                    .map(|v| StrictValue(Value::Number(v)))
-                    .ok_or_else(|| E::custom("invalid number"))
-            }
-            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-                Ok(StrictValue(Value::String(v.into())))
-            }
-            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
-                Ok(StrictValue(Value::String(v)))
-            }
-            fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
-                Ok(StrictValue(Value::Null))
-            }
-            fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Self::Value, A::Error> {
-                let mut items = Vec::new();
-                while let Some(StrictValue(value)) = a.next_element()? {
-                    items.push(value);
-                }
-                Ok(StrictValue(Value::Array(items)))
-            }
-            fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Self::Value, A::Error> {
-                let mut fields = Map::new();
-                while let Some(key) = a.next_key::<String>()? {
-                    if fields.contains_key(&key) {
-                        return Err(de::Error::custom("duplicate JSON field"));
-                    }
-                    fields.insert(key, a.next_value::<StrictValue>()?.0);
-                }
-                Ok(StrictValue(Value::Object(fields)))
-            }
-        }
-        d.deserialize_any(Json)
-    }
-}
+#[path = "../../registered/src/worker/json_lines.rs"]
+mod json_lines;
+use json_lines::{Correlation, challenge};
 
 fn read_record(reader: &mut impl BufRead) -> Result<Value, String> {
-    let mut bytes = Vec::new();
-    loop {
-        let available = reader
-            .fill_buf()
-            .map_err(|e| format!("read JavaScript reply: {e}"))?;
-        if available.is_empty() {
-            return Err("JavaScript reply closed or truncated".into());
-        }
-        let length = available
-            .iter()
-            .position(|b| *b == b'\n')
-            .map_or(available.len(), |i| i + 1);
-        if bytes.len() + length > WIRE_LIMIT {
-            return Err("JavaScript reply exceeds 32 KiB".into());
-        }
-        let complete = available[length - 1] == b'\n';
-        bytes.extend_from_slice(&available[..length]);
-        reader.consume(length);
-        if complete {
-            return serde_json::from_slice::<StrictValue>(&bytes)
-                .map(|value| value.0)
-                .map_err(|_| "malformed JavaScript JSON reply".into());
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct Correlation {
-    version: u64,
-    window: String,
-    epoch: String,
-    session: String,
-    serial: u64,
-}
-impl Correlation {
-    fn read(value: &Value) -> Option<Self> {
-        Some(Self {
-            version: value["transport_version"].as_u64()?,
-            window: value["window"].as_str()?.into(),
-            epoch: value["epoch"].as_str()?.into(),
-            session: value["session"].as_str()?.into(),
-            serial: value["request_id"].as_u64()?,
-        })
-    }
+    json_lines::read_record(reader, WIRE_LIMIT)
 }
 
 #[derive(Clone, Debug)]
 struct Pending {
     correlation: Correlation,
     challenge: String,
-}
-
-fn challenge() -> Result<String, String> {
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    {
-        let mut bytes = [0_u8; 32];
-        std::fs::File::open("/dev/urandom")
-            .and_then(|mut random| random.read_exact(&mut bytes))
-            .map_err(|_| "cannot obtain operating-system request randomness")?;
-        Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    Err("the Node reference transport currently supports Linux and macOS".into())
 }
 
 fn deliver(pending: &Mutex<Option<Pending>>, value: Value) -> Result<Value, String> {

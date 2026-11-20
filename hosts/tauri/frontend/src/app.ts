@@ -1,5 +1,5 @@
 import { Bridge } from "./bridge.js";
-import { createFormView } from "./form-view.js";
+import { createFormView } from "./form/view.js";
 import type {} from "./tauri-api.js";
 
 function element<T extends HTMLElement>(id: string): T {

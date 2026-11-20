@@ -170,6 +170,9 @@ export class Bridge {
     this.scope = Object.freeze({ window: key(scope.window), epoch: key(scope.epoch), session: key(scope.session) });
   }
 
+  /** Whether this execution has been permanently closed or cancelled. */
+  get closed(): boolean { return !this.#live; }
+
   register(name: string, adapter: Adapter): void {
     this.#requireLive();
     key(name);
@@ -177,6 +180,10 @@ export class Bridge {
     if (previous?.adapter) reject("duplicate_object");
     if (!previous && this.#entries.size >= MAX_OBJECTS) reject("object_limit");
     const observed = state(adapter.read());
+    // Readers are application callbacks and may close or reenter this bridge.
+    this.#requireLive();
+    if (this.#entries.get(name) !== previous) reject("stale_object");
+    if (!previous && this.#entries.size >= MAX_OBJECTS) reject("object_limit");
     const generation = previous ? this.#nextGeneration(previous) : 1;
     this.#entries.set(name, { name, generation, revision: 0, adapter, observed });
   }
@@ -184,7 +191,12 @@ export class Bridge {
   replace(name: string, adapter: Adapter): void {
     this.#requireLive();
     const previous = this.#entry(name);
+    const previousGeneration = previous.generation;
+    const previousAdapter = previous.adapter;
     const observed = state(adapter.read());
+    this.#requireLive();
+    if (this.#entries.get(name) !== previous || previous.generation !== previousGeneration
+      || previous.adapter !== previousAdapter) reject("stale_object");
     const generation = this.#nextGeneration(previous);
     // A distinct entry also fences callbacks retaining the previous adapter.
     this.#entries.set(name, { name, generation, revision: 0, adapter, observed });
@@ -239,7 +251,7 @@ export class Bridge {
       };
       this.#pending = pending;
       const value = await this.#dispatch(pending);
-      this.#fence(pending);
+      this.#fence(pending, false);
       return this.#reply(requestId, "ok", value, null);
     } catch (error) {
       return this.#reply(requestId, pending?.invoked ? "uncertain" : "rejected", null,
@@ -362,7 +374,7 @@ export class Bridge {
           : entry.adapter!.click!(context);
       });
       await Promise.race([completion, interrupted]);
-      this.#fence(pending);
+      this.#fence(pending, false);
       return true;
     } finally {
       if (timer !== undefined) clearTimeout(timer);
@@ -374,20 +386,34 @@ export class Bridge {
     return { identifier: entry.name, generation: entry.generation, revision: entry.revision, ...observed };
   }
 
-  #fence(pending: Pending): void {
+  #authority(pending: Pending): void {
     this.#requireLive();
     if (!this.#granted) reject("revoked");
     if (this.#pending !== pending || pending.controller.signal.aborted) reject("cancelled");
     if (performance.now() >= pending.deadline) reject("deadline");
+  }
+
+  #fence(pending: Pending, requireActionable = true): void {
+    this.#authority(pending);
     if (pending.entry) {
       const entry = pending.entry;
       if (this.#entries.get(entry.name) !== entry || !entry.adapter || entry.generation !== pending.generation) {
         reject("stale_object");
       }
       this.#refresh(entry);
+      // A reader is application code: it can revoke, close or replace the
+      // object while returning an otherwise identical state. Recheck after it.
+      this.#authority(pending);
+      if (this.#entries.get(entry.name) !== entry || !entry.adapter || entry.generation !== pending.generation) {
+        reject("stale_object");
+      }
       if (entry.revision !== pending.revision) reject("stale_revision");
-      if (!entry.observed.enabled) reject("disabled");
-      if (pending.request.operation === "gui.set_text" && !entry.observed.editable) reject("not_editable");
+      // Invocation and every mutation require current actionability. Settlement
+      // may observe a control disabled or made read-only by its own successful
+      // commit. Its captured revision must still match: external changes,
+      // including disabling outside that commit, remain stale.
+      if (requireActionable && !entry.observed.enabled) reject("disabled");
+      if (requireActionable && pending.request.operation === "gui.set_text" && !entry.observed.editable) reject("not_editable");
     }
   }
 
@@ -399,7 +425,12 @@ export class Bridge {
 
   #refresh(entry: Entry): ControlState {
     if (!entry.adapter) reject("stale_object");
-    const observed = state(entry.adapter.read());
+    const adapter = entry.adapter;
+    const generation = entry.generation;
+    const observed = state(adapter.read());
+    this.#requireLive();
+    if (this.#entries.get(entry.name) !== entry || entry.generation !== generation
+      || entry.adapter !== adapter) reject("stale_object");
     if (!same(observed, entry.observed)) {
       this.#advance(entry);
       entry.observed = observed;

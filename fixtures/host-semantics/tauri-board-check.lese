@@ -1,0 +1,6 @@
+// Generated from validated host semantic metadata; no retry or scheduler.
+fn _lese_contains(items: string_list, wanted: string) = fold(
+  _lese_found: false, items: items, item: "_lese_item",
+  next: or(left: _lese_found, right: eq(left: _lese_item, right: wanted)), limit: 64
+)
+fn main() = bind(ids: gui.list(), body: choose(when: and(left: _lese_contains(items: ids, wanted: "review"), right: _lese_contains(items: ids, wanted: "archive")), then: none, otherwise: none))

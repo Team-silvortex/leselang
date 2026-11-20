@@ -33,6 +33,7 @@ and TypeScript bridge can be checked without launching a GUI.
 Run from the repository root with the pinned Rust toolchain and Node.js 24:
 
 ```sh
+npm ci --prefix packages/javascript --ignore-scripts
 npm ci --prefix hosts/tauri --ignore-scripts
 npm run build --prefix hosts/tauri
 cargo fetch --manifest-path hosts/tauri/Cargo.toml --locked
@@ -41,11 +42,12 @@ target/lean/leselang-tauri-host --describe
 target/lean/leselang-tauri-host --text 'TypeScript ✓' --report-json --hold
 ```
 
-The first command installs the host's pinned TypeScript build tool. The build
+The install commands supply the SDK's and host's pinned development tools. The build
 emits browser JavaScript and copies the HTML and CSS into `frontend/dist`.
 TypeScript source lives in `frontend/src/`, pages and styles in
 `frontend/public/`, and application tests in `frontend/tests/`. The build copies
-the public SDK's complete compiled module tree into `frontend/dist/sdk/`.
+the public SDK's browser module tree into `frontend/dist/sdk/`, excluding the
+optional Node transport. SDK Node typings are needed during compilation only.
 These generated assets and `node_modules` are host build outputs, not language
 dependencies. Rust output continues to use the shared repository `target/`.
 See the [host source map](../hosts/tauri/README.md) for portable and desktop
@@ -56,11 +58,19 @@ window, WebView, session or frontend bridge. It uses the shared
 [catalog JSON format](host-discovery.md). A portable catalog binary can also be
 built with `--no-default-features`.
 
-`--describe-agent` emits the separate in-app task contracts, also without GUI
-or transport work. The [conversation entry](agent-entry.md) uses the additive
+`--describe-agent` emits the original four-task v1 in-app catalog, also without
+GUI or transport work. `--describe-agent-observed` explicitly selects the
+separate five-task v2 catalog used by the conversation. Its no-input
+`read_message` returns current input text and verifies it against actual report
+observation, preserving the other state predicates. The old catalog and golden
+bytes remain unchanged.
+
+The [conversation entry](agent-entry.md) uses the additive
 `agent_start_task` command: zero or one named string input and typed scalar
 results, with raw JSON preserving exact integers. It supports no-input checks
-and the `save_message(message)` task alongside the existing save command.
+and the `save_message(message)` task alongside the existing save command. A
+verified string result from `read_message` can feed the latter through an
+explicit [workflow binding](agent-workflows.md#bind-a-verified-result-to-a-later-input).
 The one-shot `--describe` / `--run` / `--text` path below keeps its original
 form-specific contract and report.
 
@@ -135,7 +145,7 @@ is a contract for trusted application adapters, not a JavaScript sandbox.
 
 The form's text adapter dispatches a real DOM `input` event. Its Save adapter
 dispatches the real button `click`; that listener invokes the shared
-[`FormModel`](../hosts/tauri/frontend/src/form.ts), awaits a microtask and commits
+[`FormModel`](../hosts/tauri/frontend/src/form/model.ts), awaits a microtask and commits
 the saved value and callback count. Those actions are implemented in TypeScript.
 The Rust gateway does not duplicate the application's save logic.
 
@@ -184,28 +194,7 @@ side effect; neither cancellation nor a missing reply rolls it back.
 
 ## Recorded Desktop Verification
 
-On 2026-11-13, the host was exercised on a real macOS Tauri WebView:
-
-- The direct form run with `TypeScript ✓` returned Boolean `true`,
-  `verified: true`, nine Effects and 9,425 remaining Fuel.
-- The independent catalog agent read the Tauri executable's actual catalog,
-  generated its LeseLang task, executed it and independently accepted the
-  program result and before/after public-state evidence. This used the same
-  external agent executable as the AppKit workflow.
-- A separate inspection of the native window's Accessibility tree confirmed
-  the `tauri://localhost` page, `TypeScript 控件 ✓` in both the input and
-  Saved message, one save, zero Other clicks and the page's Verified status.
-  This was an independent Accessibility observation, not screenshot evidence.
-- The native process regression passed both exit paths: the successful form
-  exited zero; a form that completed Save before returning false exited one,
-  with `verified: false` and the saved value still present. The Tauri event
-  loop returns control to Rust main so the CLI preserves that outcome.
-
-The visible form and saved state were produced by the TypeScript input and
-asynchronous Save handlers. Initialization and final public-state checks remain
-extra host queries outside the reported nine VM Effects. These results establish
-this registered form's macOS desktop workflow; they do not claim a Linux GUI
-run or control of arbitrary third-party Tauri applications.
+The dated evidence is preserved in [Tauri Form](acceptance/javascript.md#tauri-form).
 
 ## Bounds And Verification
 

@@ -1,0 +1,2 @@
+// Generated from validated host semantic metadata; no retry or scheduler.
+fn main() = bind(_registered_0: gui.find(name: "draft"), body: bind(observed: gui.observe(target: _registered_0), body: field(value: observed, name: "value")))

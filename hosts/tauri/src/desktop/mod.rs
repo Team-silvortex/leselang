@@ -6,4 +6,5 @@ mod model;
 mod wire;
 
 pub(super) use agent::launch as launch_agent;
+pub(super) use agent::launch_board as launch_agent_board;
 pub(super) use form::launch as launch_form;

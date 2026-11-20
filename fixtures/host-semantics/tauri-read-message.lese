@@ -1,0 +1,2 @@
+// Generated from validated host semantic metadata; no retry or scheduler.
+fn main() = bind(input_object: gui.find(name: "input"), body: bind(input_state: gui.observe(target: input_object), body: field(value: input_state, name: "value")))

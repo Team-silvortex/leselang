@@ -1,0 +1,2 @@
+// Generated from validated host semantic metadata; no retry or scheduler.
+fn main() = bind(ids: gui.list(), body: none)

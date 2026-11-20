@@ -221,7 +221,11 @@ fn workflow(options: &Options, directory: &Path, progress: &mut Progress) -> Res
             "task": prepared.task,
             "entry": prepared.entry,
             "arguments": if let Some(name) = &prepared.input_name { json!({name: options.text}) } else { json!({}) },
-            "planning_contract": if prepared.semantic { "catalog_semantics_v1" } else { "legacy_profile" },
+            "planning_contract": match (prepared.semantic, prepared.semantic_version) {
+                (true, Some(1)) => "catalog_semantics_v1",
+                (true, Some(2)) => "catalog_semantics_v2",
+                _ => "legacy_profile",
+            },
             "host_arguments": options.host_args.iter().map(|arg| arg.to_str().expect("validated host selector")).collect::<Vec<_>>(),
             "required_capabilities": prepared.required_capabilities,
             "expected_effects": prepared.expected_effects,

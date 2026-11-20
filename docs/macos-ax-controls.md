@@ -349,88 +349,15 @@ run by themselves.
 
 ## Recorded Desktop Checks
 
-On 2026-11-13, controls mode completed a real Calculator run against
-Calculator 12.0 on macOS 27.0.1, using its English Basic-mode layout. Read-only
-discovery found 26 admitted controls with the display at `0`. Running the
-external `controls_calculator.lese` source completed 17 Effects with 9,104 Fuel
-remaining and returned `15`. The final native observations contained display
-`15` and last expression `8 + 7`; a separate desktop inspection confirmed both
-values in the actual Calculator window. This establishes that observed layout
-and source path, not every Calculator mode or localization.
-
-The same day's TextEdit controls run used the dedicated
-`LeseLang-Controls-20261113.txt` document. Discovery found five admitted controls.
-The external `controls_textedit.lese` source replaced `LeseLang AX initial\n`
-with `LeseLang discovered controls ✓\n`, completed four Effects and retained
-9,673 Fuel. Its observations advanced from local revision 0 to 3. A separate
-desktop inspection confirmed the new text in that exact file's text area.
-A subsequent source run on a new connection obtained its own key through
-`gui.list`, passed that key to `gui.find` and observed the same resulting text.
-That full key-resolution path completed three Effects with 9,774 Fuel remaining.
-
-Three real negative checks also passed. A selector containing only
-`role: "AXButton"` failed as ambiguous, and a key copied from an earlier
-discovery connection failed to resolve in a new connection. Neither issued an
-action. Repeating the Calculator source with display already at `15` stopped
-after two read Effects, retained 9,881 Fuel and returned
-`initial display mismatch` without pressing a button.
-
-Read-only compatibility runs through the original profiles still worked:
-Calculator returned last expression `8 + 7` through two Effects with 1,948 Fuel
-remaining, and TextEdit returned the earlier dedicated test document's
-`LeseLang cross-process ✓\n` value through two Effects with 860 Fuel remaining.
-
-Before generic application/window selection was added, the Accessibility
-package suite passed 70 tests: 57 library tests,
-seven command-line tests, one external controls API test, two external TextEdit
-API compatibility tests and three compile-fail ownership tests. Its 11 pure
-native boundary groups also passed without remote GUI calls, alongside
-formatting and strict Clippy across all package targets.
-
-The independent language workspace's 2,303 tests, independent Consumer's
-735 tests and AppKit package's five tests passed in those controls-mode checks, together
-with their formatting and strict Clippy checks. These regression suites verify
-the retained language and consumer boundaries separately from the real desktop
-checks above.
+The dated evidence is preserved in [Control Discovery](acceptance/macos-ax.md#control-discovery).
 
 The [application selection guide](macos-ax-applications.md) extends this catalog
 to an explicitly selected running macOS bundle and window while preserving
 the original scope shortcuts. Actual compatibility depends on each
-application's Accessibility projection and bounds. Other platforms, complex
-widget operations and a stable remote wire format remain separate work.
+application's Accessibility projection and bounds. For menus, checkboxes, list
+selection and scrolling, use the separate [widgets catalog](macos-ax-widgets.md).
+Other platforms and a stable remote wire format remain separate work.
 
 ### One Typed Task Across TextEdit And Stickies
 
-On 2026-11-13, both applications ran the same unchanged
-[`controls_text_task.lese`](../hosts/macos-ax/examples/controls_text_task.lese)
-with scalar inputs supplied through `--text`. The source SHA-256 was
-`b067212732a0242ea32f576b12c9785da82a76afdc68525f0dda047362bee7a8`.
-Both runs selected `AXTextArea` with an empty label; the application/window
-scope, observed identifier, expected text and replacement text were host inputs.
-
-| Application and target | Initial text | Verified replacement | Effects | Final value | Fuel remaining |
-| --- | --- | --- | --- | --- | --- |
-| TextEdit, dedicated `/tmp/leselang-task-inputs-textedit-20261113.txt`, identifier `First Text View` | `LeseLang AX initial\n` | `LeseLang reusable task: TextEdit ✓\n` | 4 | `true` | 9,555 / 10,000 |
-| Stickies, dedicated note, identifier `_NS:153` | `LeseLang task initial 20261113\n` | `LeseLang reusable task: Stickies ✓\n` | 4 | `true` | 9,568 / 10,000 |
-
-The Stickies scope was selected by its exact `.rtfd` document path. Its title
-changed with the edited first line without changing the pinned scope. The note
-was created through the application's UI: attempting to open a plain-text file
-had produced an unsupported-document dialog, which was closed before creating
-the dedicated note. Opening that plain-text file was not a successful fixture
-preparation step.
-
-A subsequent Stickies run supplied the old expected text and requested
-`This must not be written\n`. It completed only the two read Effects, returned
-`false`, retained 9,812 Fuel and performed no mutation. Its process exit status
-was zero because evaluation completed; the `false` result correctly signaled
-that the task's condition was not satisfied.
-
-After execution, new native connections independently discovered both final
-text values, and a separate desktop inspection read the text in each actual
-application. Stickies still contained its verified replacement after the
-negative run. The sandboxed permission check reported no Accessibility access;
-a non-prompting check outside that sandbox found existing access.
-The verification did not change system permissions. These runs establish the
-observed TextEdit and Stickies workflows, including native helper parameters
-and scalar task inputs; they do not establish arbitrary application support.
+The dated evidence is preserved in [Shared Typed Task](acceptance/macos-ax.md#shared-typed-task).

@@ -49,7 +49,14 @@ pre:empty::before { content: "Nothing saved yet"; color: #829396; }
 details { margin-top: 16px; font-size: 13px; }
 summary { cursor: pointer; color: #426b70; }
 #workflow-source { margin-top: 12px; max-height: 240px; overflow: auto; font: 11px/1.5 ui-monospace, monospace; }
+.board-panel { grid-column: 1 / -1; }
+.board-tasks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; list-style: none; padding: 0; margin: 18px 0; }
+.board-tasks li { padding: 18px; border: 1px solid #dce3e7; border-radius: 8px; background: #fbfcfd; }
+.board-tasks h3 { font-size: 15px; margin: 0 0 14px; }
+.board-tasks p { font-size: 13px; }
+.board-tasks button { margin-top: 10px; }
 @media (max-width: 620px) {
   main { grid-template-columns: minmax(0, 1fr); padding: 24px; }
+  .board-tasks { grid-template-columns: minmax(0, 1fr); }
   pre { min-height: 60px; }
 }

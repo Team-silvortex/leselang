@@ -122,8 +122,14 @@ fn typescript_host_remains_a_separate_workspace_with_scoped_framework_dependenci
     for dependency in package["dependencies"].as_array().unwrap() {
         let name = dependency["name"].as_str().unwrap();
         if let Some(path) = dependency.get("path") {
-            assert!(CRATES.contains(&name));
+            assert!(CRATES.contains(&name) || name == "leselang-registered-host");
             inside(root(), path).unwrap();
+            if name == "leselang-registered-host" {
+                assert_eq!(
+                    Path::new(path.as_str().unwrap()).canonicalize().unwrap(),
+                    root().join("hosts/registered").canonicalize().unwrap()
+                );
+            }
         } else {
             assert!(["serde", "serde_json", "tauri", "tauri-build"].contains(&name));
             if name.starts_with("tauri") {

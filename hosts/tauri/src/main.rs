@@ -11,7 +11,10 @@ mod desktop;
 const HELP: &str = "LeseLang TypeScript/Tauri host
   --describe                 Print the offline registered capability catalog
   --describe-agent           Print the offline interactive task catalog
+  --describe-agent-observed  Print opt-in v2 tasks with dynamic observed results
+  --describe-agent-board     Print the separate task-board v2 catalog
   --agent                    Open the interactive agent workflow application
+  --agent-board              Open the task board with the same agent entry
   --run FILE                 Run bounded UTF-8 source (default: reference form)
   --text TEXT                Supply the typed main(text: string) input
   --report-json              Print one JSON result record
@@ -24,7 +27,10 @@ enum Options {
     Help,
     Describe,
     DescribeAgent,
+    DescribeAgentObserved,
+    DescribeAgentBoard,
     Agent,
+    AgentBoard,
     Run {
         source: Option<PathBuf>,
         text: String,
@@ -40,20 +46,27 @@ fn options(args: impl IntoIterator<Item = OsString>) -> Result<Options, String> 
             || arg == "-h"
             || arg == "--describe"
             || arg == "--describe-agent"
+            || arg == "--describe-agent-observed"
+            || arg == "--describe-agent-board"
             || arg == "--agent"
+            || arg == "--agent-board"
     }) {
         let mode = args.next().unwrap();
         if args.next().is_some() {
-            return Err(
-                "--help, --describe, --describe-agent and --agent must be used alone".into(),
-            );
+            return Err("help, description and agent application flags must be used alone".into());
         }
         return Ok(if mode == "--describe" {
             Options::Describe
         } else if mode == "--describe-agent" {
             Options::DescribeAgent
+        } else if mode == "--describe-agent-observed" {
+            Options::DescribeAgentObserved
+        } else if mode == "--describe-agent-board" {
+            Options::DescribeAgentBoard
         } else if mode == "--agent" {
             Options::Agent
+        } else if mode == "--agent-board" {
+            Options::AgentBoard
         } else {
             Options::Help
         });
@@ -125,8 +138,15 @@ fn execute(options: Options) -> Result<(), String> {
             print!("{HELP}");
             Ok(())
         }
-        mode @ (Options::Describe | Options::DescribeAgent) => {
-            let description = if mode == Options::DescribeAgent {
+        mode @ (Options::Describe
+        | Options::DescribeAgent
+        | Options::DescribeAgentObserved
+        | Options::DescribeAgentBoard) => {
+            let description = if mode == Options::DescribeAgentBoard {
+                leselang_tauri_host::describe_agent_board()?
+            } else if mode == Options::DescribeAgentObserved {
+                leselang_tauri_host::describe_agent_observed()?
+            } else if mode == Options::DescribeAgent {
                 leselang_tauri_host::describe_agent()?
             } else {
                 leselang_tauri_host::describe()?
@@ -140,6 +160,12 @@ fn execute(options: Options) -> Result<(), String> {
         Options::Agent => {
             #[cfg(all(target_os = "macos", feature = "desktop"))]
             return desktop::launch_agent();
+            #[cfg(not(all(target_os = "macos", feature = "desktop")))]
+            Err("agent application requires macOS and the desktop feature".into())
+        }
+        Options::AgentBoard => {
+            #[cfg(all(target_os = "macos", feature = "desktop"))]
+            return desktop::launch_agent_board();
             #[cfg(not(all(target_os = "macos", feature = "desktop")))]
             Err("agent application requires macOS and the desktop feature".into())
         }
@@ -190,9 +216,24 @@ mod tests {
             Options::DescribeAgent
         );
         assert_eq!(parse(&["--agent"]).unwrap(), Options::Agent);
+        assert_eq!(parse(&["--agent-board"]).unwrap(), Options::AgentBoard);
+        assert_eq!(
+            parse(&["--describe-agent-board"]).unwrap(),
+            Options::DescribeAgentBoard
+        );
+        assert_eq!(
+            parse(&["--describe-agent-observed"]).unwrap(),
+            Options::DescribeAgentObserved
+        );
         for args in [
             vec!["--describe", "--hold"],
             vec!["--describe-agent", "--hold"],
+            vec!["--describe-agent-observed", "--agent"],
+            vec!["--describe-agent-observed", "--text", "literal"],
+            vec!["--describe-agent-observed", "--describe-agent"],
+            vec!["--describe-agent-board", "--agent"],
+            vec!["--describe-agent-board", "--text", "literal"],
+            vec!["--describe-agent-board", "--describe-agent"],
             vec!["--describe-agent", "--text", "literal"],
             vec!["--describe-agent", "--run", "missing"],
             vec!["--describe-agent", "--describe"],
@@ -200,6 +241,11 @@ mod tests {
             vec!["--agent", "--hold"],
             vec!["--agent", "--text", "value"],
             vec!["--agent", "--run", "missing"],
+            vec!["--agent-board", "--hold"],
+            vec!["--agent-board", "--text", "value"],
+            vec!["--agent-board", "--run", "missing"],
+            vec!["--agent-board", "--agent"],
+            vec!["--agent", "--agent-board"],
             vec!["--describe", "--run", "missing"],
             vec!["--run"],
             vec!["--text"],

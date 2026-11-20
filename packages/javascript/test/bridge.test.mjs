@@ -279,6 +279,99 @@ test("cancel after commit and rejected Promise preserve already performed effect
   }
 });
 
+test("an action may disable its own control in a committed mutation and still settle successfully", async () => {
+  for (const notify of [false, true]) {
+    const f = fixture();
+    let invoked = 0;
+    f.bridge.replace("save", { read: () => f.save, async click(context) {
+      invoked++;
+      await Promise.resolve();
+      context.commit(() => {
+        f.save.value = "done"; f.save.clicks++; f.save.enabled = false;
+        if (notify) f.bridge.changed("save");
+      });
+    } });
+    const target = await f.find("save"), before = await f.observe(target);
+    const result = await f.send("gui.click", { target, expected_revision: before.revision });
+    assert.equal(result.status, "ok");
+    assert.equal(result.value, true);
+    const after = await f.observe(target);
+    assert.equal(after.enabled, false);
+    assert.equal(after.clicks, 1);
+    assert.equal(after.value, "done");
+    assert.ok(after.revision > before.revision);
+    const repeat = await f.send("gui.click", { target, expected_revision: after.revision });
+    assert.equal(repeat.status, "rejected");
+    assert.equal(repeat.error, "disabled");
+    assert.equal(invoked, 1);
+  }
+});
+
+test("a text action can become read-only but another commit still requires actionability", async () => {
+  for (const attemptAgain of [false, true]) {
+    const f = fixture();
+    let second = false;
+    f.bridge.replace("input", { read: () => f.input, async setText(text, context) {
+      context.commit(() => { f.input.value = text; f.input.editable = false; });
+      await Promise.resolve();
+      if (attemptAgain) context.commit(() => { second = true; f.input.value = "should not happen"; });
+    } });
+    const target = await f.find("input"), before = await f.observe(target);
+    const reply = await f.send("gui.set_text", { target, expected_revision: before.revision, text: "committed" });
+    assert.equal(reply.status, attemptAgain ? "uncertain" : "ok");
+    if (attemptAgain) assert.equal(reply.error, "not_editable");
+    assert.equal(f.input.value, "committed");
+    assert.equal(second, false);
+  }
+});
+
+test("disabling a control outside commit never upgrades a stale mutation to success", async () => {
+  for (const committed of [false, true]) {
+    const f = fixture(), wait = deferred();
+    f.bridge.replace("save", { read: () => f.save, async click(context) {
+      if (committed) context.commit(() => { f.save.clicks++; });
+      await wait.promise;
+    } });
+    const target = await f.find("save"), before = await f.observe(target);
+    const pending = f.send("gui.click", { target, expected_revision: before.revision });
+    await turn();
+    f.save.enabled = false;
+    wait.resolve();
+    const reply = await pending;
+    assert.equal(reply.status, "uncertain");
+    assert.equal(reply.error, "stale_revision");
+    assert.equal(f.save.clicks, committed ? 1 : 0);
+  }
+});
+
+test("self-disabling commits retain late authority, identity, revision and failure fences", async () => {
+  for (const fault of ["cancel", "close", "revoke", "replace", "changed", "reject", "second_commit", "deadline"]) {
+    const f = fixture(), wait = deferred();
+    let second = false;
+    f.bridge.replace("save", { read: () => f.save, async click(context) {
+      context.commit(() => { f.save.enabled = false; f.save.clicks++; });
+      await wait.promise;
+      if (fault === "second_commit") context.commit(() => { second = true; });
+    } });
+    const target = await f.find("save"), before = await f.observe(target);
+    const pending = f.send("gui.click", { target, expected_revision: before.revision }, { budget_ms: fault === "deadline" ? 50 : 5000 });
+    await turn();
+    if (["cancel", "close", "revoke"].includes(fault)) f.bridge[fault](scope.session);
+    if (fault === "replace") f.bridge.replace("save", { read: () => f.save });
+    if (fault === "changed") f.bridge.changed("save");
+    if (fault === "reject") wait.reject(new Error("private failure after mutation"));
+    else if (fault !== "deadline") wait.resolve();
+    const reply = await pending;
+    assert.equal(reply.status, "uncertain", fault);
+    assert.equal(f.save.clicks, 1, fault);
+    assert.equal(f.save.enabled, false, fault);
+    assert.equal(second, false, fault);
+    assert.doesNotMatch(JSON.stringify(reply), /private failure/u);
+    if (fault === "second_commit") assert.equal(reply.error, "disabled");
+    if (fault === "deadline") { assert.equal(reply.error, "deadline"); wait.resolve(); await turn(); }
+  }
+});
+
 test("a deadline settles the pending request and refuses a later Promise completion", async () => {
   const f = fixture();
   const wait = deferred();

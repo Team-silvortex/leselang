@@ -39,6 +39,8 @@ follows the dependency boundaries:
 | `consumer/` | Independent applications and public API acceptance suites |
 | `fixtures/host-semantics/` | Shared, versioned catalog bytes and generated source; test data rather than runtime dependencies |
 | `examples/` | Small user-facing language examples |
+| `scripts/` | Shared local and CI check groups; no dependency installation or GUI launch |
+| `docs/acceptance/` | Dated verification evidence, separate from current guides |
 | `target/` and package-local `dist/` | Ignored build outputs; never source ownership boundaries |
 
 `hosts/shared/semantics.rs` holds source-only reference application declarations.
@@ -46,19 +48,59 @@ Each host includes it privately; it is not an additional language crate or a
 shared runtime service. The cross-language golden fixtures live outside any
 one Consumer or host so their shared compatibility role is explicit.
 
-The JavaScript package's `src/index.ts` is the stable public export boundary.
-`bridge.ts` owns the registered-object protocol, `agent.ts` owns task lifetimes,
-and `semantic-provider.ts` selects declared tasks. `semantics.ts` assembles the
-public semantic API from private JSON, catalog, source-generation and report
-modules. Consumers import the package entry, not those internal module paths.
+The JavaScript package's `src/index.ts` is the browser public export boundary;
+`src/node/index.ts` is the optional Node transport entry.
+Its private implementation is grouped by responsibility:
+
+| SDK path under `packages/javascript/src/` | Responsibility |
+| --- | --- |
+| `bridge.ts` | Registered-object protocol and mutation gates |
+| `node/transport.ts` | Node child lifecycle and bounded delivery to the standalone worker |
+| `agent/session.ts`, `agent/data.ts` | Single-task lifetime and bounded owned plan/report data |
+| `agent/registered-host.ts`, `agent/registered-evidence.ts` | Reusable registered-application host, transport lifecycle and independent observation evidence |
+| `agent/workflow.ts`, `agent/workflow-bindings.ts` | Sequential admission, catalog pinning, verified-result inputs and requirements |
+| `providers/semantic.ts`, `providers/model.ts` | Offline commands and application-owned model transport |
+| `semantics/index.ts`, `semantics/{json,catalog,source,report}.ts` | Semantic API assembly, lossless JSON, declarations, canonical source and report verification |
+| `semantics/{declarations,authoring}.ts` | Public readonly host declarations and validated exact JSON composition |
+
+Consumers import the package entry, not internal module paths. The compiled
+module tree ships together because private relative imports are part of the
+package artifact. Fixed-path clean scripts remove each package's own generated
+`dist/` before builds; source moves must not leave obsolete distributable files.
 
 Within Tauri, `src/desktop/` contains the optional framework-specific shell:
-`agent.rs` handles conversation IPC, `form.rs` handles the original one-shot
-page, and `wire.rs` shares delivery and correlation. The executable reaches them
-through one conditional `desktop` module. The library's catalog, gateway, host
-and task execution remain portable. `frontend/src/`, `frontend/public/` and
-`frontend/tests/` separate TypeScript code, static pages and tests;
-`frontend/dist/` remains the generated asset path consumed by Tauri.
+`agent.rs` handles conversation IPC, `model.rs` owns native model transport,
+`form.rs` handles the original one-shot page, and `wire.rs` shares delivery and
+correlation. The executable reaches them through one conditional `desktop`
+module. The library re-exports its portable gateway, host and prepared-task types
+from the independent `hosts/registered` workspace. That workspace owns the single
+catalog metadata builder, compiler adapter and explicit VM driver. Tauri keeps
+its application catalogs and maps shared execution evidence to its fixed report
+profile and field names.
+Native startup's `AgentApplication` pins the form or task board page, described
+catalog and report profile; page requests cannot switch that choice. The legacy
+form runner remains exclusive to the form application. Both identities use the
+same prepared-task compiler and explicit VM driver.
+In `frontend/src/`, `form/{model,view}.ts` and `board/{model,view}.ts` hold the two
+applications' state and rendering. `agent/chat.ts` owns their common conversation
+flow; `agent/host.ts` only maps the public SDK's registered host to Tauri channels
+and commands. `agent/` also holds provider adapters and result/workflow displays.
+The `app.ts`, `agent-app.ts` and `agent-board-app.ts` entry points compose those
+modules. Static pages and tests
+remain under `frontend/public/` and `frontend/tests/`; `frontend/dist/` is generated.
+
+The runtime's public `discovery::semantics` module retains its v1 DTOs and API.
+Private `semantics/validation.rs` shares borrowed validation helpers;
+`semantics/encode.rs` bounds JSON output. `semantics/v2.rs` holds the additive v2
+declarations, serde and conversion API. Fixed v1 catalog bytes remain unchanged.
+
+The independent Rust catalog agent keeps orchestration in
+`consumer/examples/catalog_agent.rs`. Its private `plan.rs` exposes the internal
+plan facade, with `plan/{json,catalog,legacy,tests}.rs` separating decoding,
+metadata admission, legacy strategies and tests. `semantic/{mod,source,report}.rs`
+separates semantic admission, source generation and report verification; its
+`tests.rs` and `v2_tests.rs` retain versioned coverage. These file boundaries do
+not add public APIs or change CLI behavior.
 
 ## Language Integration
 
@@ -169,15 +211,17 @@ in the product repository. Do not import them to make a native acceptance test p
 
 ## Host Adapter Boundaries
 
-The language, independent consumer, AppKit host, macOS Accessibility host and
-Tauri host are five separate Cargo workspaces. They share the repository build cache and the
+The language, independent consumer, registered-object core, AppKit host,
+macOS Accessibility host and Tauri host are separate Cargo workspaces. They share the repository build cache and the
 `lean` profile, while keeping their manifests, lockfiles and acceptance suites
 independent. A shared output directory does not add host dependencies to the
 language. The [contributor guide](../CONTRIBUTING.md#build-output-and-cleanup)
 describes the cache layout and cleanup procedure.
 
-The [TypeScript/Tauri host](typescript-host.md) keeps its Rust gateway, Tauri
-transport and frontend assets in `hosts/tauri`. The framework-independent
+The [TypeScript/Tauri host](typescript-host.md) keeps its application wrappers,
+Tauri transport and frontend assets in `hosts/tauri`. Its gateway and VM driver
+come from the framework-free [`hosts/registered`](../hosts/registered/README.md)
+library. The framework-independent
 [`@leselang/bridge`](javascript-sdk.md) package lives in `packages/javascript`;
 both the Tauri frontend and the separate Node consumer import its public package
 entry. The portable Rust `run_registered` entry accepts a bounded application
@@ -197,11 +241,37 @@ The [in-app agent entry](agent-entry.md) adds an application-owned planning
 boundary above that host. `AgentSession` reads the host catalog, admits a
 provider's bounded source and arguments, invokes the host and requires an
 independent application verifier. It serializes user submissions without
-polling the VM or installing a language scheduler. The interactive Tauri mode
-keeps its model and page alive while creating new bridge/VM identities for each
-workflow; cancellation must settle the old worker before another starts.
+polling the VM or installing a language scheduler. `AgentWorkflowSession` admits
+one bounded multi-step plan, pins the complete catalog and waits for each step's
+verification before continuing. Each step creates an ordinary bridge/VM session
+with its own Fuel and authority. The interactive Tauri mode keeps application
+state and its page alive across submissions; cancellation must settle outstanding
+work before another submission starts. Verified-result bindings use accepted
+source reports after both semantic and host verification. They add no rollback,
+automatic retry or implicit scheduler.
+
 The offline reference planner has a fixed, documented command grammar. Model
-selection, credentials and conversational memory remain provider concerns.
+selection and credentials belong to the application provider/transport. The
+reference model integration sends one planning request per submission and does
+not supply conversation history.
+
+The [Node-owned agent](node-agent-host.md) exercises the same public registered
+host outside a WebView. `consumer/javascript/agent/` owns the live application
+model and semantic task declarations. The optional public
+`@leselang/bridge/node` entry in `packages/javascript/src/node/` supplies its
+process transport; the browser root entry does not import it. Each execution
+starts the standalone `leselang-agent-worker` binary from `hosts/registered`;
+the worker owns one admitted task and the original VM driver. Its complete
+resolved dependency graph and lockfile contain no Tauri or WebView framework.
+`run_prepared_registered_task` shares execution with the Tauri prepared runner,
+but fixes the independent application's report identity and observation fields.
+The parent accepts raw report bytes only after a unique complete terminal frame
+and clean child closure. The older `node_host.rs` still starts a separate JS
+application and privately includes the canonical strict JSON/framing helper
+from `hosts/registered/src/worker/`. The old `agent_worker` example delegates
+to the new worker entry. The Node entry uses only built-in modules,
+adds no runtime npm dependency and is excluded from the WebView assets. It
+adds no process scheduler to the language runtime.
 
 Within `hosts/macos-ax`, new profiles fit these existing responsibilities:
 

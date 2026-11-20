@@ -107,7 +107,7 @@ test("all unused semantic tasks and their actual typed references are validated"
   const changes = [
     (c) => { delete c.semantics; },
     (c) => { c.semantics = null; },
-    (c) => { c.semantics.version = 2; },
+    (c) => { c.semantics.version = 3; },
     (c) => { c.semantics.unrecognized = true; },
     (c) => { c.semantics.tasks[0].unknown = true; },
     (c) => { c.semantics.tasks.push(structuredClone(c.semantics.tasks[0])); },

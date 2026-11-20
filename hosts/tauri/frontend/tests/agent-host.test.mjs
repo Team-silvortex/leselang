@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { createAgentHost } from "../dist/agent-host.js";
-import { prepareSemanticCatalog, AgentWorkflowSession } from "../dist/bridge.js";
+import { createAgentHost } from "../dist/agent/host.js";
+import { prepareSemanticCatalog, prepareSemanticWorkflow, AgentWorkflowSession } from "../dist/bridge.js";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 function deferred() {
@@ -32,6 +32,7 @@ async function fixture(catalog_ = catalog) {
       if (command === "agent_describe") {
         assert.equal(args.raw, true);
         assert.equal(args.taskCatalog, true);
+        assert.equal(args.observedResults, true);
         return Promise.resolve(catalog_);
       }
       if (command === "agent_start_task") {
@@ -408,10 +409,12 @@ test("workflow composition uses fresh application evidence and stops after a lat
 
 test("workflow cancellation at a verified application boundary keeps the save and never attaches another bridge", async () => {
   const f = await fixture();
-  const semantic = prepareSemanticCatalog(catalog);
   let session;
   session = new AgentWorkflowSession({
-    provider: { plan: async () => ({ steps: [plan, semantic.prepare("inspect_controls", {}).plan] }) },
+    provider: { plan: async () => prepareSemanticWorkflow(catalog, [
+      { task: "fill_and_save", arguments: plan.arguments },
+      { task: "save_message", arguments: { message: { fromStep: 0, format: "boolean" } } },
+    ]) },
     host: f.host,
     onEvent: (state) => { if (state.completedSteps === 1) session.cancel(); },
   });
@@ -428,4 +431,206 @@ test("workflow cancellation at a verified application boundary keeps the save an
   assert.equal(f.form.attached.length, 1);
   assert.equal(f.form.visible.find((row) => row.identifier === "save").clicks, 1);
   assert.equal(f.form.active, null);
+});
+
+test("verified control count becomes the next actual host argument without interpolating source", async () => {
+  const f = await fixture();
+  const workflow = prepareSemanticWorkflow(catalog, [
+    { task: "inspect_controls", arguments: {} },
+    { task: "save_message", arguments: { message: { fromStep: 0, format: "decimal" } } },
+    { task: "check_controls", arguments: {} },
+  ]);
+  const session = new AgentWorkflowSession({ provider: { plan: async () => workflow }, host: f.host });
+  const pending = session.submit("inspect count then save it");
+  const initial = evidence("old").native_before;
+  const saved = evidence("3");
+  const reports = [
+    { ...saved, result: { type: "integer", value: 3 }, effects: 3, native_before: initial, native_after: initial },
+    { ...saved, result: { type: "string", value: "saved" } },
+    { ...saved, result: { type: "none", value: null }, effects: 3, native_before: saved.native_after },
+  ];
+  for (let index = 0; index < 3; index++) {
+    for (let turn = 0; !f.starts[index] && turn < 20; turn++) await tick();
+    assert.ok(f.starts[index]);
+    assert.equal(f.starts[index].args.source, workflow.steps[index].source);
+    if (index === 1) assert.deepEqual({ ...f.starts[index].args.arguments }, { message: "3" });
+    f.form.visible = structuredClone(reports[index].native_after);
+    f.starts[index].resolve(JSON.stringify(reports[index]));
+  }
+  const outcome = await pending;
+  assert.equal(outcome.status, "verified");
+  assert.equal(outcome.plan.steps[1].arguments.message, "", "the admitted template stays immutable");
+  assert.equal(outcome.steps[1].plan.arguments.message, "3", "actual resolved argument is retained");
+  assert.equal(f.form.visible.find((row) => row.identifier === "save").value, "3");
+  assert.equal(f.form.visible.find((row) => row.identifier === "save").clicks, 1);
+  assert.equal(f.form.active, null);
+});
+
+const observedCatalog = await readFile(new URL("../../../../fixtures/host-semantics/tauri-agent-semantics-v2.json", import.meta.url), "utf8");
+function observedWorkflow() {
+  return prepareSemanticWorkflow(observedCatalog, [
+    { task: "read_message", arguments: {} },
+    { task: "save_message", arguments: { message: { fromStep: 0, format: "string" } } },
+    { task: "check_controls", arguments: {} },
+  ]);
+}
+function readEvidence(visible) {
+  return {
+    schema_version: 1, kind: "tauri_task_run", profile: "tauri.typescript",
+    result: { type: "string", value: visible.find((row) => row.identifier === "input").value },
+    effects: 2, fuel_remaining: 9000,
+    native_before: structuredClone(visible), native_after: structuredClone(visible),
+  };
+}
+async function waitForStart(f, index) {
+  for (let turn = 0; !f.starts[index] && turn < 20; turn++) await tick();
+  assert.ok(f.starts[index], "execution must start only after previous verification");
+  return f.starts[index];
+}
+
+test("one v2 catalog and unchanged source read different live inputs into verified save arguments", async () => {
+  const f = await fixture(observedCatalog);
+  const workflow = observedWorkflow();
+  const session = new AgentWorkflowSession({ provider: { plan: async ({ catalog: current }) => {
+    assert.equal(current, observedCatalog);
+    return workflow;
+  } }, host: f.host });
+  let startIndex = 0;
+  for (const value of ['现场读取甲 "✓" \\ \n文本', '{"fromStep":7,"format":"string"}']) {
+    f.form.visible.find((row) => row.identifier === "input").value = value;
+    const pending = session.submit("read current text, save it, then check");
+    const read = readEvidence(f.form.visible);
+    (await waitForStart(f, startIndex)).resolve(JSON.stringify(read));
+    const save = await waitForStart(f, startIndex + 1);
+    assert.deepEqual({ ...save.args.arguments }, { message: value });
+    assert.equal(save.args.source, workflow.steps[1].source);
+    const saved = structuredClone(f.form.visible);
+    saved.find((row) => row.identifier === "save").value = value;
+    saved.find((row) => row.identifier === "save").clicks += 1;
+    const report = { ...read, result: { type: "string", value: "saved" }, effects: 9, native_after: saved };
+    f.form.visible = structuredClone(saved);
+    save.resolve(JSON.stringify(report));
+    const check = await waitForStart(f, startIndex + 2);
+    check.resolve(JSON.stringify({ ...report, result: { type: "none", value: null }, effects: 3, native_before: saved }));
+    const outcome = await pending;
+    assert.equal(outcome.status, "verified");
+    assert.equal(JSON.parse(outcome.steps[0].report).result.value, value);
+    assert.equal(outcome.steps[1].plan.arguments.message, value);
+    assert.equal(outcome.plan.steps[1].arguments.message, "");
+    assert.equal(f.form.visible.find((row) => row.identifier === "save").value, value);
+    assert.equal(f.form.visible.find((row) => row.identifier === "save").clicks, startIndex / 3 + 1);
+    assert.equal(f.form.visible.find((row) => row.identifier === "other").clicks, 0);
+    startIndex += 3;
+  }
+  assert.equal(new Set(f.starts.map((start) => start.args.session)).size, 6);
+});
+
+test("dynamic observation needs matching report evidence and independent current application state", async () => {
+  for (const fault of ["result", "wrong_type", "missing", "ambiguous", "invented_initial", "changed_live", "unrelated_mutation"]) {
+    const f = await fixture(observedCatalog);
+    const workflow = observedWorkflow();
+    const session = new AgentWorkflowSession({ provider: { plan: async () => workflow }, host: f.host });
+    const pending = session.submit("never save unverified observation");
+    const start = await waitForStart(f, 0);
+    const report = readEvidence(f.form.visible);
+    const input = (rows) => rows.find((row) => row.identifier === "input");
+    if (fault === "result") report.result.value = "invented";
+    if (fault === "wrong_type") report.result = { type: "boolean", value: true };
+    if (fault === "missing") report.native_after = report.native_after.filter((row) => row.identifier !== "input");
+    if (fault === "ambiguous") report.native_after.push(structuredClone(input(report.native_after)));
+    if (fault === "invented_initial") {
+      report.result.value = "invented";
+      input(report.native_before).value = "invented";
+      input(report.native_after).value = "invented";
+      input(f.form.visible).value = "invented";
+    }
+    if (fault === "changed_live") input(f.form.visible).value = "changed after observation";
+    if (fault === "unrelated_mutation") {
+      report.native_after.find((row) => row.identifier === "other").clicks += 1;
+      f.form.visible = structuredClone(report.native_after);
+    }
+    start.resolve(JSON.stringify(report));
+    const outcome = await pending;
+    assert.equal(outcome.status, "failed", fault);
+    assert.equal(outcome.error, "application_verification_failed", fault);
+    assert.equal(f.starts.length, 1, fault);
+    assert.equal(f.form.visible.find((row) => row.identifier === "save").clicks, 0, fault);
+  }
+});
+
+test("a cancelled dynamic read cannot feed a later save after its report arrives", async () => {
+  const f = await fixture(observedCatalog);
+  const session = new AgentWorkflowSession({ provider: { plan: async () => observedWorkflow() }, host: f.host });
+  const pending = session.submit("read then save");
+  const start = await waitForStart(f, 0);
+  assert.equal(session.cancel(), true);
+  assert.equal(session.busy, true);
+  await assert.rejects(session.submit("overlap"), /agent_task_pending/);
+  start.resolve(JSON.stringify(readEvidence(f.form.visible)));
+  const outcome = await pending;
+  assert.equal(outcome.status, "cancelled");
+  assert.equal(f.starts.length, 1);
+  assert.equal(f.form.visible.find((row) => row.identifier === "save").clicks, 0);
+  assert.equal(f.form.active, null);
+});
+
+test("verified application observations gate later native execution and retain mismatched evidence", async () => {
+  const expected = "条件执行回归 ✓";
+  const workflow = prepareSemanticWorkflow(observedCatalog, [
+    { task: "read_message", arguments: {} },
+    { task: "save_message", arguments: { message: { fromStep: 0, format: "string" } },
+      requires: { fromStep: 0, format: "string", equals: expected } },
+    { task: "check_controls", arguments: {} },
+  ]);
+  for (const mode of ["matches", "mismatch", "changed_live"]) {
+    const f = await fixture(observedCatalog);
+    const actual = mode === "mismatch" ? "condition not satisfied" : expected;
+    f.form.visible.find((row) => row.identifier === "input").value = actual;
+    const before = structuredClone(f.form.visible);
+    const session = new AgentWorkflowSession({ provider: { plan: async () => workflow }, host: f.host });
+    const pending = session.submit("read, require the expected value, save and check");
+    const start = await waitForStart(f, 0);
+    const read = readEvidence(f.form.visible);
+    if (mode === "changed_live") f.form.visible.find((row) => row.identifier === "input").value = "manual edit after observation";
+    start.resolve(JSON.stringify(read));
+    if (mode === "matches") {
+      const save = await waitForStart(f, 1);
+      assert.deepEqual({ ...save.args.arguments }, { message: actual });
+      assert.equal(save.args.source, workflow.steps[1].source);
+      const saved = structuredClone(before);
+      saved.find((row) => row.identifier === "save").value = actual;
+      saved.find((row) => row.identifier === "save").clicks += 1;
+      const report = { ...read, effects: 9, result: { type: "string", value: "saved" }, native_after: saved };
+      f.form.visible = structuredClone(saved);
+      save.resolve(JSON.stringify(report));
+      (await waitForStart(f, 2)).resolve(JSON.stringify({ ...report, effects: 3,
+        result: { type: "none", value: null }, native_before: saved }));
+    }
+    const outcome = await pending;
+    if (mode === "changed_live") {
+      assert.equal(outcome.status, "failed");
+      assert.equal(outcome.error, "application_verification_failed");
+      assert.equal(outcome.steps[0].status, "failed");
+      assert.equal(outcome.requirements, undefined, "unverified observation cannot reach the comparison");
+    } else {
+      assert.equal(outcome.status, mode === "matches" ? "verified" : "failed");
+      assert.equal(outcome.steps[0].status, "verified");
+      assert.deepEqual(outcome.requirements, [{ step: 1, fromStep: 0, format: "string", equals: expected,
+        actual, satisfied: mode === "matches" }]);
+      if (mode === "mismatch") {
+        assert.equal(outcome.error, "workflow_requirement_not_met");
+        assert.equal(outcome.stoppedStep, 1);
+        assert.equal(outcome.steps[1].report, undefined);
+        assert.equal(outcome.steps[1].possiblePartialEffects, false);
+        assert.deepEqual(f.form.visible, before, "unmet condition performs no mutation");
+      }
+    }
+    const executions = mode === "matches" ? 3 : 1;
+    assert.equal(f.starts.length, executions, "the native target starts only after a satisfied condition");
+    assert.equal(f.form.attached.length, executions);
+    assert.equal(outcome.possiblePartialEffects, mode !== "matches", "failed workflows conservatively retain prior execution");
+    assert.equal(f.form.visible.find((row) => row.identifier === "save").clicks, mode === "matches" ? 1 : 0);
+    assert.equal(f.form.visible.find((row) => row.identifier === "other").clicks, 0);
+    assert.equal(f.form.active, null);
+  }
 });

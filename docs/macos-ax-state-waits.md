@@ -231,43 +231,4 @@ tests retain their separate compatibility contracts.
 
 ## Recorded Desktop Verification
 
-On 2026-11-13, the dedicated Finder fixture completed both new source programs
-on macOS 27.0.1 with the explicit `--wait-states` catalog:
-
-| Session | Observed result | Effects | Fuel remaining |
-| --- | --- | --- | --- |
-| View Options | Size and Kind each changed to unchecked once, and each `gui.wait_checked` returned the matching snapshot. | 10 | 9,187 |
-| Folder window | `Widget folder 01` selected once, the owner independently confirmed that sole selection, then one scroll reached normalized position 1,000. | 15 | 8,567 |
-
-Both programs returned `true`. All four typed waits matched their first
-predicate observation; this desktop run does not claim to demonstrate a
-delayed state update. Delayed matching and failure paths are covered by the
-deterministic tests. The earlier value-wait menu example was also used to
-prepare text size 16 through the existing `--wait-values` entry point; that
-was a separate 14-operation-catalog session.
-
-A new native connection independently confirmed text size 16 and the
-unchecked Date Modified, Size and Kind options after the options session.
-After the successful folder session, another connection discovered 56 widgets,
-exactly one selected row, the `Widget folder 01` text field linked through its
-cell to that row, and the unique vertical scrollbar at 1,000. The independent
-UI accessibility observation agreed on the selected row and scrollbar value
-1; the screenshot showed the final folder at the bottom of the list.
-
-Two earlier folder sessions were refused by the original `StaleRevision`
-checks. The first had already selected and verified the row, then refused
-scroll before submission; the selection remained. After explicitly clearing
-that selection, a new session refused `select_item` before any mutation.
-During these runs, discovery and UI observations exposed changing available
-disk space in `statusBarText`; the native metadata includes that value in the
-whole-scope revision. After hiding the bar and confirming the node had left
-the AX tree, the successful run started as another new session with no
-selection and position 0. No failed work item was replayed and no revision
-guard was weakened. The observations identify a concrete source of revision
-changes, rather than proving that every earlier change had only that cause.
-
-The original `--wait-values` catalog also rejected the new selection source
-at compilation before polling any Effect. Final regression results were
-2,303 language tests, 735 independent Consumer tests, 208 AX adapter tests
-(including 18 public state-wait tests), and 37 native bridge boundary groups,
-all passing. Strict all-target Clippy, formatting and diff checks passed.
+The dated evidence is preserved in [Source State Waiting](acceptance/macos-ax.md#source-state-waiting).

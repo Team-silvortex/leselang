@@ -1,9 +1,9 @@
 //! The Calculator strategy shares discovery and process driving with the form
 //! strategies. Its application semantics are deliberately explicit: 1 + 2 = 3.
-use super::{
-    CatalogDescription, MAX_REPORT_BYTES, ScalarType, Verified, call, decode, native,
-    require_operation, typed,
-};
+use super::json::decode;
+use super::legacy::{ResultValue, call, native, require_operation, typed};
+use super::{MAX_REPORT_BYTES, Verified};
+use leselang_runtime_core::{ScalarType, discovery::CatalogDescription};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -130,7 +130,7 @@ struct Report {
     schema_version: u32,
     kind: String,
     profile: String,
-    result: super::ResultValue,
+    result: ResultValue,
     effects: usize,
     fuel_remaining: u64,
     verified: bool,
