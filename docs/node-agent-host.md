@@ -163,6 +163,14 @@ while preserving unrelated controls. The public host additionally compares the
 report with independent application observations captured before execution and
 at verification time. A worker success alone does not satisfy those checks.
 
+The registered host exposes both Boolean `verify` and `verifyDetailed` through
+the public SDK. Sessions select the detailed hook once and retain bounded
+`verificationFailure` reasons on failure, including report correlation and fresh
+application-state mismatches. Both host entry points consume the same one-use
+completion evidence; do not call them in succession for one execution. See
+[verification diagnostics](verification-diagnostics.md) for the cause groups and
+unchanged stop, partial-effect and no-automatic-retry behavior.
+
 For another application, declare its controls with `createRegisteredApplication`
 and provide its own semantic catalog builder. The reference
 [`application.mjs`](../consumer/javascript/agent/application.mjs) uses this helper
@@ -177,7 +185,10 @@ are sent as separate fields over stdin; `spawn` runs with `shell: false`.
 
 ## Worker Protocol And Bounds
 
-The private line-oriented carrier uses `agent_worker_version: 1`. `--serve`
+The private line-oriented carrier defaults to `agent_worker_version: 1`. Plans
+with explicit `inputMode: "named_strings"` use version 2; every record in that
+execution must retain its selected version, without fallback. See
+[v3 named task inputs](named-task-inputs.md). `--serve`
 accepts one initial `start` record containing `scope`, `source` and `arguments`.
 Complete syntax, type and argument admission occurs before the first request
 for a registered object. Subsequent `request` and `reply` records carry a fresh
@@ -197,7 +208,7 @@ not parse result integers through JavaScript Number.
 | --- | --- |
 | Startup JSON line | 128 KiB |
 | Source | 16 KiB, with no NUL |
-| Task inputs | Zero or one named string, at most 4096 UTF-8 bytes, with no NUL |
+| Task inputs | v1: zero or one string; v2: up to eight. Each is at most 4096 UTF-8 bytes, with no NUL; v2 values total at most 16 KiB |
 | Request/reply envelope | 64 KiB; the inner gateway message still has its existing 32 KiB limit |
 | Original report JSON | 128 KiB |
 | Terminal envelope / accumulated incomplete frame | 512 KiB |

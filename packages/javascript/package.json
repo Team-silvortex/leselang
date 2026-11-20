@@ -21,6 +21,8 @@
     "dist/index.d.ts",
     "dist/bridge.js",
     "dist/bridge.d.ts",
+    "dist/verification.js",
+    "dist/verification.d.ts",
     "dist/agent/",
     "dist/providers/",
     "dist/semantics/",

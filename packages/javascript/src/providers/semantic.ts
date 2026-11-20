@@ -1,5 +1,6 @@
 import type { AgentProvider, WorkflowPlan } from "../agent/session.js";
 import { prepareSemanticCatalog } from "../semantics/index.js";
+import { decode, record } from "../semantics/json.js";
 
 /** Application-owned command aliases; task meanings always come from the catalog. */
 export interface SemanticProviderOptions {
@@ -54,6 +55,18 @@ export function createSemanticProvider(options: SemanticProviderOptions = {}): A
       if (!task) throw new Error("请使用目录中的任务命令：task 任务名:文本；无输入任务使用 task 任务名。");
       const declaration = catalog.tasks.find((candidate) => candidate.id === task);
       if (!declaration) throw new Error("宿主目录没有声明这个任务。");
+      if (declaration.inputNames !== undefined) {
+        const hasInputs = declaration.inputNames.length > 0;
+        if (hasInputs !== (input !== undefined)) {
+          throw new Error(hasInputs ? "这个任务需要冒号后的具名字符串 JSON 对象。" : "这个任务不接受输入。");
+        }
+        // Only explicit v3 tasks parse an argument object. Legacy single-text
+        // tasks retain every JSON-looking character as literal application data.
+        const arguments_ = hasInputs ? record(decode(input!, 128 * 1024)) : {};
+        const prepared = catalog.prepare(task, arguments_ as Record<string, string>);
+        if (signal.aborted) throw new Error("任务已取消。");
+        return prepared.plan;
+      }
       if ((declaration.inputName !== undefined) !== (input !== undefined)) {
         throw new Error(declaration.inputName === undefined ? "这个任务不接受文本输入。" : "这个任务需要冒号后的文本输入。");
       }

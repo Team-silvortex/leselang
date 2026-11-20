@@ -13,7 +13,9 @@ an application-configured service, then generates source for one or more selecte
 declarations. The page uses the bounded [workflow session](agent-workflows.md)
 to execute and verify them in order. Without model configuration, the reference uses the clearly
 labelled offline provider. The shared `createSemanticProvider` accepts `task TASK:input` (or
-`任务 TASK：input`), and `task TASK` for a task with no input. The reference app
+`任务 TASK：input`), and `task TASK` for a task with no input. These are the
+v1/v2 commands; v3 named inputs use a JSON map, for example
+`task publish_article:{"title":"标题","content":"正文"}`. The reference app
 adds `保存：…` and `save:…` as local aliases for its declared `fill_and_save`
 task. This offline provider makes no model call and does not interpret unrestricted natural language.
 Application-specific operation names, control names, guards and verification
@@ -41,8 +43,10 @@ User message
 
 The provider receives the user message and the actual host catalog. Its output
 is a candidate `WorkflowPlan` with `summary`, `source`, an optional declared
-`task` identifier, and `arguments` containing zero or one named string input.
-User content stays in the argument value; it is never substituted into the
+`task` identifier, and `arguments` containing the task's named string inputs.
+Legacy plans retain zero or one input. Semantic v3 plans explicitly carry
+`inputMode: "named_strings"` and accept zero to eight inputs, including an empty
+map for a no-input task. User content stays in argument values; it is never substituted into the
 LeseLang source. The application remains responsible for choosing and granting
 its exposed operations. A plan cannot manufacture a Rust object reference,
 permission grant, receipt or verified result.
@@ -87,7 +91,8 @@ host result that arrives after cancellation cannot become a verified outcome.
 
 The SDK validates and owns bounded JSON values at the planning and execution
 boundaries. Limits include an 8 KiB message, 16 KiB source, 4,096-byte string
-argument, 1 KiB summary, 256 KiB catalog and 128 KiB report. These are UTF-8 limits;
+argument, 1 KiB summary, 256 KiB catalog and 128 KiB report. V3 additionally bounds
+the sum of argument values to 16 KiB. These are UTF-8 limits;
 malformed strings, unsupported fields and malformed plans fail before execution.
 The SDK does not install a VM scheduler or automatically retry or replan tasks.
 
@@ -95,8 +100,9 @@ The provider may maintain conversation context in an application-owned class
 or closure. The SDK does not currently inject chat history into `AgentContext`.
 Both reference providers handle each submission independently, while the
 application state and visible conversation persist between tasks. Model planning
-through `createModelProvider` selects one declared task with zero or one named
-string input. The additive `createModelWorkflowProvider` selects up to eight
+through `createModelProvider` selects one declared task with its exact named
+inputs: zero or one in v1/v2, or zero to eight in v3. The additive
+`createModelWorkflowProvider` selects up to eight
 declared tasks for `AgentWorkflowSession`; see [sequential workflows](agent-workflows.md).
 Neither provider invents new tasks or uses earlier turns as implicit arguments.
 The Tauri workflow provider explicitly enables verified result bindings. It can
@@ -127,7 +133,7 @@ const report = await applicationExecute(prepared.plan);
 const declaredConditionsPassed = prepared.verify(report);
 ```
 
-The semantic API requires a valid `semantics v1` or `v2` declaration. It has no hidden
+The semantic API requires a valid semantic v1, v2 or v3 declaration. It has no hidden
 form fallback. It supports the same finite call/guard vocabulary and report
 predicates as the [Rust catalog agent](host-semantics.md), including typed
 fields, unique object selection, integer increases and upper bounds. The task
@@ -135,6 +141,11 @@ input remains data. A plan contains no provider-selected verification contract.
 Version 1 keeps fixed scalar results. Version 2 additionally permits a typed
 result that must equal a declared actual observation in the report, preserving
 all other predicates and fresh-state checks; see [observed results](host-semantics.md#version-2-observed-results).
+Version 3 retains those result contracts and adds explicit named-string inputs;
+see [named task inputs](named-task-inputs.md). Task summaries expose
+`SemanticTaskInfo.inputNames` for every v3 task, including an empty array for
+no-input tasks. Legacy summaries retain their optional `inputName`. A UI should
+use `inputNames` when present to generate the v3 JSON-map command syntax.
 
 Prefer the original JSON text for catalogs and reports. The semantic decoder
 checks duplicate keys and preserves integer tokens as internal `BigInt` values;
@@ -153,20 +164,22 @@ records by unique identifier. A self-consistent stale report cannot replace
 current application evidence. Provider-supplied source changes or extra
 verification fields cannot redefine the host's contract.
 
-The reusable SDK and Tauri task carrier support zero or one named string input.
-The carrier uses the declared parameter name, such as `message`, without
+The legacy SDK plan and `agent_start_task` carrier support zero or one named
+string input. The explicit v3 plan marker selects `agent_start_named_task` for
+zero to eight named strings. Both carriers use each declared parameter name, such as `message`, without
 renaming it to `text`. Before contacting the application, Rust compiles the
 complete program, admits its scalar result type, and binds exactly the required
 arguments. Missing, extra, malformed or mismatched arguments fail before
-transport bootstrap or VM execution. The string remains bounded to 4,096 UTF-8
-bytes; multi-parameter tasks and other input types are outside this carrier contract.
+transport bootstrap or VM execution. Each string remains bounded to 4,096 UTF-8
+bytes, with no NUL and valid Unicode; v3 values total at most 16 KiB. Other input
+types remain outside this carrier contract.
 
 The task carrier returns all six existing scalar types: `integer`, `boolean`,
 `string`, `none`, `optional_string` and `string_list`. Native objects and snapshots
 cannot leave the worker as final results. Semantic v1's literal-result vocabulary
 still covers integer, Boolean, string and `none`. Semantic v2 keeps that fixed
-vocabulary and adds observed string, integer and Boolean result contracts;
-neither changes the carrier or the language's scalar limits.
+vocabulary and adds observed string, integer and Boolean result contracts.
+Semantic v3 retains those contracts and the language's scalar limits.
 
 The additive `agent_start_task` command accepts a named `arguments` map and
 returns raw JSON with `kind: "tauri_task_run"`, `profile: "tauri.typescript"`,
@@ -195,6 +208,9 @@ four-task v1 catalog and fixtures remain unchanged. Rust embedders can call
 `prepare_task(source, arguments)` before starting a worker, then move the owned
 `PreparedTask` into `run_prepared_task`; `run_task` combines those steps. These
 functions use the registered-object gateway and do not assume form control names.
+For v3 inputs, Rust embedders call `prepare_named_task` and pass the resulting
+`PreparedTask` to the same driver. The bundled form and board catalogs remain
+v2; their existing GUI procedures and offline commands are unchanged.
 
 ## Run The Interactive Reference
 

@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 mod encode;
 pub mod v2;
+pub mod v3;
 mod validation;
 
 pub const VERSION: u32 = 1;

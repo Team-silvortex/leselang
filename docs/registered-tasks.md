@@ -99,6 +99,10 @@ An offline provider can select `task read_status` and `task complete_review`;
 the same declarations are available to a model provider without a new
 application-specific planner branch.
 
+For several named string inputs, use `defineRegisteredTaskV3` with a v3 catalog.
+The original constructor retains its v2 contract. See
+[named task inputs](named-task-inputs.md) for versioning and workflow bindings.
+
 The generated read task performs two VM Effects; completion performs four on
 success. `require_verified: false` does not skip verification: the semantic
 verifier checks the report and predicates, then the registered host compares

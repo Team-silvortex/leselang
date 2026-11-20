@@ -7,6 +7,11 @@ independent `catalog_agent` and JavaScript SDK consume these declarations withou
 adding an application name, operation name or control identifier to their
 planners. Consumers must explicitly support the semantic version they accept.
 
+Version 3 adds [multiple named string inputs](named-task-inputs.md), retaining
+v2's result and report vocabulary. Rust exposes separate `semantics::v3` types
+and `to_json_with_semantics_v3`; it does not add variants to the original public
+`ExecutionStyle` enum. v1/v2 validation and serialization remain unchanged.
+
 This is host-authored metadata. It is not a permission grant, an authenticated
 claim about another process, or a way to infer arbitrary application behavior.
 The selected executable remains trusted host code. Its implementation must

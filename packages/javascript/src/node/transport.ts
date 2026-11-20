@@ -5,7 +5,7 @@ import { clearTimeout, setTimeout } from "node:timers";
 import type { Reply, Scope } from "../bridge.js";
 import type { RegisteredAgentEndpoint, RegisteredAgentRun, RegisteredAgentTransport } from "../agent/registered-host.js";
 
-/** A trusted executable implementing the version 1 registered-agent worker protocol. */
+/** A trusted executable implementing the registered-agent worker protocol. */
 export interface NodeAgentTransportOptions {
   /** Absolute path chosen by the host, never by an agent-generated plan. */
   readonly executable: string;
@@ -24,7 +24,7 @@ interface ActiveWorker {
   fail(reason: unknown): void;
   reply(reply: Reply): Promise<void>;
 }
-type CapturedRun = Pick<RegisteredAgentRun, "scope" | "onRequest">;
+type CapturedRun = Pick<RegisteredAgentRun, "scope" | "onRequest"> & { readonly version: 1 | 2 };
 
 const START_LIMIT = 128 * 1024;
 const REQUEST_LIMIT = 64 * 1024;
@@ -159,6 +159,7 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
 
   function launch(mode: "--describe" | "--serve", signal: AbortSignal, run?: CapturedRun, first?: Uint8Array): Promise<string> {
     available(signal);
+    const version = run?.version ?? VERSION;
     return new Promise<string>((resolve, reject) => {
       const child = spawn(executable, [...args, mode], { shell: false, stdio: ["pipe", "pipe", "pipe"] });
       let error: Error | null = null;
@@ -184,7 +185,7 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
           if (!sameScope(reply, current.scope) || reply.transport_version !== 1 || reply.request_id !== pending.serial) {
             throw failure("node_worker_foreign_reply");
           }
-          const bytes = Buffer.from(JSON.stringify({ agent_worker_version: VERSION, kind: "reply",
+          const bytes = Buffer.from(JSON.stringify({ agent_worker_version: version, kind: "reply",
             challenge: pending.challenge, reply }) + "\n");
           if (bytes.length > REQUEST_LIMIT) throw failure("node_worker_reply_limit");
           // Retire this delivery before callbacks or the next worker request.
@@ -202,7 +203,7 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
       const frame = (bytes: Uint8Array): void => {
         if (terminal) throw failure("node_worker_after_terminal");
         const message = decode(bytes);
-        if (!record(message) || message.agent_worker_version !== VERSION) throw failure("node_worker_invalid_version");
+        if (!record(message) || message.agent_worker_version !== version) throw failure("node_worker_invalid_version");
         if (message.kind === "request") {
           exact(message, ["agent_worker_version", "kind", "challenge", "request"]);
           if (bytes.length > REQUEST_LIMIT || pending || typeof message.challenge !== "string"
@@ -304,19 +305,38 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
     },
     async execute(run, signal) {
       available(signal);
-      if (!run || typeof run.onRequest !== "function" || !label(run.scope?.window)
-        || !label(run.scope?.epoch) || !label(run.scope?.session)) throw failure("node_worker_invalid_scope");
-      if (endpoint && !sameEndpoint(endpoint, run.scope)) throw failure("node_worker_foreign_endpoint");
-      if (!validText(run.source, 16 * 1024) || run.source.includes("\0")) throw failure("node_worker_invalid_source");
-      if (!run.arguments || typeof run.arguments !== "object" || Array.isArray(run.arguments)
-        || Object.entries(run.arguments).length > 1 || Object.entries(run.arguments).some(([name, value]) =>
-          !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) || !validText(value, 4096) || value.includes("\0"))) {
+      if (!run) throw failure("node_worker_invalid_scope");
+      const selected = run.scope, onRequest = run.onRequest;
+      const scope = Object.freeze({ window: selected?.window, epoch: selected?.epoch, session: selected?.session });
+      if (typeof onRequest !== "function" || !label(scope.window)
+        || !label(scope.epoch) || !label(scope.session)) throw failure("node_worker_invalid_scope");
+      if (endpoint && !sameEndpoint(endpoint, scope)) throw failure("node_worker_foreign_endpoint");
+      const source = run.source, inputMode = run.inputMode, supplied = run.arguments;
+      if (!validText(source, 16 * 1024) || source.includes("\0")) throw failure("node_worker_invalid_source");
+      if (inputMode !== undefined && inputMode !== "named_strings") throw failure("node_worker_invalid_input_mode");
+      const version = inputMode === "named_strings" ? 2 : 1;
+      if (!supplied || typeof supplied !== "object" || Array.isArray(supplied)
+        || ![Object.prototype, null].includes(Object.getPrototypeOf(supplied))) {
         throw failure("node_worker_invalid_arguments");
       }
-      const scope = Object.freeze({ window: run.scope.window, epoch: run.scope.epoch, session: run.scope.session });
-      const captured = { scope, onRequest: run.onRequest };
-      const bytes = Buffer.from(JSON.stringify({ agent_worker_version: VERSION, kind: "start",
-        scope, source: run.source, arguments: run.arguments }) + "\n");
+      const keys = Reflect.ownKeys(supplied);
+      if (keys.length > (version === 2 ? 8 : 1)) throw failure("node_worker_invalid_arguments");
+      const arguments_: Record<string, string> = Object.create(null);
+      let total = 0;
+      for (const name of keys) {
+        const field = Object.getOwnPropertyDescriptor(supplied, name);
+        if (typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name)
+          || ["fn", "true", "false", "none", "body"].includes(name) || name.startsWith("_lese_")
+          || !field?.enumerable || !("value" in field) || !validText(field.value, 4096) || field.value.includes("\0")) {
+          throw failure("node_worker_invalid_arguments");
+        }
+        total += Buffer.byteLength(field.value);
+        if (total > 16 * 1024) throw failure("node_worker_invalid_arguments");
+        arguments_[name] = field.value;
+      }
+      const captured: CapturedRun = { scope, onRequest, version };
+      const bytes = Buffer.from(JSON.stringify({ agent_worker_version: version, kind: "start",
+        scope, source, arguments: arguments_ }) + "\n");
       if (bytes.length > START_LIMIT) throw failure("node_worker_start_limit");
       endpoint ??= Object.freeze({ window: scope.window, epoch: scope.epoch });
       return launch("--serve", signal, captured, bytes);

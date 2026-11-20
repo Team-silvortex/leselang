@@ -5,10 +5,12 @@ mod source;
 mod tests;
 #[cfg(test)]
 mod v2_tests;
+#[cfg(test)]
+mod v3_tests;
 
 use leselang_runtime_core::ScalarType;
-pub(super) use report::verify;
-pub(super) use source::generate;
+pub(super) use report::{verify, verify_named};
+pub(super) use source::{TaskSource, generate};
 
 fn scalar_name(ty: ScalarType) -> &'static str {
     match ty {

@@ -30,8 +30,10 @@ These references serve different layers:
 | [Node-owned agent and Rust worker](node-agent-host.md) | A live independent JS application using the public host and optional Node transport with a fresh real VM worker per task |
 | [Standalone registered-object core](../hosts/registered/README.md) | Framework-free Rust library and worker, shared with the Tauri compatibility layer |
 | [JavaScript/TypeScript semantic authoring](semantic-authoring.md) | Public declaration types and validated composition of application task catalogs |
+| [Named string task inputs](named-task-inputs.md) | Opt-in v3 multi-parameter tasks, verified result bindings and versioned Node/Tauri execution |
 | [Registered GUI task declarations](registered-tasks.md) | Reusable read, set-text and click sequences with explicit application verification |
 | [JavaScript sequential workflows](agent-workflows.md) | `AgentWorkflowSession`, complete-plan admission, result bindings and per-step verification |
+| [Verification diagnostics](verification-diagnostics.md) | Optional detailed verification, bounded failure reasons and unchanged stop/authority boundaries |
 | [Model provider](model-provider.md) | Natural-language task selection through an application-owned transport |
 | [Shared fixtures](../fixtures/host-semantics/README.md) | Catalog bytes and generated source compared across Rust and JavaScript |
 
@@ -46,6 +48,7 @@ the latter coordinates several ordinary host sessions from one admitted plan.
 | [AppKit](appkit-host.md) | Application-owned native macOS controls |
 | [TypeScript through Tauri](typescript-host.md) | Registered JS objects, a Rust VM and a desktop WebView |
 | [TypeScript task board](taskboard-host.md) | A second GUI sharing the same agent, with observed task status and one-time completion |
+| [TypeScript article application](article-host.md) | A multi-input GUI using v3 named parameters and independently verified publication |
 | [macOS Accessibility](macos-ax-host.md) | Explicitly scoped control of another application's window |
 
 The [host source map](../hosts/README.md) identifies each independent workspace.

@@ -38,6 +38,54 @@ test("a fresh Node-owned worker preserves raw integer report bytes and scoped re
   assert.deepEqual(f.received.map((item) => item.session), ["run_1", "run_2"]);
 });
 
+test("an explicit named-input run pins protocol two without changing adjacent legacy runs", async (t) => {
+  const f = fixture(t, "echo_arguments");
+  const first = JSON.parse(await f.carrier.execute(f.run(), signal()));
+  assert.equal(first.version, 1);
+  const arguments_ = { title: 'Quoted "标题"', content: "literal\\path\n正文 ✓" };
+  const next = { ...f.run("run_2"), inputMode: "named_strings", source: "fn main(title: string, content: string) = title", arguments: arguments_ };
+  const pending = f.carrier.execute(next, signal());
+  arguments_.title = "later mutation";
+  next.inputMode = undefined;
+  next.source = "later source";
+  const second = JSON.parse(await pending);
+  assert.equal(second.version, 2);
+  assert.equal(second.source, "fn main(title: string, content: string) = title");
+  assert.deepEqual(second.arguments, { title: 'Quoted "标题"', content: "literal\\path\n正文 ✓" });
+  assert.equal(JSON.parse(await f.carrier.execute(f.run("run_3"), signal())).version, 1);
+});
+
+test("named input bounds and markers reject before dispatch and never evaluate argument getters", async (t) => {
+  const f = fixture(t);
+  let getters = 0;
+  const getter = { title: "ok" };
+  Object.defineProperty(getter, "content", { enumerable: true, get() { getters++; return "not data"; } });
+  for (const change of [
+    { arguments: { title: "one", content: "two" } },
+    { inputMode: "unknown", arguments: {} },
+    { inputMode: null, arguments: {} },
+    { inputMode: "named_strings", arguments: getter },
+    { inputMode: "named_strings", arguments: { title: "valid", content: true } },
+    { inputMode: "named_strings", arguments: { title: "valid", content: "\ud800" } },
+    { inputMode: "named_strings", arguments: { title: "valid", content: "nul\0data" } },
+    { inputMode: "named_strings", arguments: { title: "valid", content: "x".repeat(4097) } },
+    { inputMode: "named_strings", arguments: Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`p${i}`, "x"])) },
+    { inputMode: "named_strings", arguments: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`p${i}`, "x".repeat(2049)])) },
+  ]) await assert.rejects(f.carrier.execute({ ...f.run(), ...change }, signal()), /invalid_(arguments|input_mode)/);
+  assert.equal(getters, 0);
+  assert.equal(f.received.length, 0);
+  assert.equal(await f.carrier.execute({ ...f.run(), inputMode: "named_strings",
+    arguments: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`p${i}`, "x".repeat(2048)])) }, signal()), expected);
+});
+
+test("a worker cannot upgrade or downgrade the selected startup protocol", async (t) => {
+  for (const [mode, inputMode] of [["downgrade", "named_strings"], ["upgrade", undefined]]) {
+    const f = fixture(t, mode);
+    await assert.rejects(f.carrier.execute({ ...f.run(), ...(inputMode ? { inputMode } : {}) }, signal()), /invalid_version/);
+    assert.equal(f.received.length, 0);
+  }
+});
+
 test("a terminal report does not release the process slot before clean child closure", async (t) => {
   const ready = deferred();
   const f = fixture(t, "report_held", { onStderr: (text) => { if (text.includes("report_sent")) ready.resolve(); } });

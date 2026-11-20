@@ -1,6 +1,7 @@
 //! Rust VM ownership and a separately versioned bridge to registered JS objects.
 mod agent_semantics;
 mod application;
+mod article_semantics;
 mod board_semantics;
 mod catalog;
 pub mod gateway;
@@ -11,8 +12,8 @@ mod task;
 
 pub use application::AgentApplication;
 pub use task::{
-    PreparedTask, prepare_task, run_prepared_registered_task, run_prepared_task,
-    run_prepared_task_for_application, run_task,
+    PreparedTask, prepare_named_task, prepare_task, run_prepared_registered_task,
+    run_prepared_task, run_prepared_task_for_application, run_task,
 };
 
 pub use leselang_registered_host::{Error, Scope, Transport, describe_registered, run_registered};
@@ -52,6 +53,15 @@ pub fn describe_agent_board() -> Result<String, String> {
     catalog::describe_board()
         .map_err(|e| e.to_string())?
         .to_json_with_semantics_v2(&board_semantics::describe())
+        .map_err(|e| e.to_string())
+}
+
+/// Host-owned v3 article tasks bind title and content independently. Discovery
+/// uses the same registered operations and creates no application authority.
+pub fn describe_agent_article() -> Result<String, String> {
+    catalog::describe_article()
+        .map_err(|e| e.to_string())?
+        .to_json_with_semantics_v3(&article_semantics::describe())
         .map_err(|e| e.to_string())
 }
 

@@ -3,6 +3,7 @@ import { prepareSemanticCatalog, type PreparedSemanticTask, type SemanticCatalog
 import { fault, json, proposal } from "./data.js";
 import { observations, samePlan, snapshots } from "./registered-evidence.js";
 import type { AgentHost } from "./session.js";
+import { VERIFICATION_SUCCESS, rejectVerification, type VerificationResult } from "../verification.js";
 
 /** The application retains ownership of its objects and independent evidence. */
 export interface RegisteredApplicationConnection {
@@ -20,6 +21,7 @@ export interface RegisteredAgentRun {
   readonly scope: Readonly<Scope>;
   readonly source: string;
   readonly arguments: Readonly<Record<string, string>>;
+  readonly inputMode?: "named_strings";
   readonly onRequest: (request: unknown) => void;
 }
 
@@ -42,6 +44,7 @@ export interface RegisteredAgentHostOptions extends RegisteredAgentEndpoint {
 }
 
 export interface RegisteredAgentHost extends AgentHost {
+  verifyDetailed: NonNullable<AgentHost["verifyDetailed"]>;
   /** Fence this endpoint immediately; outstanding transport work still settles. */
   close(): void;
 }
@@ -50,7 +53,8 @@ interface Slot { stop(): void }
 interface Completion {
   readonly prepared: PreparedSemanticTask;
   readonly before: string;
-  readonly report: string;
+  readonly report: string | null;
+  readonly verification: VerificationResult;
   readonly run: Slot;
   live(): boolean;
 }
@@ -101,6 +105,38 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
   function quietly(callback: () => void | Promise<void>): void {
     try { void Promise.resolve(callback()).catch(() => {}); }
     catch { /* Local fences never depend on a transport acknowledgement. */ }
+  }
+
+  function verifyDetailed(report: unknown, plan: Parameters<AgentHost["verify"]>[1], signal: AbortSignal): VerificationResult {
+    if (signal.aborted) fault("registered_host_cancelled");
+    if (closed) return rejectVerification("verification_interrupted");
+    if (active) return rejectVerification("completion_unavailable");
+    const evidence = completed;
+    completed = null;
+    if (!evidence) return rejectVerification("completion_unavailable");
+    if (!evidence.live()) return rejectVerification("verification_interrupted");
+    const current: Slot = { stop() {} };
+    active = current;
+    const live = () => !closed && !signal.aborted && evidence.live() && active === current;
+    try {
+      try {
+        if (!samePlan(proposal(plan), evidence.prepared.plan)) return rejectVerification("plan_mismatch");
+      } catch { return rejectVerification("plan_mismatch"); }
+      // Bind every explanation to this attempt before exposing semantic detail.
+      // Non-string/oversized transport results are never retained as evidence.
+      if (typeof report !== "string" || evidence.report === null) return rejectVerification("invalid_report");
+      if (report !== evidence.report) return rejectVerification("report_mismatch");
+      if (!live()) return rejectVerification("verification_interrupted");
+      if (!evidence.verification.verified) return evidence.verification;
+      const observed = observations(report, observationFields);
+      const after = snapshots(application.observe());
+      if (!live()) return rejectVerification("verification_interrupted");
+      if (observed.before !== evidence.before) return rejectVerification("before_observation_mismatch");
+      if (observed.after !== after) return rejectVerification("after_observation_mismatch");
+      return VERIFICATION_SUCCESS;
+    } catch {
+      return rejectVerification(live() ? "observation_invalid" : "verification_interrupted");
+    } finally { if (active === current) active = null; }
   }
 
   return {
@@ -191,6 +227,7 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
         checkRun();
         const run: RegisteredAgentRun = Object.freeze({
           scope: bridge.scope, source: prepared.plan.source, arguments: prepared.plan.arguments,
+          ...(prepared.plan.inputMode ? { inputMode: prepared.plan.inputMode } : {}),
           onRequest(request: unknown) {
             // This closure always retains its own bridge and stop function.
             // Late requests receive rejection without affecting a later run.
@@ -199,8 +236,11 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
         });
         started = true;
         report = await transport.execute(run, controller.signal);
-        if (live() && typeof report === "string" && prepared.verify(report)) {
-          candidate = { prepared, before, report, run: current, live };
+        if (live()) {
+          const raw = typeof report === "string" && report.length <= 128 * 1024
+            && new TextEncoder().encode(report).length <= 128 * 1024 ? report : null;
+          const verification = raw === null ? rejectVerification("invalid_report") : prepared.verifyDetailed(raw);
+          candidate = { prepared, before, report: raw, verification, run: current, live };
         }
       } finally {
         bridge.close();
@@ -219,23 +259,9 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
     },
 
     verify(report, plan, signal) {
-      if (signal.aborted) fault("registered_host_cancelled");
-      if (closed || active) return false;
-      const evidence = completed;
-      completed = null;
-      if (!evidence || !evidence.live()) return false;
-      const current: Slot = { stop() {} };
-      active = current;
-      try {
-        if (!samePlan(proposal(plan), evidence.prepared.plan) || typeof report !== "string"
-          || report !== evidence.report || !evidence.prepared.verify(report)) return false;
-        const observed = observations(report, observationFields);
-        const after = snapshots(application.observe());
-        return !closed && !signal.aborted && evidence.live() && active === current
-          && observed.before === evidence.before && observed.after === after;
-      } catch { return false; }
-      finally { if (active === current) active = null; }
+      return verifyDetailed(report, plan, signal).verified;
     },
+    verifyDetailed,
 
     close() {
       if (closed) return;

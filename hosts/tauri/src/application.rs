@@ -5,6 +5,7 @@ pub enum AgentApplication {
     #[default]
     Form,
     TaskBoard,
+    Article,
 }
 
 impl AgentApplication {
@@ -12,6 +13,7 @@ impl AgentApplication {
         match self {
             Self::Form => "tauri.typescript",
             Self::TaskBoard => "tauri.taskboard",
+            Self::Article => "tauri.article",
         }
     }
 
@@ -19,6 +21,7 @@ impl AgentApplication {
         match self {
             Self::Form => "agent.html",
             Self::TaskBoard => "agent-board.html",
+            Self::Article => "agent-article.html",
         }
     }
 
@@ -26,6 +29,7 @@ impl AgentApplication {
         match self {
             Self::Form => "LeseLang — Agent workflow",
             Self::TaskBoard => "LeseLang — Task board",
+            Self::Article => "LeseLang — Article publisher",
         }
     }
 }

@@ -18,15 +18,16 @@ Natural-language request + host semantic catalog
 ```
 
 The reusable provider has no form, control-name or application-profile branches.
-It uses the same `semantics v1` and opt-in `v2` declarations as the
+It uses the same semantic v1, opt-in v2 and explicit v3 declarations as the
 [offline provider](agent-entry.md) and [independent catalog agent](agent-workflow.md).
 `createModelProvider` retains its single-task contract. The additive
 `createModelWorkflowProvider` selects an ordered list of one to eight declared
 tasks for an [`AgentWorkflowSession`](agent-workflows.md), as used by the Tauri
-conversation. Every task accepts zero inputs or one named string input. Neither
+conversation. Legacy v1/v2 tasks accept zero inputs or one named string input;
+v3 tasks accept zero to eight independently named strings. Neither
 provider invents tasks from arbitrary operations or supplies conversation history.
 A declared task may itself contain several host Effects and guards.
-Version 2 can bind a task's returned scalar to a declared observed report value,
+Versions 2 and 3 can bind a task's returned scalar to a declared observed report value,
 allowing tasks such as reading current application text. The model supplies no
 expected runtime value for such a task; the SDK and application verify its
 actual report. See [observed result contracts](host-semantics.md#version-2-observed-results).
@@ -69,6 +70,9 @@ the selection contract. The second encodes the current message, validated task
 summaries and the complete host catalog. Raw catalog JSON remains a string inside
 that request, preserving exact `u64` values rather than rounding through
 JavaScript `Number`. Prefer original catalog JSON from `host.describe`.
+V3 task summaries include `inputNames`, including an empty array for no-input
+tasks; legacy summaries retain optional `inputName`. The existing provider
+factories read this catalog contract without an additional multi-input option.
 
 For `createModelProvider`, the transport must return exactly one JSON object in
 one of these forms:
@@ -84,6 +88,19 @@ one of these forms:
 ```json
 {"error":"The requested operation is not declared by this application."}
 ```
+
+With a v3 catalog, the same selection shape carries every declared name:
+
+```json
+{"task":"publish_article","arguments":{"title":"Release notes","content":"The complete text."}}
+```
+
+The provider derives `inputMode: "named_strings"` from the admitted declaration,
+including for no-input v3 tasks. The model cannot choose that marker or a worker
+version. Missing, extra or non-string inputs fail before execution. See
+[named task inputs](named-task-inputs.md) for declarations, the offline provider's
+JSON-map command syntax and the complete reference workflow. The bundled Tauri
+form and board catalogs remain v2 and retain their existing GUI procedures.
 
 For `createModelWorkflowProvider`, a successful reply instead contains `steps`:
 
@@ -112,13 +129,16 @@ results respectively. References to later steps, unsupported source types,
 arbitrary field paths, implicit conversions and a top-level `bindings` field
 are rejected. The opt-in does not change the single-task provider's contract.
 
-For a v2 source with `verification.result.kind: "observed"`, reference admission
+For a v2/v3 source with `verification.result.kind: "observed"`, reference admission
 uses its declared `scalar_type`. For example, the Tauri `read_message` task
 returns a verified current string, so a later Save can use
 `{"fromStep":0,"format":"string"}`. The source's actual typed result must equal
 its declared observation, pass the remaining predicates and pass the host's
 fresh-state verification before it can feed the binding. A model is neither
 asked to guess that text nor allowed to replace it with a predicted result.
+For a v3 target, `resultBindings: true` permits separate earlier-result
+references for different named inputs. Every resolved value and the combined
+argument map are rechecked before that target executes.
 
 With `resultRequirements: true`, each selected step may additionally contain one
 `requires` object. This example also needs `resultBindings: true` for its input:
@@ -147,7 +167,7 @@ and oversized replies. It does not strip Markdown, repair JSON, retry or switch
 to an offline provider after failure. Refusal text and transport exception bodies
 are not copied into application errors.
 
-The model cannot supply source, permissions, verification predicates or a
+The model cannot supply source, execution modes, permissions, verification predicates or a
 `verified` flag. `catalog.prepare(task, arguments)` produces canonical source and
 the host-authored summary for each task. Literal and resolved input stays in the
 argument map. A reference is normalized by `prepareSemanticWorkflow` into a
@@ -239,11 +259,18 @@ late-reply checks and partial-side-effect behavior remain in the host.
 | Host catalog | 256 KiB UTF-8 |
 | Model system prompt / encoded user request | 16 KiB / 2 MiB UTF-8 |
 | Native HTTP response envelope / assistant text | 128 KiB / 16 KiB UTF-8 |
+| SDK model selection JSON | v1/v2: 16 KiB; v3: 128 KiB UTF-8 |
+| Inputs per task | v1/v2: zero or one string; v3: zero to eight named strings |
 | Task string argument / generated source | 4,096 bytes / 16 KiB UTF-8 per step |
-| Workflow steps / complete model selection | 1–8 steps sharing the 16 KiB assistant-text limit |
+| Combined v3 argument values | 16 KiB UTF-8 per task; strings require valid Unicode and no NUL |
+| Workflow steps / complete model selection | 1–8 steps sharing the applicable SDK and transport limits |
 | Native model request | 45 seconds, with a 10-second connection limit |
 
-The larger encoded request bound accounts for the catalog being escaped inside
+All steps and their arguments share the applicable selection limit. The v3 SDK
+allows 128 KiB of JSON to accommodate several escaped strings; the reference
+Tauri HTTP transport still caps assistant text at 16 KiB. Additional input slots
+do not enlarge that native transport budget. The larger encoded
+request bound accounts for the catalog being escaped inside
 JSON. Each page admits at most 64 model request identities. It retains retired
 identities, including a cancel that arrives before the corresponding start, so
 an old request cannot be replayed. Only one model request can be active. A

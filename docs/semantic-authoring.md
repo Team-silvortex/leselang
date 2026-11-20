@@ -3,7 +3,9 @@
 `defineSemanticCatalog(base, semantics)` attaches application-owned task
 declarations to an actual host operation catalog and returns validated raw JSON.
 It is exported from the browser-compatible `@leselang/bridge` root entry, along
-with readonly TypeScript types for the existing semantic v1 and v2 vocabulary.
+with readonly TypeScript types for semantic v1, v2 and explicit v3 declarations.
+V1/v2 retain their zero-or-one-string inputs; v3 adds up to eight named strings
+as described in [named task inputs](named-task-inputs.md).
 It works with Node, Tauri or another registered application transport.
 
 The application declares what operations mean and which evidence establishes a
@@ -86,17 +88,18 @@ before execution; TypeScript types do not replace that check.
 
 | Public types | Purpose |
 | --- | --- |
-| `SemanticDescription`, `SemanticDescriptionV1`, `SemanticDescriptionV2` | Complete operation semantics and task declarations |
-| `SemanticTaskDescriptionV1`, `SemanticTaskDescriptionV2`, `SemanticTaskInput` | A task's inputs, steps, result and report contract |
+| `SemanticDescription`, `SemanticDescriptionV1`, `SemanticDescriptionV2`, `SemanticDescriptionV3` | Complete operation semantics and task declarations |
+| `SemanticTaskDescriptionV1`, `SemanticTaskDescriptionV2`, `SemanticTaskDescriptionV3`, `SemanticTaskInput` | A task's inputs, steps, result and report contract |
 | `SemanticOperationSemantics` | Operation meaning, read/write classification and completion meaning |
 | `SemanticTaskStep`, `SemanticTaskArgument`, `SemanticTerm`, `SemanticCondition` | The existing finite call/guard vocabulary |
 | `SemanticReportContractV1`, `SemanticReportContractV2`, `SemanticObservedResult` | Fixed or independently observed result contracts |
 | `SemanticReportPredicate`, `SemanticReportTerm`, `SemanticReportRelation`, `SemanticReportSegment` | Named comparisons over explicit evidence paths |
 | `SemanticLiteral`, `SemanticInteger`, `SemanticScalarType` | Supported literal and scalar domains |
 
-Version 1 accepts fixed results. An observed result requires `version: 2`, both
-in the TypeScript declaration and at runtime. Version 2 also accepts the existing
-fixed result shapes. The helper does not upgrade versions automatically, and
+Version 1 accepts fixed results. Versions 2 and 3 also accept independently
+observed results. Version 3 adds explicit `named_strings` execution for up to
+eight string inputs; v1/v2 retain the zero-or-one-input contract. See
+[named task inputs](named-task-inputs.md). The helper does not upgrade versions automatically, and
 rejects any base that already has a `semantics` field, including `null`. Compose
 the desired declaration before calling it instead of replacing an admitted
 catalog's task contract.

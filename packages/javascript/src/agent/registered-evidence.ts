@@ -80,6 +80,7 @@ export function snapshots(value: unknown): string {
 
 export function samePlan(left: WorkflowPlan, right: WorkflowPlan): boolean {
   return left.task === right.task && left.source === right.source
+    && left.inputMode === right.inputMode
     && canonical(left.arguments) === canonical(right.arguments);
 }
 

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LeseLang 文章助手</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="agent-layout">
+      <header>
+        <span class="eyebrow">LeseLang · 文章助手</span>
+        <h1>让助手发布一篇文章。</h1>
+        <p>分别填写标题和正文，发布后逐项核对结果。你也可以直接编辑，再让助手读取当前草稿。</p>
+      </header>
+      <section class="card assistant-panel" aria-labelledby="assistant-title">
+        <div class="result-heading">
+          <h2 id="assistant-title">任务对话</h2>
+          <span id="provider-label" class="count">正在读取规划器配置…</span>
+        </div>
+        <label for="provider-mode">规划方式</label>
+        <select id="provider-mode">
+          <option value="offline">离线任务命令</option>
+          <option id="model-option" value="model" disabled>模型 · 自然语言</option>
+        </select>
+        <p id="provider-note" class="assistant-note">正在读取宿主的模型配置。</p>
+        <ul id="available-tasks" class="assistant-note" aria-label="应用声明的可用任务"></ul>
+        <ol id="conversation" class="conversation" aria-label="任务记录" aria-live="polite"></ol>
+        <form id="task-form">
+          <label for="task-message">交给助手的任务</label>
+          <textarea id="task-message" rows="3" maxlength="8192" placeholder='task publish_article:{"title":"周五评审","content":"设计稿已准备完成。"}' spellcheck="false"></textarea>
+          <div class="actions">
+            <button id="task-submit" type="submit">执行任务</button>
+            <button id="task-cancel" class="secondary" type="button" disabled>取消任务</button>
+          </div>
+          <p id="task-status" role="status" aria-live="polite">正在连接应用…</p>
+        </form>
+        <details id="workflow-details" hidden>
+          <summary>查看本次工作流</summary>
+          <pre id="workflow-source"></pre>
+        </details>
+        <details id="report-details" hidden>
+          <summary>查看原始执行报告</summary>
+          <pre id="report-value"></pre>
+        </details>
+      </section>
+      <section class="card article-editor" aria-labelledby="article-title">
+        <h2 id="article-title">文章草稿</h2>
+        <label id="title-label" for="title">Article title</label>
+        <textarea id="title" rows="2" maxlength="4096" spellcheck="false"></textarea>
+        <label id="content-label" for="content">Article content</label>
+        <textarea id="content" rows="6" maxlength="4096" spellcheck="false"></textarea>
+        <div class="actions">
+          <button id="publish" type="button">Publish article</button>
+          <button id="other" class="secondary" type="button">Unrelated action</button>
+        </div>
+        <p id="status" role="status" aria-live="polite">可手动编辑，也可交给助手。</p>
+      </section>
+      <section class="card article-result" aria-labelledby="published-heading">
+        <div class="result-heading">
+          <h2 id="published-heading">已发布文章</h2>
+          <span class="count">发布次数：<span id="publish-count">0</span></span>
+        </div>
+        <h3>标题</h3>
+        <pre id="saved-title" aria-label="Published article title"></pre>
+        <h3>正文</h3>
+        <pre id="saved-content" aria-label="Published article content"></pre>
+        <p class="quiet">无关控件点击次数：<span id="other-count">0</span></p>
+      </section>
+    </main>
+    <script type="module" src="./agent-article-app.js"></script>
+  </body>
+</html>

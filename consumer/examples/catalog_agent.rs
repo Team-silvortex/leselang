@@ -19,10 +19,10 @@ use serde_json::json;
 
 const HELP: &str = "LeseLang catalog agent — reference cross-application GUI workflows
 Usage: catalog_agent --host EXECUTABLE [--host-arg SELECTOR] --output NEW_DIRECTORY
-                     [--task TASK] [--text VALUE] [--execute]
+                     [--task TASK] [--text VALUE | --arg NAME VALUE ...] [--execute]
 
 Read the actual offline catalog and validate its declared semantic contract before planning.
-Task defaults to fill_and_save; --text is required only when its declaration has an input.
+Task defaults to fill_and_save. Legacy string tasks use --text; semantic v3 named_strings tasks use repeated --arg NAME VALUE.
 Old catalogs without semantics retain the known form and Calculator strategies.
 Repeat --host-arg for literal host selectors (for example --host-arg --calculator).
 Selectors are forwarded unchanged to both description and execution, without a shell.
@@ -43,7 +43,18 @@ struct Options {
     output: PathBuf,
     task: String,
     text: Option<String>,
+    named_arguments: Vec<(String, String)>,
     execute: bool,
+}
+
+fn input_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value.bytes().enumerate().all(|(index, byte)| {
+            byte == b'_' || byte.is_ascii_alphabetic() || (index > 0 && byte.is_ascii_digit())
+        })
+        && !matches!(value, "fn" | "true" | "false" | "none" | "body")
+        && !value.starts_with("_lese_")
 }
 
 fn arguments(args: impl IntoIterator<Item = OsString>) -> Result<Option<Options>, String> {
@@ -64,6 +75,8 @@ fn arguments(args: impl IntoIterator<Item = OsString>) -> Result<Option<Options>
     let mut output = None;
     let mut task = None;
     let mut text = None;
+    let mut named_arguments: Vec<(String, String)> = Vec::new();
+    let mut named_bytes_remaining = plan::MAX_NAMED_INPUT_BYTES;
     let mut execute = false;
     while let Some(arg) = args.next() {
         if arg == "--host" || arg == "--output" {
@@ -95,6 +108,7 @@ fn arguments(args: impl IntoIterator<Item = OsString>) -> Result<Option<Options>
                     "--run",
                     "--entry",
                     "--text",
+                    "--arg",
                     "--report-json",
                     "--hold",
                     "--help",
@@ -139,6 +153,29 @@ fn arguments(args: impl IntoIterator<Item = OsString>) -> Result<Option<Options>
             if text.replace(value).is_some() {
                 return Err("duplicate --text".into());
             }
+        } else if arg == "--arg" {
+            let name = args
+                .next()
+                .ok_or("--arg requires a name and value")?
+                .into_string()
+                .map_err(|_| "argument name must be UTF-8")?;
+            let value = args
+                .next()
+                .ok_or("--arg requires a name and value")?
+                .into_string()
+                .map_err(|_| "argument value must be UTF-8")?;
+            if named_arguments.len() >= 8
+                || !input_name(&name)
+                || named_arguments.iter().any(|(prior, _)| prior == &name)
+                || value.len() > 4096
+                || value.contains('\0')
+            {
+                return Err("--arg requires distinct bounded names and string values".into());
+            }
+            named_bytes_remaining = named_bytes_remaining
+                .checked_sub(value.len())
+                .ok_or("named argument values exceed 16384 UTF-8 bytes in total")?;
+            named_arguments.push((name, value));
         } else if arg == "--execute" {
             if execute {
                 return Err("duplicate --execute".into());
@@ -148,6 +185,9 @@ fn arguments(args: impl IntoIterator<Item = OsString>) -> Result<Option<Options>
             return Err("unknown argument; use --help".into());
         }
     }
+    if text.is_some() && !named_arguments.is_empty() {
+        return Err("--text and --arg cannot be combined".into());
+    }
     let task = task.unwrap_or_else(|| "fill_and_save".into());
     Ok(Some(Options {
         host: host.ok_or("--host is required")?,
@@ -155,6 +195,7 @@ fn arguments(args: impl IntoIterator<Item = OsString>) -> Result<Option<Options>
         output: output.ok_or("--output is required")?,
         task,
         text,
+        named_arguments,
         execute,
     }))
 }
@@ -198,7 +239,14 @@ fn workflow(options: &Options, directory: &Path, progress: &mut Progress) -> Res
 
     progress.phase = "planning";
     let prepared = plan::prepare(&discovery.stdout, &options.task)?;
-    if prepared.takes_text != options.text.is_some() {
+    if prepared.named_strings {
+        if options.text.is_some() {
+            return Err("named-string tasks require --arg instead of --text".into());
+        }
+        prepared.validate_named_arguments(&options.named_arguments)?;
+    } else if !options.named_arguments.is_empty() {
+        return Err("--arg requires a semantic v3 named_strings task".into());
+    } else if prepared.takes_text != options.text.is_some() {
         return Err(if prepared.takes_text {
             "the declared task requires --text"
         } else {
@@ -220,10 +268,13 @@ fn workflow(options: &Options, directory: &Path, progress: &mut Progress) -> Res
             "profile": prepared.profile,
             "task": prepared.task,
             "entry": prepared.entry,
-            "arguments": if let Some(name) = &prepared.input_name { json!({name: options.text}) } else { json!({}) },
+            "arguments": if prepared.named_strings {
+                json!(options.named_arguments.iter().cloned().collect::<std::collections::BTreeMap<_, _>>())
+            } else if let Some(name) = &prepared.input_name { json!({name: options.text}) } else { json!({}) },
             "planning_contract": match (prepared.semantic, prepared.semantic_version) {
                 (true, Some(1)) => "catalog_semantics_v1",
                 (true, Some(2)) => "catalog_semantics_v2",
+                (true, Some(3)) => "catalog_semantics_v3",
                 _ => "legacy_profile",
             },
             "host_arguments": options.host_args.iter().map(|arg| arg.to_str().expect("validated host selector")).collect::<Vec<_>>(),
@@ -250,23 +301,30 @@ fn workflow(options: &Options, directory: &Path, progress: &mut Progress) -> Res
         "--run".into(),
         directory.join("program.lese").into_os_string(),
     ]);
-    match prepared.execution {
-        ExecutionStyle::NamedText => arguments.extend([
-            "--entry".into(),
-            prepared.entry.clone().into(),
-            "--text".into(),
-            prepared
-                .input_name
-                .as_ref()
-                .expect("validated named input")
-                .into(),
-            options.text.as_ref().expect("validated task text").into(),
-        ]),
-        ExecutionStyle::Text => arguments.extend([
-            "--text".into(),
-            options.text.as_ref().expect("validated task text").into(),
-        ]),
-        ExecutionStyle::NoText => {}
+    if prepared.named_strings {
+        arguments.extend(["--entry".into(), prepared.entry.clone().into()]);
+        for (name, value) in &options.named_arguments {
+            arguments.extend(["--arg".into(), name.into(), value.into()]);
+        }
+    } else {
+        match prepared.execution {
+            ExecutionStyle::NamedText => arguments.extend([
+                "--entry".into(),
+                prepared.entry.clone().into(),
+                "--text".into(),
+                prepared
+                    .input_name
+                    .as_ref()
+                    .expect("validated named input")
+                    .into(),
+                options.text.as_ref().expect("validated task text").into(),
+            ]),
+            ExecutionStyle::Text => arguments.extend([
+                "--text".into(),
+                options.text.as_ref().expect("validated task text").into(),
+            ]),
+            ExecutionStyle::NoText => {}
+        }
     }
     arguments.push("--report-json".into());
     let execution = process::capture(&options.host, &arguments, REPORT_LIMIT, HOST_TIMEOUT)?;
@@ -275,7 +333,11 @@ fn workflow(options: &Options, directory: &Path, progress: &mut Progress) -> Res
     execution.require_success()?;
 
     progress.phase = "verification";
-    let verified = prepared.verify(&execution.stdout, options.text.as_deref().unwrap_or(""))?;
+    let verified = if prepared.named_strings {
+        prepared.verify_named(&execution.stdout, &options.named_arguments)?
+    } else {
+        prepared.verify(&execution.stdout, options.text.as_deref().unwrap_or(""))?
+    };
     save_json(
         directory,
         "verification.json",

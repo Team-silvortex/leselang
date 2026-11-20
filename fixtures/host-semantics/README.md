@@ -19,6 +19,8 @@ host-owned declarations; these files do not register operations or grant access.
 | `tauri-board-{read-review,read-archive,complete-review,complete-archive,check}.lese` | Five no-input board programs, compiled by Rust and byte-compared by the SDK |
 | `javascript-agent-semantics-v2.json` | Node publication tasks expanded by the public registered-task constructor, using the standalone worker's actual base catalog |
 | `javascript-{read-draft,publish-article,read-publication,check-publication}.lese` | Four expanded programs compared by Rust and JavaScript and executed by the independent Node Consumer |
+| `multi-input-semantics-v3.json`, `multi-input-save.lese` | Opt-in title/content publication, cross-language source equality and independent verification of both named inputs |
+| `tauri-article-semantics-v3.json`, `tauri-article-{read-title,read-content,publish,check}.lese` | Native article GUI catalog and four programs, including separately bound title/content and observed reads |
 
 Catalog JSON is an exact snapshot, including integer spelling and the final
 newline. Generated source is compared byte for byte by the Rust and JavaScript
@@ -36,7 +38,8 @@ When intentionally changing a contract:
    Calculator also needs `--calculator`. The in-app Tauri catalog uses
    `--describe-agent` for the original four-task v1 contract and
    `--describe-agent-observed` for the opt-in five-task v2 contract. The board
-   uses `--describe-agent-board` with its separate application profile. Preserve
+   uses `--describe-agent-board` with its separate application profile. The article
+   application uses `--describe-agent-article` for its v3 catalog. Preserve
    legacy fixtures when their compatibility contract has not changed.
    For the JavaScript catalog, pass `leselang-agent-worker --describe` output to
    `createPublicationAgentCatalog` and append a final newline to its JSON.

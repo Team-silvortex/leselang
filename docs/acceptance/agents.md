@@ -752,3 +752,190 @@ Local evidence is under `target/verification/registered-tasks/`. All these runs
 were offline and headless; no new native GUI session or model-service call was
 used to establish this acceptance.
 
+## Named String Tasks And Versioned Execution
+
+Source guide: [named task inputs](../named-task-inputs.md).
+
+On 2026-11-20, explicit semantic v3 declarations added up to eight named string
+inputs. Every value remains data bound to its declared entry parameter, with
+4096-byte per-value and 16 KiB aggregate limits. V1/v2 declarations, the original
+Rust execution-style enum, `prepare_task`, the original Tauri task command and
+worker protocol v1 retain their zero-or-one-input contracts. All 25 earlier
+catalog/source fixture hashes remained unchanged.
+
+The SDK exposes readonly v3 types and `defineRegisteredTaskV3`; offline and model
+providers select exactly the declared input names. All v3 plans carry an explicit
+`inputMode`, including zero-input tasks. The registered host rebuilds the declared
+plan before attaching the application. Node pins worker protocol v2 for the
+complete marked execution; Tauri routes to `agent_start_named_task`. Inner Bridge
+and execution-report schemas stay at version 1. Unknown, downgraded or mixed
+versions cannot fall back into a different execution convention.
+
+A separate article application model receives title and content, then publishes
+both. The actual Rust worker completed twelve Effects and independently checked
+each input, each saved field, the publication count and the unrelated control.
+A four-task workflow read both current fields, bound the two verified results
+into publication and checked the complete inventory. It performed Effects
+`[2, 2, 12, 1]`, with Fuel remaining `[9927, 9909, 9109, 9968]` for the recorded
+Unicode/quote/newline inputs. The trace contains seventeen explicit dispatches
+and seventeen accepts. The original 10,000 Fuel budget was not raised.
+
+The independent Rust catalog agent also invoked the declared-task Node CLI
+directly, without a shell. Discovery, Rust source generation, separate repeated
+`--arg` values, real VM execution and independent Rust report verification all
+passed. Publication used twelve Effects and 9175 remaining Fuel for its distinct
+recorded inputs. Zero-input `read_title` and `check_article` passed through the
+same CLI with two and one Effects, respectively, without an entry/input override.
+Rust and JavaScript generated identical publication source.
+
+End-to-end failure tests reject invalid input maps before application attachment,
+keep the first edit when the second field fails, retain both edits while fencing
+a late publication after cancellation or revocation, and retain a completed
+publication when its handler subsequently fails. No path retries or rolls back.
+The installed SDK tarball Consumer ran the same two-result binding workflow
+through public exports and the real worker. Local model-provider fixtures select
+two values without supplying source or making a model-service request.
+
+Real execution exposed a source-generation limit that isolated declaration tests
+did not catch: fixed nine-step chunks introduced enough helper parameter wrappers
+to exceed the host's sixteen bindings. V3 now deterministically minimizes helper
+captures within the existing chunk/function limits; the article source needs
+fifteen bindings. A real registered-host compilation regression locks this in.
+V1/v2 source partitioning and all parser, VM and host bounds remain unchanged.
+
+Checks passed: language workspace 2408, complete independent Rust Consumer/catalog
+agent 847, SDK 242, frontend 71, Node Consumer 42, standalone registered host 12,
+retained native Node carrier six and portable Tauri 36. The Tauri desktop build,
+69 native tests and strict Clippy also passed, including the named-task entry.
+Formatting and strict Clippy checks passed for these Rust workspaces. Local evidence is under
+`target/verification/named-inputs/`, including final logs, raw reports, generated
+source and the unchanged-fixture hash check. Earlier failed logs are retained;
+the final Consumer example and Clippy logs cover the iterator-only lint cleanup
+after its complete 847-test run.
+
+These checks use application models, actual Rust VMs and local transports. The
+existing form and taskboard GUI catalogs remain v2; this milestone does not claim
+a new multi-input native GUI session or live-model inference.
+
+## Real Multi-Input Article GUI
+
+Source guide: [article application](../article-host.md).
+
+On 2026-11-20, the macOS Tauri article application ran its native v3 catalog
+through the same conversation, semantic/model providers, workflow session,
+registered-object bridge and Rust VM used by the form and task board. Native
+startup pins `agent-article.html` and `tauri.article`. Its four declarations are
+`read_title`, `read_content`, `publish_article(title, content)` and `check_article`.
+Publication is local in-memory preview state; no article is sent to a website.
+
+The native integration review found that `agent_start_named_task` had been added
+to the invoke handler but omitted from the Tauri build manifest and page
+capability. These declarations and the generated permission are now complete,
+with a regression checking command/handler/permission agreement. The Article app
+also rejects the legacy task route before compilation and session admission,
+including zero-input requests. Existing form and board routes remain supported.
+
+A dedicated `LeseLang Article.app` window discovered the native catalog and
+displayed generated named-argument commands. Through its actual conversation UI,
+the offline planner read the initial title, published distinct title/content
+values supplied in reversed JSON key order, read the content again and checked
+the inventory. These tasks performed `[2, 12, 2, 1]` Effects. The title was
+`Native Article 标题 ✓`; the content contained a newline and `"quote"`. The
+displayed publication report used twelve Effects and 9207 remaining Fuel, while
+the real fields and preview matched both values. Publication count was one and
+the unrelated control remained zero.
+
+Missing content, an extra argument, numeric content and a duplicate title key
+were then submitted through that same UI. All four were rejected before
+application execution. The VM trace remained at seventeen dispatches and
+seventeen accepts, and the displayed publication state was preserved.
+
+The window then selected the explicitly named
+`protocol-workflow-fixture-not-a-model` loopback provider. One request read both
+live fields, separately bound the two verified results into publication and
+checked the inventory. The UI showed all four steps verified and both source
+references on the publication step. Its `[2, 2, 12, 1]` Effects advanced the
+publication count to two without changing the values or unrelated control.
+A second request supplied distinct literal values, `文章协议回归 ✓` and
+`两个独立输入分别传入。`, then read both fields and checked the inventory. All four
+steps passed with `[12, 2, 2, 1]` Effects. The publication report showed 9108
+remaining Fuel; the final visible fields and preview matched those inputs,
+publication count was three and the unrelated count remained zero.
+
+The combined native trace contains exactly 51 dispatches and 51 accepts:
+six text edits, three publication clicks, fifteen finds, twenty-four observations
+and three inventory reads. The loopback log records two completed requests.
+Actual UI/Accessibility observations and a final screenshot verified the visible
+results; source display showed separate `content` and `title` entry parameters.
+The UI tool truncates long report text, so the retained observation record
+contains observed report snippets and state, rather than claiming full raw-report
+exports. Fixed provider replies test protocol/execution behavior, not model
+inference; no external model service or credits were used.
+
+Checks passed: complete independent Rust Consumer/catalog agent 848, frontend
+and provider-protocol tests 98, portable Tauri 41 and desktop Tauri 76, with
+formatting, desktop build and strict Clippy. Rust and JavaScript compare all
+four generated article programs; the actual registered host compiles them with
+the unchanged sixteen-binding limit. Application tests cover both draft revisions
+and ABA, real DOM identity/readback, cancellation, revocation, detached sessions,
+late commits, invalid later fields and retained post-commit failures. All 27
+pre-existing catalog/source fixture hashes stayed unchanged.
+
+Local evidence is under `target/verification/article-gui.8WVHUp/`: native traces,
+provider log, test logs, catalog, UI observations, hash check and summary. The
+dedicated test window/process and temporary loopback service were closed. Its
+retained local application bundle now launches in ordinary offline mode. The
+existing form and task-board windows were not used for this acceptance.
+
+## Structured Verification Diagnostics
+
+Source guide: [verification diagnostics](../verification-diagnostics.md).
+
+On 2026-11-20, the JavaScript semantic verifier, registered host, single-task
+session and sequential workflow gained additive structured verification failures.
+`PreparedSemanticTask.verifyDetailed` uses the same decision engine as Boolean
+`verify`. An optional detailed host hook supplies bounded, frozen diagnostics;
+Boolean-only hosts retain their existing outcomes and error strings. Failed
+steps and workflows expose `verificationFailure` without upgrading a returned
+value to success or enabling retries.
+
+The independent Node Consumer exercised a real Rust worker with a host-declared
+`requires_review` predicate. Publication completed twelve Effects, returned true
+and retained one publication, but the predicate rejected its report. The failed
+step and workflow named that condition, preserved the report and partial effects,
+and never started the subsequent read. A later explicit read succeeded without
+repeating publication. The installed npm tarball Consumer exercised the same
+failure through public exports in a fresh external directory.
+
+Two additional real-worker cases changed application state before execution or
+after the worker report. Their semantic reports remained valid, while the
+registered host distinguished `before_observation_mismatch` from
+`after_observation_mismatch` using its independent snapshots. A post-commit
+execution fault retained publication without inventing a verification diagnostic.
+
+Regression coverage includes ordered semantic failures, malformed and duplicate
+JSON, exact u64 evidence, missing/ambiguous predicate evidence, immutable owned
+results, mismatched plans/reports, single-use completion evidence, callback
+reentry, cancellation and late results. Review found that directly awaiting a
+synchronous malformed thenable could run its getter before admission. The
+detailed path now admits synchronous records first and accepts asynchronous
+settlement only from a current-realm Promise. Both session and workflow tests
+confirm rejected thenables cannot invoke that getter or grant success.
+
+Tauri presentation maps the seventeen codes to specific Chinese explanations,
+including the declared predicate ID when applicable. It preserves raw report
+sections and stopped-step/partial-effect information; malformed diagnostics never
+grant success, and successful or cancelled outcomes ignore stray failure detail.
+
+Checks passed: SDK 262, frontend/provider 104, independent Node Consumer 46,
+retained native Node carrier six, complete independent Rust Consumer/catalog
+agent 848, portable Tauri 41 and desktop Tauri 76. Desktop build, Rust formatting
+and strict Clippy passed. All 32 pre-existing catalog/source fixture hashes were
+unchanged. Local logs and the final summary are under
+`target/verification/diagnostics.xAA6Wl/`.
+
+This milestone validates real VM execution, installed-package behavior and GUI
+presentation tests. It does not claim a new native GUI interaction session or a
+live model-service call. Language/transport versions, generated programs and the
+explicit poll → authorize → dispatch → accept protocol remain unchanged.
+

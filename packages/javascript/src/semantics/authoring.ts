@@ -15,7 +15,7 @@ function encode(value: Json): string {
 }
 
 /**
- * Attach semantics v1/v2 to a base catalog without executing or granting Effects.
+ * Attach semantics v1/v2/v3 to a base catalog without executing or granting Effects.
  * The base must not already contain semantics. Raw base JSON preserves duplicate
  * key and integer-token checks; object bases retain the existing safe-Number rule.
  * Author declarations additionally accept exact bigint u64 values. Return raw

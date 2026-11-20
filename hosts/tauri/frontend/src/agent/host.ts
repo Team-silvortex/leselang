@@ -17,7 +17,8 @@ export function createAgentHost(api: TauriApi, application: ApplicationConnectio
       execute(run) {
         const channel = new api.core.Channel<unknown>();
         channel.onmessage = run.onRequest;
-        return api.core.invoke("agent_start_task", {
+        if (run.inputMode !== undefined && run.inputMode !== "named_strings") throw new Error("invalid_task_input_mode");
+        return api.core.invoke(run.inputMode === "named_strings" ? "agent_start_named_task" : "agent_start_task", {
           onRequest: channel, epoch: run.scope.epoch, session: run.scope.session,
           source: run.source, arguments: run.arguments,
         });

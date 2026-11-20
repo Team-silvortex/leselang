@@ -446,3 +446,76 @@ test("teardown cannot consume success evidence before the execution has settled"
   assert.equal(await duringDetach, false);
   assert.equal(await f.host.verify(wire, plan, signal()), true);
 });
+
+test("detailed completion identifies semantic and independent observation failures once", async () => {
+  const variants = [
+    ["identity", "report_identity_mismatch", 1],
+    ["budget", "report_budget_mismatch", 1],
+    ["predicate", "predicate_failed", 1],
+    ["before", "before_observation_mismatch", 2],
+    ["after", "after_observation_mismatch", 2],
+    ["observation", "observation_invalid", 2],
+    ["report", "report_mismatch", 1],
+    ["plan", "plan_mismatch", 1],
+    ["json", "invalid_report", 1],
+    ["object", "invalid_report", 1],
+  ];
+  for (const [variant, code, expectedReads] of variants) {
+    const f = fixture(); await f.ready();
+    let reads = 0;
+    f.hooks.observe = () => { reads++; };
+    const report = evidence();
+    const pending = f.host.execute(plan, signal());
+    if (variant === "identity") report.profile = "another.application";
+    if (variant === "budget") report.effects++;
+    if (variant === "predicate") report.native_after.find((row) => row.identifier === "other").clicks++;
+    if (variant === "before") report.native_before.find((row) => row.identifier === "input").value = "invented";
+    f.visible = structuredClone(report.native_after);
+    let wire = JSON.stringify(report);
+    if (variant === "json") wire = wire.replace('"schema_version":1', '"schema_version":1,"schema_version":1');
+    if (variant === "object") wire = report;
+    f.starts[0].resolve(wire);
+    await pending;
+    if (variant === "after") f.visible[0].value = "manual change";
+    if (variant === "observation") f.hooks.observe = () => { reads++; throw new Error("private application data"); };
+    if (variant === "report") wire += " ";
+    const proposed = variant === "plan" ? { ...plan, arguments: { text: "other input" } } : plan;
+    const result = await f.host.verifyDetailed(wire, proposed, signal());
+    assert.equal(result.verified, false, variant);
+    assert.equal(result.diagnostic.code, code, variant);
+    assert.ok(Object.isFrozen(result) && Object.isFrozen(result.diagnostic));
+    if (variant === "predicate") assert.equal(result.diagnostic.predicate, "other_unchanged");
+    assert.equal(reads, expectedReads, variant);
+    assert.deepEqual(await f.host.verifyDetailed(wire, proposed, signal()),
+      { verified: false, diagnostic: { code: "completion_unavailable" } });
+    assert.equal(reads, expectedReads, "repeated verification performs no application read");
+    assert.equal(f.host.verify(wire, proposed, signal()), false);
+  }
+});
+
+test("detailed verification shares Boolean consumption and preserves callback lifetime fences", async () => {
+  for (const mode of ["detailed_first", "boolean_first", "close", "abort", "reentrant", "detach_reentry"]) {
+    const f = fixture(); await f.ready();
+    const controller = new AbortController();
+    let nested;
+    if (mode === "detach_reentry") {
+      f.hooks.detach = () => { nested = f.host.verifyDetailed(JSON.stringify(evidence()), plan, signal()); };
+    }
+    const wire = await complete(f, evidence(), plan, controller.signal);
+    if (mode === "close") f.hooks.observe = () => f.host.close();
+    if (mode === "abort") f.hooks.observe = () => controller.abort();
+    if (mode === "reentrant") f.hooks.observe = () => { nested = f.host.verifyDetailed(wire, plan, signal()); };
+    if (mode === "boolean_first") assert.equal(f.host.verify(wire, plan, signal()), true);
+    const result = await f.host.verifyDetailed(wire, plan, signal());
+    if (mode === "close" || mode === "abort") {
+      assert.deepEqual(result, { verified: false, diagnostic: { code: "verification_interrupted" } });
+    } else if (mode === "boolean_first") {
+      assert.deepEqual(result, { verified: false, diagnostic: { code: "completion_unavailable" } });
+    } else assert.deepEqual(result, { verified: true });
+    if (mode === "reentrant" || mode === "detach_reentry") {
+      assert.deepEqual(nested, { verified: false, diagnostic: { code: "completion_unavailable" } });
+    }
+    assert.equal(f.host.verify(wire, plan, signal()), false);
+    assert.equal(f.active, null);
+  }
+});

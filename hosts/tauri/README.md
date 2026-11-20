@@ -11,6 +11,7 @@ contains a portable execution adapter and an optional macOS desktop shell.
 | Run the original one-shot form | [TypeScript host](../../docs/typescript-host.md#build-and-run) |
 | Use the application conversation with offline or model planning | [Agent entry](../../docs/agent-entry.md#run-the-interactive-reference) |
 | Use the same agent with a second TypeScript GUI | [Task board](../../docs/taskboard-host.md) |
+| Use multiple named inputs in a real TypeScript GUI | [Article application](../../docs/article-host.md) |
 | Register objects in another JS/TS application | [JavaScript SDK](../../docs/javascript-sdk.md) |
 | Run the same bridge without a WebView | [Independent Node consumer](../../consumer/README.md) |
 | Launch one real VM worker per task from an existing Node application | [Node-owned agent](../../docs/node-agent-host.md) |
@@ -50,18 +51,23 @@ The two applications share the conversation, provider and verifier while native
 startup pins each application's page and report identity; see the
 [task board guide](../../docs/taskboard-host.md).
 
+The `--agent-article` entry opens an in-memory title/content editor and publication
+preview. Its separate v3 catalog is available through `--describe-agent-article`.
+It uses the same conversation and providers with the explicit named-task native
+entry; see the [article guide](../../docs/article-host.md).
+
 ## Source Map
 
 | Location | Responsibility |
 | --- | --- |
 | `src/lib.rs`, `catalog.rs`, `gateway.rs`, `host.rs`, `task.rs` | Application wrappers and compatible re-exports of the standalone registered-object core |
-| `src/agent_semantics.rs`, `board_semantics.rs`, `application.rs` | Form/board declarations and host-selected application identity |
+| `src/agent_semantics.rs`, `board_semantics.rs`, `article_semantics.rs`, `application.rs` | Application declarations and host-selected identity |
 | `src/desktop/mod.rs` | Conditional desktop module boundary |
 | `src/desktop/agent.rs`, `model.rs` | Conversation IPC/lifetimes and native model transport |
 | `src/desktop/form.rs`, `wire.rs` | Original form and shared transport correlation |
 | `src/desktop/*/tests.rs` | Tests of the corresponding private modules |
-| `frontend/src/app.ts`, `agent-app.ts`, `agent-board-app.ts` | One-shot, form chat and board chat entry points |
-| `frontend/src/form/`, `board/` | Separate application models and views |
+| `frontend/src/app.ts`, `agent-app.ts`, `agent-board-app.ts`, `agent-article-app.ts` | One-shot and three application chat entry points |
+| `frontend/src/form/`, `board/`, `article/` | Separate application models and views |
 | `frontend/src/agent/` | Host/provider adapters and task/workflow result displays |
 | `frontend/src/bridge.ts`, `tauri-api.ts` | SDK exports and typed Tauri IPC boundary |
 | `frontend/public/`, `frontend/tests/` | Static pages and application tests |
@@ -78,7 +84,7 @@ so private relative imports resolve. Shared catalog and source goldens live in
 
 The portable gateway, native authority, task compiler and VM driver live in
 [`../registered`](../registered/README.md). Tauri's existing Rust APIs re-export
-those exact types and preserve their behavior. Form and task-board identities,
+those exact types and preserve their behavior. Form, task-board and article identities,
 semantic catalogs, desktop IPC and report naming remain here. The old
 `examples/agent_worker.rs` delegates to the standalone `leselang-agent-worker`;
 Node applications no longer need this workspace to build their execution worker.

@@ -81,21 +81,27 @@ impl TaskDescription {
             inputs: &self.inputs,
             steps: &self.steps,
             result: &self.result,
-            execution: &self.execution,
+            execution: InputConvention::Legacy(&self.execution),
         }
         .validate(catalog, operations, literal(&self.verification.result)?)?;
         self.verification.validate(&self.inputs)
     }
 }
 
-// Shared borrowed validation keeps both public versions source-compatible and
+// Shared borrowed validation keeps public versions source-compatible and
 // rejects oversized owned declarations without first cloning their contents.
+#[derive(Clone, Copy)]
+enum InputConvention<'a> {
+    Legacy(&'a ExecutionStyle),
+    Named(&'a v3::ExecutionStyle),
+}
+
 struct TaskBody<'a> {
     summary: &'a str,
     inputs: &'a [TaskInput],
     steps: &'a [TaskStep],
     result: &'a Term,
-    execution: &'a ExecutionStyle,
+    execution: InputConvention<'a>,
 }
 
 impl TaskBody<'_> {
@@ -106,14 +112,33 @@ impl TaskBody<'_> {
         result_type: ScalarType,
     ) -> Result<(), DescriptionError> {
         summary(self.summary)?;
-        limit(self.inputs.len() <= 1 && self.steps.len() <= MAX_STEPS)?;
+        limit(self.steps.len() <= MAX_STEPS)?;
         require(!self.steps.is_empty())?;
         match self.execution {
-            ExecutionStyle::NoText => require(self.inputs.is_empty())?,
-            ExecutionStyle::NamedText | ExecutionStyle::Text => require(self.inputs.len() == 1)?,
+            InputConvention::Legacy(style) => {
+                limit(self.inputs.len() <= 1)?;
+                match style {
+                    ExecutionStyle::NoText => require(self.inputs.is_empty())?,
+                    ExecutionStyle::NamedText | ExecutionStyle::Text => {
+                        require(self.inputs.len() == 1)?
+                    }
+                }
+            }
+            InputConvention::Named(style) => {
+                limit(self.inputs.len() <= v3::MAX_INPUTS)?;
+                match style {
+                    v3::ExecutionStyle::NoText => require(self.inputs.is_empty())?,
+                    v3::ExecutionStyle::NamedStrings => require(!self.inputs.is_empty())?,
+                }
+            }
         }
-        for input in self.inputs {
+        for (index, input) in self.inputs.iter().enumerate() {
             require(name(&input.name) && input.scalar_type == ScalarType::String)?;
+            require(
+                !self.inputs[..index]
+                    .iter()
+                    .any(|prior| prior.name == input.name),
+            )?;
         }
         let mut bindings = Bindings::new();
         let mut calls = 0;
@@ -393,7 +418,58 @@ impl v2::SemanticDescription {
                 inputs: &task.inputs,
                 steps: &task.steps,
                 result: &task.result,
-                execution: &task.execution,
+                execution: InputConvention::Legacy(&task.execution),
+            }
+            .validate(
+                catalog,
+                &self.operations,
+                task.verification.result.scalar_type(),
+            )?;
+            ReportBody {
+                kind: &task.verification.kind,
+                max_fuel: task.verification.max_fuel,
+                predicates: &task.verification.predicates,
+            }
+            .validate(&task.inputs)?;
+        }
+        Ok(())
+    }
+}
+
+impl v3::SemanticDescription {
+    /// Validate named string tasks independently of the retained v1/v2 rules.
+    pub fn validate(&self, catalog: &CatalogDescription) -> Result<(), DescriptionError> {
+        catalog.validate()?;
+        require(self.version == v3::VERSION)?;
+        limit(
+            self.tasks.len() <= MAX_TASKS && self.operations.len() <= super::super::MAX_OPERATIONS,
+        )?;
+        require(!self.tasks.is_empty())?;
+        for (index, operation) in self.operations.iter().enumerate() {
+            require(
+                catalog
+                    .operations
+                    .iter()
+                    .any(|item| item.name == operation.operation),
+            )?;
+            require(
+                !self.operations[..index]
+                    .iter()
+                    .any(|prior| prior.operation == operation.operation),
+            )?;
+            summary(&operation.summary)?;
+        }
+        for (index, task) in self.tasks.iter().enumerate() {
+            require(
+                name(&task.id) && !self.tasks[..index].iter().any(|prior| prior.id == task.id),
+            )?;
+            task.verification.result.validate()?;
+            TaskBody {
+                summary: &task.summary,
+                inputs: &task.inputs,
+                steps: &task.steps,
+                result: &task.result,
+                execution: InputConvention::Named(&task.execution),
             }
             .validate(
                 catalog,

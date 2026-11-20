@@ -10,6 +10,10 @@ pub(crate) fn describe_board() -> Result<CatalogDescription, Error> {
     leselang_registered_host::describe_catalog("tauri.taskboard")
 }
 
+pub(crate) fn describe_article() -> Result<CatalogDescription, Error> {
+    leselang_registered_host::describe_catalog("tauri.article")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

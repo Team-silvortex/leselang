@@ -1,6 +1,6 @@
 use leselang_tauri_host::{
-    AgentApplication, Scope, Transport, prepare_task, run_prepared_registered_task,
-    run_prepared_task, run_prepared_task_for_application,
+    AgentApplication, Scope, Transport, prepare_named_task, prepare_task,
+    run_prepared_registered_task, run_prepared_task, run_prepared_task_for_application,
 };
 use serde_json::{Value, json};
 
@@ -36,7 +36,11 @@ fn scope() -> Scope {
 #[test]
 fn typed_host_configuration_changes_only_report_identity_not_vm_execution() {
     let mut reports = Vec::new();
-    for application in [AgentApplication::Form, AgentApplication::TaskBoard] {
+    for application in [
+        AgentApplication::Form,
+        AgentApplication::TaskBoard,
+        AgentApplication::Article,
+    ] {
         let task = prepare_task("fn main() = 42", Vec::new()).unwrap();
         let mut transport = EmptyRegistry {
             live: true,
@@ -87,7 +91,11 @@ fn typed_host_configuration_changes_only_report_identity_not_vm_execution() {
 
 #[test]
 fn an_application_identity_never_reopens_a_closed_transport() {
-    for application in [AgentApplication::Form, AgentApplication::TaskBoard] {
+    for application in [
+        AgentApplication::Form,
+        AgentApplication::TaskBoard,
+        AgentApplication::Article,
+    ] {
         let task = prepare_task("fn main() = 42", Vec::new()).unwrap();
         let mut transport = EmptyRegistry {
             live: false,
@@ -98,4 +106,37 @@ fn an_application_identity_never_reopens_a_closed_transport() {
         );
         assert_eq!(transport.requests, 0);
     }
+}
+
+#[test]
+fn article_named_arguments_use_the_shared_vm_and_native_report_fields() {
+    let title = "Title: \"quoted\" ✓";
+    let content = "Content\n正文";
+    let task = prepare_named_task(
+        "fn main(title: string, content: string) = concat(left: title, right: content)",
+        vec![
+            ("content".into(), content.into()),
+            ("title".into(), title.into()),
+        ],
+    )
+    .unwrap();
+    let mut transport = EmptyRegistry {
+        live: true,
+        requests: 0,
+    };
+    let report =
+        run_prepared_task_for_application(&mut transport, scope(), task, AgentApplication::Article)
+            .unwrap();
+    assert_eq!(report["profile"], "tauri.article");
+    assert_eq!(report["kind"], "tauri_task_run");
+    assert_eq!(
+        report["result"],
+        json!({"type":"string", "value":format!("{title}{content}")})
+    );
+    assert_eq!(report["native_before"], json!([]));
+    assert_eq!(report["native_after"], json!([]));
+    assert!(report.get("objects_before").is_none());
+    assert!(report.get("objects_after").is_none());
+    assert_eq!(report["effects"], 0);
+    assert_eq!(transport.requests, 1);
 }

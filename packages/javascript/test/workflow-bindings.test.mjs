@@ -72,6 +72,10 @@ function fixture(steps, options = {}) {
         calls.verify++;
         return options.verify ? options.verify(value, plan, signal, calls.verify) : true;
       },
+      ...(options.verifyDetailed ? { async verifyDetailed(value, plan, signal) {
+        calls.detailed = (calls.detailed ?? 0) + 1;
+        return options.verifyDetailed(value, plan, signal, calls.detailed);
+      } } : {}),
     },
     onEvent(state) { options.event?.(state, session); },
   });
@@ -285,4 +289,38 @@ test("cancelling between verified source and target preserves evidence without c
   assert.equal(result.steps[0].status, "verified");
   assert.equal(result.possiblePartialEffects, true);
   assert.deepEqual(f.writes, ["kept"]);
+});
+
+test("referenced semantic failures expose detail only on the opt-in host path and never reach the target", async () => {
+  for (const detailed of [false, true]) {
+    const f = fixture([source("read_count"), write(ref(0, "decimal"))], {
+      execute: (_plan, _signal, report) => report.replace('"proof":true', '"proof":false'),
+      ...(detailed ? { verifyDetailed: () => ({ verified: true }) } : {}),
+    });
+    const result = await f.session.submit("only bind verified evidence");
+    assert.equal(result.status, "failed");
+    assert.equal(result.stoppedStep, 0);
+    assert.equal(result.steps.length, 1);
+    assert.equal(result.possiblePartialEffects, true);
+    assert.equal(f.calls.execute, 1);
+    assert.equal(f.calls.verify, 0);
+    assert.equal(f.calls.detailed ?? 0, 0, "semantic refusal needs no application verifier call");
+    assert.deepEqual(f.writes, []);
+    if (detailed) {
+      assert.deepEqual(result.verificationFailure, { code: "predicate_failed", predicate: "proof" });
+      assert.equal(result.verificationFailure, result.steps[0].verificationFailure);
+    } else assert.equal(Object.hasOwn(result, "verificationFailure"), false);
+  }
+});
+
+test("successful referenced semantic evidence invokes the detailed application verifier once per step", async () => {
+  const f = fixture([source("read_count"), write(ref(0, "decimal"))], {
+    verifyDetailed: () => ({ verified: true }),
+  });
+  const result = await f.session.submit("forward verified count");
+  assert.equal(result.status, "verified");
+  assert.equal(f.calls.verify, 0);
+  assert.equal(f.calls.detailed, 2);
+  assert.deepEqual(f.writes, ["3"]);
+  assert.equal(Object.hasOwn(result, "verificationFailure"), false);
 });

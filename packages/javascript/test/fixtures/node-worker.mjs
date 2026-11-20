@@ -2,7 +2,8 @@
 const mode = process.argv[2];
 const command = process.argv.at(-1);
 const report = '{"integer":18446744073709551615}';
-const envelope = (kind, fields) => ({ agent_worker_version: 1, kind, ...fields });
+let version = 1;
+const envelope = (kind, fields) => ({ agent_worker_version: version, kind, ...fields });
 const line = (value) => `${JSON.stringify(value)}\n`;
 function finish(bytes, code = 0) {
   process.stdout.write(bytes, () => process.exit(code));
@@ -30,11 +31,14 @@ if (command === "--describe") {
   else finish('{"schema_version":1,"profile":"javascript.registered"}');
 } else {
   const start = await readLine();
+  version = mode === "downgrade" ? 1 : mode === "upgrade" ? 2 : start.agent_worker_version;
+  if (![1, 2].includes(start.agent_worker_version)) throw new Error("unsupported fixture start");
   const request = { transport_version: 1, ...start.scope, request_id: 1, budget_ms: 1000,
     operation: "gui.list", arguments: {} };
   const challenge = "f".repeat(64);
   const requestFrame = envelope("request", { challenge, request });
-  const terminal = envelope("report", { report_json: report });
+  const terminal = envelope("report", { report_json: mode === "echo_arguments"
+    ? JSON.stringify({ version, source: start.source, arguments: start.arguments }) : report });
   if (mode === "ignore_term") {
     process.on("SIGTERM", () => {});
     process.stderr.write(`ready:${process.pid}\n`);
@@ -72,7 +76,7 @@ if (command === "--describe") {
     const replyPromise = readLine();
     process.stdout.write(line(requestFrame));
     const reply = await replyPromise;
-    if (reply.agent_worker_version !== 1 || reply.kind !== "reply" || reply.challenge !== challenge
+    if (reply.agent_worker_version !== version || reply.kind !== "reply" || reply.challenge !== challenge
       || reply.reply.window !== start.scope.window || reply.reply.epoch !== start.scope.epoch
       || reply.reply.session !== start.scope.session || reply.reply.request_id !== 1) {
       finish(line(envelope("error", { error: "fixture_bad_reply" })), 1);

@@ -30,6 +30,7 @@ test("packed public ESM and declarations work in an external JavaScript/TypeScri
       "dist/agent/workflow-bindings.d.ts", "dist/agent/workflow-bindings.js", "dist/agent/workflow.d.ts", "dist/agent/workflow.js",
       "dist/bridge.d.ts", "dist/bridge.js",
       "dist/index.d.ts", "dist/index.js",
+      "dist/verification.d.ts", "dist/verification.js",
       "dist/node/index.d.ts", "dist/node/index.js", "dist/node/transport.d.ts", "dist/node/transport.js",
       "dist/providers/model.d.ts", "dist/providers/model.js", "dist/providers/semantic.d.ts", "dist/providers/semantic.js",
       "dist/semantics/catalog.d.ts", "dist/semantics/catalog.js", "dist/semantics/index.d.ts", "dist/semantics/index.js",
@@ -118,8 +119,12 @@ for (const value of ["first value", "second value"]) {
   const report = { schema_version: 1, profile: "external.observed", kind: "external_report", effects: 1, fuel_remaining: 99,
     result: { type: "string", value }, observed_value: value, fresh: true };
   assert.equal(observed.verify(report), true);
+  assert.deepEqual(observed.verifyDetailed(report), { verified: true });
   report.observed_value = "stale";
   assert.equal(observed.verify(report), false);
+  const failure = observed.verifyDetailed(report);
+  assert.deepEqual(failure, { verified: false, diagnostic: { code: "result_evidence_mismatch" } });
+  assert.ok(Object.isFrozen(failure) && Object.isFrozen(failure.diagnostic));
 }
 for (const actual of ["expected", "changed"]) {
   let executions = 0;
@@ -256,8 +261,8 @@ import { Bridge, AgentSession, type Scope, type Adapter, type ActionContext, typ
   type RegisteredControl, type RegisteredActionContext, type RegisteredApplicationConnection, type RegisteredAgentTransport,
   type RegisteredAgentRun, type RegisteredAgentEndpoint, type RegisteredAgentHostOptions, type RegisteredAgentHost } from "@leselang/bridge";
 import { createNodeAgentTransport, type NodeAgentTransportOptions } from "@leselang/bridge/node";
-import { defineSemanticCatalog, defineRegisteredTask, type RegisteredTaskDefinition, type RegisteredTaskStep,
-  type SemanticDescription, type SemanticDescriptionV1, type SemanticDescriptionV2,
+import { defineSemanticCatalog, defineRegisteredTask, defineRegisteredTaskV3, type RegisteredTaskDefinition, type RegisteredTaskDefinitionV3, type RegisteredTaskStep,
+  type SemanticDescription, type SemanticDescriptionV1, type SemanticDescriptionV2, type SemanticDescriptionV3,
   type SemanticTaskDescriptionV1, type SemanticTaskDescriptionV2, type SemanticLiteral,
   type SemanticTerm, type SemanticReportPredicate, type SemanticObservedResult } from "@leselang/bridge";
 const exactLiteral: SemanticLiteral = { kind: "integer", value: 18_446_744_073_709_551_615n };
@@ -286,6 +291,20 @@ registeredDefinition.steps.push(registeredStep);
 void noFailure; void rawText;
 const v1: SemanticDescriptionV1 = { version: 1, operations: [], tasks: [fixedTask] };
 const v2: SemanticDescriptionV2 = { version: 2, operations: [], tasks: [observedTask, fixedTask] };
+const namedDefinition: RegisteredTaskDefinitionV3 = { ...registeredDefinition,
+  inputs: [{ name: "title", scalar_type: "string" }, { name: "content", scalar_type: "string" }],
+  execution: "named_strings" };
+const namedTask = defineRegisteredTaskV3;
+const v3: SemanticDescriptionV3 = { version: 3, operations: [], tasks: [{ ...fixedTask,
+  inputs: namedDefinition.inputs, execution: "named_strings" }] };
+const namedPlan: WorkflowPlan = { summary: "Two fields", source: "source", inputMode: "named_strings",
+  arguments: { title: "literal title", content: "literal content" } };
+void namedTask; void namedDefinition; void v3; void namedPlan;
+// @ts-expect-error v2 must opt in to a separate task type for multi-input execution
+const oldNamedTask: SemanticTaskDescriptionV2 = { ...fixedTask, execution: "named_strings" };
+// @ts-expect-error an unknown input transport mode cannot be selected
+const invalidMode: WorkflowPlan = { ...namedPlan, inputMode: "automatic" };
+void oldNamedTask; void invalidMode;
 const author: (base: unknown, semantics: SemanticDescription) => string = defineSemanticCatalog;
 void author; void v1; void v2;
 // @ts-expect-error v1 cannot declare an observed result
@@ -361,6 +380,14 @@ const semanticProvider: AgentProvider = createSemanticProvider(semanticOptions);
 const compileCatalog: (data: unknown) => SemanticCatalog = prepareSemanticCatalog;
 const describeTask = (task: SemanticTaskInfo): string => task.id;
 const candidate = (task: PreparedSemanticTask): WorkflowPlan => task.plan;
+const detailed = (task: PreparedSemanticTask, report: unknown): import("@leselang/bridge").VerificationResult => task.verifyDetailed(report);
+const failureCode: import("@leselang/bridge").VerificationFailureCode = "predicate_failed";
+const diagnostic: import("@leselang/bridge").VerificationDiagnostic = { code: failureCode, predicate: "saved_title" };
+// @ts-expect-error diagnostics use a closed set of machine-readable codes
+const invalidDiagnostic: import("@leselang/bridge").VerificationDiagnostic = { code: "arbitrary message" };
+// @ts-expect-error a failed result requires its diagnostic
+const missingDiagnostic: import("@leselang/bridge").VerificationResult = { verified: false };
+void detailed; void diagnostic; void invalidDiagnostic; void missingDiagnostic;
 void semanticProvider; void compileCatalog; void describeTask; void candidate;
 const scope: Scope = { window: "worker", epoch: "instance-1", session: "task-1" };
 const bridge = new Bridge(scope);

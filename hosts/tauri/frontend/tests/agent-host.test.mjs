@@ -35,7 +35,7 @@ async function fixture(catalog_ = catalog) {
         assert.equal(args.observedResults, true);
         return Promise.resolve(catalog_);
       }
-      if (command === "agent_start_task") {
+      if (command === "agent_start_task" || command === "agent_start_named_task") {
         const pending = deferred(); starts.push({ ...pending, args }); return pending.promise;
       }
       if (command === "agent_reply" && deferReplies) {
@@ -92,6 +92,26 @@ test("application host uses fresh scoped bridges and keeps plan data separate ac
     assert.equal(f.form.active, null);
   }
   assert.notEqual(f.starts[0].args.session, f.starts[1].args.session);
+});
+
+test("an admitted v3 plan routes to the explicit named-input native command", async () => {
+  const description = JSON.parse(catalog);
+  const task = description.semantics.tasks.find((task) => task.id === "fill_and_save");
+  task.inputs.push({ name: "tag", scalar_type: "string" });
+  task.execution = "named_strings";
+  description.semantics = { ...description.semantics, version: 3, tasks: [task] };
+  const raw = JSON.stringify(description);
+  const declared = prepareSemanticCatalog(raw).prepare("fill_and_save", { text: "正文 ✓", tag: "literal label" }).plan;
+  const f = await fixture(raw);
+  const pending = f.host.execute(declared, new AbortController().signal);
+  const start = f.starts[0];
+  assert.equal(f.calls.at(-1).command, "agent_start_named_task");
+  assert.deepEqual({ ...start.args.arguments }, { text: "正文 ✓", tag: "literal label" });
+  assert.equal(start.args.source, declared.source);
+  start.resolve({ routing: "named" });
+  assert.deepEqual(await pending, { routing: "named" });
+  assert.equal(f.calls.some((call) => call.command === "agent_start_task"), false);
+  f.host.close();
 });
 
 test("cancellation closes the current bridge while awaiting actual host settlement", async () => {

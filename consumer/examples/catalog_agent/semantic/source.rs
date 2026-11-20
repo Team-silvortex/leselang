@@ -111,7 +111,7 @@ fn uses_condition(condition: &Condition, names: &mut BTreeSet<String>) {
     uses_term(right, names);
 }
 
-fn live_names(task: &v2::TaskDescription, start: usize) -> BTreeSet<String> {
+fn live_names(task: &TaskSource<'_>, start: usize) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     for step in &task.steps[start..] {
         match step {
@@ -127,7 +127,7 @@ fn live_names(task: &v2::TaskDescription, start: usize) -> BTreeSet<String> {
             }
         }
     }
-    uses_term(&task.result, &mut names);
+    uses_term(task.result, &mut names);
     names
 }
 
@@ -138,11 +138,79 @@ fn type_name(ty: &TypeDescription) -> &str {
     }
 }
 
+/// Borrowed source inputs after the original version-specific validation.
+pub(in crate::plan) struct TaskSource<'a> {
+    pub inputs: &'a [TaskInput],
+    pub steps: &'a [TaskStep],
+    pub result: &'a Term,
+    pub named_partition: bool,
+}
+
+// Helpers inline into the caller's lexical scope: each captured parameter adds
+// a binding even when an older temporary is no longer live. Choose v3 cuts that
+// minimize those wrappers without expanding the parser or host limits. Legacy
+// versions retain their original fixed-nine partition and byte-identical source.
+fn named_partition(task: &TaskSource<'_>, max_chunks: usize) -> Result<Vec<usize>, String> {
+    let length = task.steps.len();
+    let mut known = task
+        .inputs
+        .iter()
+        .map(|input| input.name.clone())
+        .collect::<BTreeSet<_>>();
+    let mut captures = vec![0; length + 1];
+    for (end, capture) in captures.iter_mut().enumerate().take(length).skip(1) {
+        if let TaskStep::Call { binding, .. } = &task.steps[end - 1] {
+            known.insert(binding.clone());
+        }
+        *capture = known.intersection(&live_names(task, end)).count();
+    }
+    #[derive(Clone)]
+    struct Partition {
+        cost: usize,
+        ends: Vec<usize>,
+    }
+    let mut best = vec![vec![None::<Partition>; max_chunks + 1]; length + 1];
+    for partition in &mut best[length] {
+        *partition = Some(Partition {
+            cost: 0,
+            ends: Vec::new(),
+        });
+    }
+    for remaining in 1..=max_chunks {
+        for start in (0..length).rev() {
+            // Descending ends preserve the longest earlier chunk on exact ties.
+            for end in ((start + 1)..=(start + 9).min(length)).rev() {
+                if end < length && captures[end] > 8 {
+                    continue;
+                }
+                let Some(suffix) = &best[end][remaining - 1] else {
+                    continue;
+                };
+                let cost = captures[end] + suffix.cost;
+                let count = suffix.ends.len() + 1;
+                if best[start][remaining]
+                    .as_ref()
+                    .is_some_and(|prior| (prior.cost, prior.ends.len()) <= (cost, count))
+                {
+                    continue;
+                }
+                let mut ends = vec![end];
+                ends.extend_from_slice(&suffix.ends);
+                best[start][remaining] = Some(Partition { cost, ends });
+            }
+        }
+    }
+    best[0][max_chunks]
+        .as_ref()
+        .map(|partition| partition.ends.clone())
+        .ok_or_else(|| "semantic task exceeds live helper parameter or function limits".into())
+}
+
 /// The caller validates the complete metadata first. Bounded stage functions and
 /// live parameter selection preserve the existing parser and host limits.
 pub(in crate::plan) fn generate(
     catalog: &CatalogDescription,
-    task: &v2::TaskDescription,
+    task: &TaskSource<'_>,
 ) -> Result<String, String> {
     if task.steps.iter().any(|step| {
         matches!(step, TaskStep::Call { operation, .. }
@@ -150,7 +218,24 @@ pub(in crate::plan) fn generate(
     }) {
         return Err("semantic operation collides with a generated function name".into());
     }
-    let chunks = task.steps.chunks(9).collect::<Vec<_>>();
+    let contains = task.steps.iter().any(|step| {
+        matches!(step, TaskStep::Guard { conditions, .. }
+        if conditions.iter().any(|condition| matches!(condition, Condition::Contains { .. })))
+    });
+    let ends = if task.named_partition {
+        named_partition(task, 8 - usize::from(contains))?
+    } else {
+        (0..task.steps.len())
+            .step_by(9)
+            .map(|start| (start + 9).min(task.steps.len()))
+            .collect()
+    };
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    for end in ends {
+        chunks.push(&task.steps[start..end]);
+        start = end;
+    }
     let mut known = task
         .inputs
         .iter()
@@ -162,8 +247,10 @@ pub(in crate::plan) fn generate(
         })
         .collect::<BTreeMap<_, _>>();
     let mut parameters = Vec::new();
+    let mut start = 0;
     for (index, steps) in chunks.iter().enumerate() {
-        let live = live_names(task, index * 9);
+        let live = live_names(task, start);
+        start += steps.len();
         let selected = known
             .iter()
             .filter(|(name, _)| index == 0 || live.contains(*name))
@@ -187,10 +274,6 @@ pub(in crate::plan) fn generate(
             }
         }
     }
-    let contains = task.steps.iter().any(|step| {
-        matches!(step, TaskStep::Guard { conditions, .. }
-        if conditions.iter().any(|condition| matches!(condition, Condition::Contains { .. })))
-    });
     if chunks.len() + usize::from(contains) > 8 {
         return Err("semantic task exceeds the host function limit".into());
     }
@@ -207,7 +290,7 @@ pub(in crate::plan) fn generate(
             format!("_lese_stage_{index}")
         };
         let mut body = if index + 1 == chunks.len() {
-            term(&task.result)
+            term(task.result)
         } else {
             let arguments = parameters[index + 1]
                 .iter()

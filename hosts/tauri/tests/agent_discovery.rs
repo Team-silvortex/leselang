@@ -40,6 +40,13 @@ fn agent_catalog_cli_refuses_execution_options_without_partial_output() {
         vec!["--describe-agent-board", "--run", "missing"],
         vec!["--describe-agent-board", "--report-json"],
         vec!["--hold", "--describe-agent-board"],
+        vec!["--describe-agent-article", "--agent-article"],
+        vec!["--describe-agent-article", "--agent"],
+        vec!["--describe-agent-article", "--text", "literal"],
+        vec!["--describe-agent-article", "--run", "missing"],
+        vec!["--describe-agent-article", "--report-json"],
+        vec!["--describe-agent-article", "--describe-agent-board"],
+        vec!["--hold", "--describe-agent-article"],
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_leselang-tauri-host"))
             .args(args)
@@ -50,6 +57,71 @@ fn agent_catalog_cli_refuses_execution_options_without_partial_output() {
         assert!(output.stdout.is_empty());
         assert!(!output.stderr.is_empty());
     }
+}
+
+#[test]
+fn article_catalog_is_an_independent_offline_v3_contract() {
+    let output = Command::new(env!("CARGO_BIN_EXE_leselang-tauri-host"))
+        .arg("--describe-agent-article")
+        .env("PATH", "")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        output.stdout,
+        leselang_tauri_host::describe_agent_article()
+            .unwrap()
+            .as_bytes()
+    );
+    assert_eq!(
+        output.stdout,
+        include_bytes!("../../../fixtures/host-semantics/tauri-article-semantics-v3.json")
+    );
+    assert_eq!(
+        output.stdout.iter().filter(|byte| **byte == b'\n').count(),
+        1
+    );
+    let article: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(article["profile"], "tauri.article");
+    assert_eq!(article["semantics"]["version"], 3);
+    let tasks = article["semantics"]["tasks"].as_array().unwrap();
+    assert_eq!(
+        tasks
+            .iter()
+            .map(|task| task["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        [
+            "read_title",
+            "read_content",
+            "publish_article",
+            "check_article"
+        ]
+    );
+    assert_eq!(
+        tasks[2]["inputs"],
+        serde_json::json!([
+            {"name":"title", "scalar_type":"string"},
+            {"name":"content", "scalar_type":"string"},
+        ])
+    );
+    assert_eq!(tasks[2]["execution"], "named_strings");
+    let form: serde_json::Value =
+        serde_json::from_str(&leselang_tauri_host::describe_agent_observed().unwrap()).unwrap();
+    assert_eq!(article["operations"], form["operations"]);
+    assert_eq!(article["native_types"], form["native_types"]);
+    assert_eq!(
+        leselang_tauri_host::describe_agent_observed()
+            .unwrap()
+            .as_bytes(),
+        include_bytes!("../../../fixtures/host-semantics/tauri-agent-semantics-v2.json")
+    );
+    assert_eq!(
+        leselang_tauri_host::describe_agent_board()
+            .unwrap()
+            .as_bytes(),
+        include_bytes!("../../../fixtures/host-semantics/tauri-board-semantics-v2.json")
+    );
 }
 
 #[test]

@@ -44,8 +44,8 @@ const MAX_STEPS = 8;
 const CATALOG_LIMIT = 256 * 1024;
 
 /** Own a finite dense list without invoking accessors or iterators. */
-function entries(value: unknown, nonempty: boolean, label = "bindings"): unknown[] {
-  if (!Array.isArray(value) || value.length > MAX_STEPS || (nonempty && value.length === 0)
+function entries(value: unknown, nonempty: boolean, label = "bindings", maximum = MAX_STEPS): unknown[] {
+  if (!Array.isArray(value) || value.length > maximum || (nonempty && value.length === 0)
     || Reflect.ownKeys(value).length !== value.length + 1) fault(`invalid_workflow_${label}`);
   const result: unknown[] = [];
   for (let index = 0; index < value.length; index++) {
@@ -72,7 +72,7 @@ function index(value: unknown, label = "binding"): number {
 export function admitWorkflowBindings(
   value: unknown, steps: readonly WorkflowPlan[], catalog: SemanticCatalog, rawCatalog: unknown,
 ): readonly AgentWorkflowBinding[] {
-  const values = entries(value, false);
+  const values = entries(value, false, "bindings", MAX_STEPS * 8);
   if (values.length === 0) return Object.freeze([]);
   // The result type is the host's declared report contract. Public task info
   // remains compatible; no model-selected type or conversion is inferred.
@@ -86,8 +86,9 @@ export function admitWorkflowBindings(
     const conversion = format(binding.format);
     const source = steps[fromStep], target = steps[step];
     if (!source || !target || fromStep >= step) fault("invalid_workflow_binding_reference");
-    const input = catalog.tasks.find((task) => task.id === target.task)?.inputName;
-    if (input !== argument || target.arguments[argument] !== "") fault("invalid_workflow_binding_target");
+    const info = catalog.tasks.find((task) => task.id === target.task);
+    const inputs = info?.inputNames ?? (info?.inputName ? [info.inputName] : []);
+    if (!inputs.includes(argument) || target.arguments[argument] !== "") fault("invalid_workflow_binding_target");
     const key = `${step}:${argument}`;
     if (used.has(key)) fault("duplicate_workflow_binding");
     used.add(key);
@@ -144,8 +145,9 @@ export function prepareSemanticWorkflow(catalogValue: unknown, values: readonly 
       requirements.push({ step, fromStep: index(requirement.fromStep, "requirement"), format: format(requirement.format, "requirement"),
         equals: boundedText(requirement.equals, 4096, "workflow_requirement_equals") });
     }
+    const info = catalog.tasks.find((declaration) => declaration.id === task);
     if (typeof candidate.arguments === "object" && candidate.arguments !== null
-      && Reflect.ownKeys(candidate.arguments).length > 1) fault("invalid_workflow_arguments");
+      && Reflect.ownKeys(candidate.arguments).length > (info?.inputNames ? 8 : 1)) fault("invalid_workflow_arguments");
     const supplied = fields(candidate.arguments);
     const arguments_: Record<string, string> = Object.create(null);
     for (const [argument, suppliedValue] of Object.entries(supplied)) {

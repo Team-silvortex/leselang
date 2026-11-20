@@ -1,4 +1,5 @@
 /** Public package entry. Implementation modules are not package subpath APIs. */
+export type { VerificationFailureCode, VerificationDiagnostic, VerificationResult } from "./verification.js";
 export { AgentSession } from "./agent/session.js";
 export { createRegisteredAgentHost } from "./agent/registered-host.js";
 export { createRegisteredApplication } from "./agent/registered-application.js";
@@ -22,9 +23,9 @@ export type {
 export { prepareSemanticCatalog } from "./semantics/index.js";
 export type { SemanticCatalog, SemanticTaskInfo, PreparedSemanticTask } from "./semantics/index.js";
 export { defineSemanticCatalog } from "./semantics/authoring.js";
-export { defineRegisteredTask } from "./semantics/registered-task.js";
+export { defineRegisteredTask, defineRegisteredTaskV3 } from "./semantics/registered-task.js";
 export type {
-  RegisteredTaskDefinition, RegisteredTaskStep, RegisteredReadControlStep,
+  RegisteredTaskDefinition, RegisteredTaskDefinitionV3, RegisteredTaskStep, RegisteredReadControlStep,
   RegisteredSetControlTextStep, RegisteredClickControlStep,
 } from "./semantics/registered-task.js";
 export type {
@@ -32,8 +33,8 @@ export type {
   SemanticTaskInput, SemanticTaskArgument, SemanticTerm, SemanticCondition, SemanticTaskStep,
   SemanticReportSegment, SemanticReportTerm, SemanticReportRelation, SemanticReportPredicate,
   SemanticObservedResult, SemanticResultContract, SemanticReportContractV1, SemanticReportContractV2,
-  SemanticReportContract, SemanticTaskDescriptionV1, SemanticTaskDescriptionV2, SemanticTaskDescription,
-  SemanticDescriptionV1, SemanticDescriptionV2, SemanticDescription,
+  SemanticReportContract, SemanticTaskDescriptionV1, SemanticTaskDescriptionV2, SemanticTaskDescriptionV3, SemanticTaskDescription,
+  SemanticDescriptionV1, SemanticDescriptionV2, SemanticDescriptionV3, SemanticDescription,
 } from "./semantics/declarations.js";
 export { createSemanticProvider } from "./providers/semantic.js";
 export type { SemanticProviderOptions } from "./providers/semantic.js";

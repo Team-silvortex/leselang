@@ -442,7 +442,12 @@ fn description_value_for(
     if observed_results && !task_catalog {
         return Err("observed results require the explicit task catalog".into());
     }
-    let description = if application == AgentApplication::TaskBoard {
+    let description = if application == AgentApplication::Article {
+        if !task_catalog || !observed_results {
+            return Err("the article requires its explicit observed task catalog".into());
+        }
+        leselang_tauri_host::describe_agent_article()?
+    } else if application == AgentApplication::TaskBoard {
         if !task_catalog || !observed_results {
             return Err("the task board requires its explicit observed task catalog".into());
         }
@@ -491,13 +496,35 @@ fn prepare_task_input(
     source: &str,
     arguments: Value,
 ) -> Result<leselang_tauri_host::PreparedTask, String> {
+    leselang_tauri_host::prepare_task(source, task_arguments(arguments, 1)?)
+}
+
+fn prepare_named_task_input(
+    source: &str,
+    arguments: Value,
+) -> Result<leselang_tauri_host::PreparedTask, String> {
+    leselang_tauri_host::prepare_named_task(source, task_arguments(arguments, 8)?)
+}
+
+fn prepare_legacy_task_input(
+    application: AgentApplication,
+    source: &str,
+    arguments: Value,
+) -> Result<leselang_tauri_host::PreparedTask, String> {
+    if application == AgentApplication::Article {
+        return Err("the article requires the explicit named-string task entry".into());
+    }
+    prepare_task_input(source, arguments)
+}
+
+fn task_arguments(arguments: Value, maximum: usize) -> Result<Vec<(String, String)>, String> {
     let Value::Object(arguments) = arguments else {
         return Err("workflow arguments must be a named string map".into());
     };
-    if arguments.len() > 1 {
-        return Err("workflow accepts zero or one named string input".into());
+    if arguments.len() > maximum {
+        return Err("workflow argument count exceeds the selected entry limit".into());
     }
-    let arguments = arguments
+    arguments
         .into_iter()
         .map(|(name, value)| {
             let Value::String(value) = value else {
@@ -505,8 +532,7 @@ fn prepare_task_input(
             };
             Ok((name, value))
         })
-        .collect::<Result<Vec<_>, String>>()?;
-    leselang_tauri_host::prepare_task(source, arguments)
+        .collect::<Result<Vec<_>, String>>()
 }
 
 /// Additive entry: exact named arguments and all scalar results, with a raw
@@ -524,13 +550,59 @@ async fn agent_start_task(
     let application = caller(&webview)?;
     // Compile and bind the complete task before registry admission, transport
     // creation or application reads. Rejected work consumes no page session.
-    let task = prepare_task_input(&source, arguments)?;
+    let task = prepare_legacy_task_input(application, &source, arguments)?;
+    start_prepared_task(
+        &shared,
+        on_request,
+        epoch,
+        session,
+        source,
+        task,
+        application,
+    )
+    .await
+}
+
+/// Explicit v3 named-string entry; the legacy command keeps its one-input limit.
+#[tauri::command]
+async fn agent_start_named_task(
+    webview: WebviewWindow,
+    shared: State<'_, Shared>,
+    on_request: Channel<Value>,
+    epoch: String,
+    session: String,
+    source: String,
+    arguments: Value,
+) -> Result<String, String> {
+    let application = caller(&webview)?;
+    let task = prepare_named_task_input(&source, arguments)?;
+    start_prepared_task(
+        &shared,
+        on_request,
+        epoch,
+        session,
+        source,
+        task,
+        application,
+    )
+    .await
+}
+
+async fn start_prepared_task(
+    shared: &Shared,
+    on_request: Channel<Value>,
+    epoch: String,
+    session: String,
+    source: String,
+    task: leselang_tauri_host::PreparedTask,
+    application: AgentApplication,
+) -> Result<String, String> {
     let (run, mut endpoint) = shared
         .0
         .lock()
         .map_err(|_| "page lock failed")?
         .start_task(epoch, session, &source, on_request)?;
-    let report = complete(&shared, run, move || {
+    let report = complete(shared, run, move || {
         let scope = endpoint.scope.clone();
         leselang_tauri_host::run_prepared_task_for_application(
             &mut endpoint,
@@ -633,6 +705,10 @@ pub fn launch_board() -> Result<(), String> {
     launch_application(AgentApplication::TaskBoard)
 }
 
+pub fn launch_article() -> Result<(), String> {
+    launch_application(AgentApplication::Article)
+}
+
 fn launch_application(application: AgentApplication) -> Result<(), String> {
     let app = tauri::Builder::default()
         .manage(application)
@@ -645,6 +721,7 @@ fn launch_application(application: AgentApplication) -> Result<(), String> {
             agent_describe,
             agent_start,
             agent_start_task,
+            agent_start_named_task,
             agent_reply,
             agent_cancel,
             agent_closed,

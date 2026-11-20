@@ -45,22 +45,31 @@ export function fields(value: unknown, expected?: readonly string[]): Record<str
 
 export function proposal(value: unknown): WorkflowPlan {
   const plan = fields(value);
-  const expected = ["summary", "source", "arguments", "task"];
+  const expected = ["summary", "source", "arguments", "task", "inputMode"];
   if (["summary", "source", "arguments"].some((key) => !(key in plan)) ||
       Object.keys(plan).some((key) => !expected.includes(key))) fault("invalid_agent_record");
   const identifier = (value: unknown): value is string => typeof value === "string"
     && value.length <= 64 && /^[A-Za-z_][A-Za-z0-9_]*$/u.test(value)
     && !["fn", "true", "false", "none", "body"].includes(value) && !value.startsWith("_lese_");
   if ("task" in plan && !identifier(plan.task)) fault("invalid_plan_task");
+  if ("inputMode" in plan && plan.inputMode !== "named_strings") fault("invalid_plan_input_mode");
+  const named = plan.inputMode === "named_strings";
   const arguments_ = fields(plan.arguments);
   const entries = Object.entries(arguments_);
-  if (entries.length > 1 || entries.some(([name]) => !identifier(name))) fault("invalid_plan_arguments");
+  if (entries.length > (named ? 8 : 1) || entries.some(([name]) => !identifier(name))) fault("invalid_plan_arguments");
   const owned: Record<string, string> = Object.create(null);
-  for (const [name, value] of entries) owned[name] = boundedText(value, 4096, "plan_text");
+  let bytes = 0;
+  for (const [name, value] of entries) {
+    owned[name] = boundedText(value, 4096, "plan_text");
+    bytes += encoder.encode(owned[name]).length;
+    if (named && owned[name].includes("\0")) fault("invalid_plan_text");
+  }
+  if (named && bytes > 16 * 1024) fault("invalid_plan_arguments");
   return Object.freeze({
     summary: boundedText(plan.summary, 1024, "plan_summary", true),
     source: boundedText(plan.source, 16 * 1024, "plan_source", true),
     ...("task" in plan ? { task: plan.task as string } : {}),
+    ...(named ? { inputMode: "named_strings" as const } : {}),
     arguments: Object.freeze(owned),
   });
 }

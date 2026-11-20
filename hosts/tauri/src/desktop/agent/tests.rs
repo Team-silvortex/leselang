@@ -182,6 +182,48 @@ fn typed_command_admission_rejects_malformed_inputs_and_signatures() {
 }
 
 #[test]
+fn named_command_admits_complete_maps_without_relaxing_the_legacy_entry() {
+    let source = "fn main(title: string, content: string) = concat(left: title, right: content)";
+    let arguments = json!({"content":"正文 ✓", "title":"Title"});
+    assert!(prepare_task_input(source, arguments.clone()).is_err());
+    assert!(prepare_named_task_input(source, arguments).is_ok());
+    for arguments in [
+        json!({}),
+        json!({"title":"missing"}),
+        json!({"title":"a", "content":1}),
+        json!({"title":"a", "other":"wrong"}),
+        json!({"title":"a", "content":"x".repeat(4097)}),
+    ] {
+        assert!(prepare_named_task_input(source, arguments).is_err());
+    }
+    assert!(prepare_named_task_input("fn main() = true", json!({})).is_ok());
+    assert!(
+        prepare_named_task_input("fn main(flag: boolean) = flag", json!({"flag":"true"})).is_err()
+    );
+}
+
+#[test]
+fn article_zero_input_tasks_require_the_named_entry_before_registry_admission() {
+    for source in [
+        "fn main() = none",
+        "fn main(title: string) = title",
+        "invalid source",
+    ] {
+        let error = prepare_legacy_task_input(AgentApplication::Article, source, json!({}))
+            .err()
+            .unwrap();
+        assert_eq!(
+            error,
+            "the article requires the explicit named-string task entry"
+        );
+    }
+    assert!(prepare_named_task_input("fn main() = none", json!({})).is_ok());
+    for application in [AgentApplication::Form, AgentApplication::TaskBoard] {
+        assert!(prepare_legacy_task_input(application, "fn main() = none", json!({})).is_ok());
+    }
+}
+
+#[test]
 fn generic_completion_preserves_exact_results_and_shared_cancellation() {
     let mut registry = Registry::default();
     let (first, endpoint) = registry
@@ -428,16 +470,25 @@ fn agent_page_url_is_separate_from_legacy_and_remote_pages() {
 
 #[test]
 fn application_configuration_pins_exact_page_and_catalog_without_form_fallback() {
-    for application in [AgentApplication::Form, AgentApplication::TaskBoard] {
+    for application in [
+        AgentApplication::Form,
+        AgentApplication::TaskBoard,
+        AgentApplication::Article,
+    ] {
         for scheme in ["tauri://localhost", "http://tauri.localhost"] {
             let selected: tauri::Url = format!("{scheme}/{}", application.asset()).parse().unwrap();
             assert!(local_asset_for(application, &selected));
-            let other = match application {
-                AgentApplication::Form => AgentApplication::TaskBoard,
-                AgentApplication::TaskBoard => AgentApplication::Form,
-            };
-            let foreign: tauri::Url = format!("{scheme}/{}", other.asset()).parse().unwrap();
-            assert!(!local_asset_for(application, &foreign));
+            for other in [
+                AgentApplication::Form,
+                AgentApplication::TaskBoard,
+                AgentApplication::Article,
+            ] {
+                if other == application {
+                    continue;
+                }
+                let foreign: tauri::Url = format!("{scheme}/{}", other.asset()).parse().unwrap();
+                assert!(!local_asset_for(application, &foreign));
+            }
         }
         for denied in [
             format!(
@@ -516,8 +567,60 @@ fn board_registry_cannot_admit_the_legacy_form_runner() {
 }
 
 #[test]
+fn article_catalog_and_registry_are_pinned_to_native_v3_identity() {
+    for (tasks, observed) in [(false, false), (true, false), (false, true)] {
+        assert!(description_value_for(AgentApplication::Article, true, tasks, observed).is_err());
+    }
+    let raw = description_value_for(AgentApplication::Article, true, true, true).unwrap();
+    assert_eq!(
+        raw.as_str().unwrap(),
+        leselang_tauri_host::describe_agent_article().unwrap()
+    );
+    let parsed: Value = serde_json::from_str(raw.as_str().unwrap()).unwrap();
+    assert_eq!(parsed["profile"], "tauri.article");
+    assert_eq!(parsed["semantics"]["version"], 3);
+    assert_eq!(
+        description_value_for(AgentApplication::Article, false, true, true).unwrap(),
+        parsed
+    );
+    let mut registry = Registry {
+        application: AgentApplication::Article,
+        ..Registry::default()
+    };
+    assert!(
+        registry
+            .start(
+                "page-1".into(),
+                "one".into(),
+                "fn main(text: string) = true",
+                "literal",
+                channel()
+            )
+            .is_err()
+    );
+    assert!(registry.epoch.is_none());
+    assert!(registry.used.is_empty());
+    assert!(registry.active.is_none());
+    let (run, _) = registry
+        .start_task("page-1".into(), "one".into(), "fn main() = none", channel())
+        .unwrap();
+    assert_eq!(run.application, AgentApplication::Article);
+    assert_eq!(
+        registry.finish(
+            &run,
+            Ok(json!({"kind":"tauri_task_run", "result":{"type":"none", "value":null}}))
+        )["profile"],
+        "tauri.article"
+    );
+}
+
+#[test]
 fn host_application_identity_is_preserved_on_success_and_every_failure_path() {
-    for application in [AgentApplication::Form, AgentApplication::TaskBoard] {
+    for application in [
+        AgentApplication::Form,
+        AgentApplication::TaskBoard,
+        AgentApplication::Article,
+    ] {
         for mode in [
             "success",
             "error",

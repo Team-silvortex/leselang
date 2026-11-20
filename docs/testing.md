@@ -122,6 +122,33 @@ observations rejected by the application host. Run the same catalog with at
 least two different dynamic values; do not replace observed verification with
 type-only admission or use the catalog's expected value as runtime evidence.
 
+## Named String Task Inputs
+
+For [semantics v3 named strings](named-task-inputs.md), preserve v1/v2 public
+types, source fixtures and zero-or-one-input behavior. Validate at most eight
+exact names, each string's Unicode/NUL/4096-byte bounds and the 16 KiB aggregate
+before application attachment, including after verified-result binding. Test
+missing, extra, duplicate and mistyped arguments; reordered names; independent
+input report predicates; and the explicit plan marker even for zero inputs.
+The Node carrier must pin worker protocol v2 throughout a marked run and refuse
+downgrades or mixed-version replies. Keep Bridge and report version 1 unchanged.
+Exercise two fields through the actual Rust worker, multiple earlier-result
+bindings, installed-package Consumers and the independent Rust catalog agent's
+repeated `--arg` path. A later field failure, cancellation or revocation must
+retain prior edits, fence late commits and avoid publication/retry. Compile and
+test the separate Tauri named-task command and frontend routing; headless
+application models do not establish a new native GUI acceptance.
+
+For the [article GUI](article-host.md), compare its native v3 catalog and all four
+generated programs across Rust and JavaScript, then compile them with the actual
+registered host limits. Check both draft revisions (including ABA), actual DOM
+identity and displayed saved fields, cancellation and post-commit failure. Keep
+Tauri handler names, the build command manifest and capability permissions in
+agreement. On a real window, exercise zero-input reads, distinct named inputs,
+invalid maps with zero dispatches, and two independently verified result bindings.
+Record actual UI values/counts and VM traces separately from fixed provider
+replies; local protocol fixtures are not model inference.
+
 ## Entry Selection
 
 Explicit entry selection must use the existing catalog compiler without
@@ -370,8 +397,9 @@ and original cancellation signal, and compare both initial and fresh observed
 state; provider summaries never establish success. Run the independent Node
 Consumer's declared workflow through the real Rust VM, including unchanged
 unrelated controls, failure after a committed mutation and failed declared
-postconditions without automatic replay. For the Tauri task carrier, admit no
-input or one exact named string before transport bootstrap; test all six scalar
+postconditions without automatic replay. For the original Tauri task carrier, admit no
+input or one exact named string before transport bootstrap; the explicit v3
+entry admits multiple named strings as described above. Test all six scalar
 result types and refusal of native results. Keep the original form entry and
 catalog compatible. Compare old/new execution Fuel and Effect counts for the
 same source, preserve exact raw integer reports, and run no-input, renamed-input

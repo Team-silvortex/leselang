@@ -61,7 +61,7 @@ function validateReportPath(value: Json | undefined): Json[] {
 export function verificationResultType(value: Json | undefined, version: bigint): ScalarType {
   const result = record(value);
   if (result.kind !== "observed") return literalType(result);
-  require_(version === 2n, "observed results require semantic version 2");
+  require_(version === 2n || version === 3n, "observed results require semantic version 2 or 3");
   record(result, ["kind", "scalar_type", "path"]);
   require_(result.scalar_type === "string" || result.scalar_type === "integer" || result.scalar_type === "boolean", "observed result scalar type");
   const segments = validateReportPath(result.path);
@@ -87,13 +87,13 @@ function unique<T>(values: T[], key: (value: T) => string): Map<string, T> {
   return result;
 }
 
-function termType(value: Json | undefined, catalog: Catalog, bindings: Map<string, Type>, input?: string): Type {
+function termType(value: Json | undefined, catalog: Catalog, bindings: Map<string, Type>, inputs: readonly string[]): Type {
   const term = record(value);
   switch (term.kind) {
     case "literal": record(term, ["kind", "value"]); return literalType(term.value);
     case "input": {
       record(term, ["kind", "name"]);
-      if (!input || term.name !== input) fail("undeclared task input");
+      if (!inputs.includes(term.name as string)) fail("undeclared task input");
       return "string";
     }
     case "binding": {
@@ -114,10 +114,10 @@ function termType(value: Json | undefined, catalog: Catalog, bindings: Map<strin
   }
 }
 
-function validateCondition(value: Json, catalog: Catalog, bindings: Map<string, Type>, input?: string): void {
+function validateCondition(value: Json, catalog: Catalog, bindings: Map<string, Type>, inputs: readonly string[]): void {
   const condition = record(value);
   const type = (term: Json | undefined): ScalarType => {
-    const result = termType(term, catalog, bindings, input);
+    const result = termType(term, catalog, bindings, inputs);
     if (result.startsWith("native:")) fail("native scalar comparison");
     return result as ScalarType;
   };
@@ -138,12 +138,12 @@ function validateCondition(value: Json, catalog: Catalog, bindings: Map<string, 
   }
 }
 
-function reportTermType(value: Json | undefined, input?: string): ScalarType | undefined {
+function reportTermType(value: Json | undefined, inputs: readonly string[]): ScalarType | undefined {
   const term = record(value);
   switch (term.kind) {
     case "literal": record(term, ["kind", "value"]); return literalType(term.value);
     case "input":
-      record(term, ["kind", "name"]); require_(input !== undefined && term.name === input, "report input"); return "string";
+      record(term, ["kind", "name"]); require_(inputs.includes(term.name as string), "report input"); return "string";
     case "path": case "length": case "scalar": {
       record(term, term.kind === "scalar" ? ["kind", "path", "scalar_type"] : ["kind", "path"]);
       validateReportPath(term.path);
@@ -154,19 +154,28 @@ function reportTermType(value: Json | undefined, input?: string): ScalarType | u
 }
 
 export function taskInput(task: RecordValue): string | undefined {
-  const inputs = list(task.inputs, 1);
-  if (inputs.length === 0) return undefined;
-  const input = record(inputs[0], ["name", "scalar_type"]);
-  require_(input.scalar_type === "string", "v1 input must be string");
-  return semanticName(input.name);
+  return taskInputs(task, 1n)[0];
+}
+
+/** Version is explicit: upgrading the SDK never relaxes old declarations. */
+export function taskInputs(task: RecordValue, version: bigint): string[] {
+  const inputs = list(task.inputs, version === 3n ? 8 : 1);
+  const names = inputs.map((raw) => {
+    const input = record(raw, ["name", "scalar_type"]);
+    require_(input.scalar_type === "string", "task input must be string");
+    return semanticName(input.name);
+  });
+  require_(new Set(names).size === names.length, "duplicate task input");
+  return names;
 }
 
 function validateTask(task: RecordValue, catalog: Catalog, operations: Set<string>): void {
   record(task, ["id", "summary", "inputs", "steps", "result", "execution", "verification"]);
   semanticName(task.id); text(task.summary, 1024, true);
-  const input = taskInput(task);
-  require_(["named_text", "text", "no_text"].includes(text(task.execution, 16)), "execution style");
-  require_((task.execution === "no_text") === (input === undefined), "input convention mismatch");
+  const inputs = taskInputs(task, catalog.semanticVersion);
+  require_((catalog.semanticVersion === 3n ? ["named_strings", "no_text"] : ["named_text", "text", "no_text"])
+    .includes(text(task.execution, 16)), "execution style");
+  require_((task.execution === "no_text") === (inputs.length === 0), "input convention mismatch");
   const verification = record(task.verification, ["kind", "max_fuel", "result", "require_verified", "predicates"]);
   text(verification.kind, 128, true); require_(uint(verification.max_fuel, 1_000_000n) > 0n, "Fuel ceiling");
   bool(verification.require_verified);
@@ -178,26 +187,26 @@ function validateTask(task: RecordValue, catalog: Catalog, operations: Set<strin
     if (step.kind === "call") {
       record(step, ["kind", "binding", "operation", "arguments"]);
       const binding = semanticName(step.binding);
-      require_(binding !== input && !bindings.has(binding), "duplicate binding");
+      require_(!inputs.includes(binding) && !bindings.has(binding), "duplicate binding");
       const operation = catalog.operations.get(text(step.operation, 128, true));
       if (!operation || !operations.has(operation.name) || ++calls > 16) fail("task operation reference or bound");
       const arguments_ = unique(list(step.arguments, 64).map((argument) => record(argument, ["name", "value"])), (argument) => text(argument.name, 64, true));
       for (const [name, argument] of arguments_) {
         const parameter = operation.parameters.find((parameter) => parameter.name === name);
-        if (!parameter || !parameter.types.includes(termType(argument.value, catalog, bindings, input))) fail("task argument type");
+        if (!parameter || !parameter.types.includes(termType(argument.value, catalog, bindings, inputs))) fail("task argument type");
       }
       for (const parameter of operation.parameters) require_(!parameter.required || arguments_.has(parameter.name), "missing task argument");
       bindings.set(binding, operation.result);
     } else if (step.kind === "guard") {
       record(step, ["kind", "conditions", "failure"]);
       require_(literalType(step.failure) === resultType, "guard result type");
-      for (const condition of list(step.conditions, 8, true)) validateCondition(condition, catalog, bindings, input);
+      for (const condition of list(step.conditions, 8, true)) validateCondition(condition, catalog, bindings, inputs);
     } else fail("step kind");
   }
-  require_(termType(task.result, catalog, bindings, input) === resultType, "task result type");
+  require_(termType(task.result, catalog, bindings, inputs) === resultType, "task result type");
   const predicates = unique(list(verification.predicates, 64, true).map((value) => record(value, ["id", "left", "relation", "right"])), (value) => semanticName(value.id));
   for (const predicate of predicates.values()) {
-    const left = reportTermType(predicate.left, input), right = reportTermType(predicate.right, input);
+    const left = reportTermType(predicate.left, inputs), right = reportTermType(predicate.right, inputs);
     const relation = record(predicate.relation);
     if (relation.kind === "equal") {
       record(relation, ["kind"]);
@@ -240,7 +249,7 @@ export function validate(raw: Json): Catalog {
   }), (operation) => operation.name);
   const semantics = record(data.semantics, ["version", "operations", "tasks"]);
   const semanticVersion = uint(semantics.version);
-  require_(semanticVersion === 1n || semanticVersion === 2n, "semantic version");
+  require_(semanticVersion === 1n || semanticVersion === 2n || semanticVersion === 3n, "semantic version");
   const claims = unique(list(semantics.operations, 64).map((raw) => {
     const operation = record(raw, ["operation", "summary", "effect", "completion"]);
     const name = text(operation.operation, 128, true);

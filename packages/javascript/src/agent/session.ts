@@ -1,4 +1,5 @@
 import { boundedText, errorText, fault, json, proposal } from "./data.js";
+import { settleVerificationResult, type VerificationDiagnostic, type VerificationResult } from "../verification.js";
 
 /** Application-owned planning and execution; this layer never polls a VM. */
 export type AgentJson = null | boolean | number | string |
@@ -9,7 +10,9 @@ export interface WorkflowPlan {
   readonly source: string;
   /** Optional declared task id; existing providers may omit it. */
   readonly task?: string;
-  /** Zero or one named string input. The host admits its supported task shape. */
+  /** Explicit opt-in for v3 named string arguments; absent retains the old shape. */
+  readonly inputMode?: "named_strings";
+  /** Zero or one string normally, or up to eight with the explicit input mode. */
   readonly arguments: Readonly<Record<string, string>>;
 }
 
@@ -30,6 +33,8 @@ export interface AgentHost {
   execute(plan: WorkflowPlan, signal: AbortSignal): Promise<unknown>;
   /** Application verification is separate from the provider's claims. */
   verify(report: AgentJson, plan: WorkflowPlan, signal: AbortSignal): boolean | Promise<boolean>;
+  /** Additive detailed verification; used once instead of verify when supplied. */
+  verifyDetailed?(report: AgentJson, plan: WorkflowPlan, signal: AbortSignal): VerificationResult | Promise<VerificationResult>;
 }
 
 export type AgentPhase = "idle" | "describing" | "planning" | "executing" |
@@ -41,6 +46,7 @@ export interface AgentState {
   readonly possiblePartialEffects: boolean;
   readonly summary?: string;
   readonly error?: string;
+  readonly verificationFailure?: VerificationDiagnostic;
 }
 
 export interface AgentOutcome {
@@ -50,6 +56,7 @@ export interface AgentOutcome {
   readonly plan?: WorkflowPlan;
   readonly report?: AgentJson;
   readonly error?: string;
+  readonly verificationFailure?: VerificationDiagnostic;
 }
 
 export interface AgentSessionOptions {
@@ -65,6 +72,7 @@ interface Task {
   enteredExecute: boolean;
   plan?: WorkflowPlan;
   report?: AgentJson;
+  verificationFailure?: VerificationDiagnostic;
 }
 
 const CATALOG_LIMIT = 256 * 1024;
@@ -85,6 +93,7 @@ export class AgentSession {
   constructor(options: AgentSessionOptions) {
     if (typeof options.provider?.plan !== "function" ||
         [options.host?.describe, options.host?.execute, options.host?.verify].some((fn) => typeof fn !== "function") ||
+        (options.host?.verifyDetailed !== undefined && typeof options.host.verifyDetailed !== "function") ||
         (options.onEvent !== undefined && typeof options.onEvent !== "function")) fault("invalid_agent_adapter");
     this.#provider = options.provider;
     this.#host = options.host;
@@ -121,6 +130,7 @@ export class AgentSession {
       possiblePartialEffects: phase === "verified" ? false : task.enteredExecute,
       ...(task.plan ? { summary: task.plan.summary } : {}),
       ...(error ? { error } : {}),
+      ...(phase === "failed" && task.verificationFailure ? { verificationFailure: task.verificationFailure } : {}),
     });
     try { this.#onEvent?.(this.#state); } catch { /* Observers cannot grant or reject execution. */ }
   }
@@ -154,9 +164,18 @@ export class AgentSession {
       this.#check(task);
       this.#emit(task, "verifying");
       this.#check(task);
-      const verified = await this.#host.verify(task.report, task.plan, signal);
-      this.#check(task);
-      if (verified !== true) fault("application_verification_failed");
+      if (this.#host.verifyDetailed) {
+        const verification = await settleVerificationResult(this.#host.verifyDetailed(task.report, task.plan, signal));
+        this.#check(task);
+        if (!verification.verified) {
+          task.verificationFailure = verification.diagnostic;
+          fault("application_verification_failed");
+        }
+      } else {
+        const verified = await this.#host.verify(task.report, task.plan, signal);
+        this.#check(task);
+        if (verified !== true) fault("application_verification_failed");
+      }
       status = "verified";
     } catch (failure) {
       status = signal.aborted ? "cancelled" : "failed";
@@ -168,6 +187,7 @@ export class AgentSession {
       ...(task.plan ? { plan: task.plan } : {}),
       ...(task.report !== undefined ? { report: task.report } : {}),
       ...(error ? { error } : {}),
+      ...(status === "failed" && task.verificationFailure ? { verificationFailure: task.verificationFailure } : {}),
     });
     this.#active = null;
     this.#emit(task, status, error);

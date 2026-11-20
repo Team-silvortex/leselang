@@ -10,6 +10,7 @@
     "allow-agent-describe",
     "allow-agent-start",
     "allow-agent-start-task",
+    "allow-agent-start-named-task",
     "allow-agent-reply",
     "allow-agent-cancel",
     "allow-agent-closed",

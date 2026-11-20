@@ -3,7 +3,8 @@
 mod json_lines;
 
 use crate::{
-    PreparedTask, Scope, Transport, describe_registered, prepare_task, run_prepared_registered_task,
+    PreparedTask, Scope, Transport, describe_registered, prepare_named_task, prepare_task,
+    run_prepared_registered_task,
 };
 use json_lines::{Correlation, challenge, read_record};
 use serde::Deserialize;
@@ -47,7 +48,7 @@ struct Start {
 
 fn admit(value: Value) -> Result<(Scope, PreparedTask), String> {
     let start: Start = serde_json::from_value(value).map_err(|_| "invalid worker start record")?;
-    if start.agent_worker_version != 1 || start.kind != "start" {
+    if !matches!(start.agent_worker_version, 1 | 2) || start.kind != "start" {
         return Err("unsupported worker start record".into());
     }
     if [
@@ -65,7 +66,12 @@ fn admit(value: Value) -> Result<(Scope, PreparedTask), String> {
         return Err("invalid worker scope".into());
     }
     // Complete syntax, type and argument admission before any Bridge request.
-    let prepared = prepare_task(&start.source, start.arguments.into_iter().collect())?;
+    let arguments = start.arguments.into_iter().collect();
+    let prepared = if start.agent_worker_version == 2 {
+        prepare_named_task(&start.source, arguments)?
+    } else {
+        prepare_task(&start.source, arguments)?
+    };
     Ok((
         Scope {
             window: start.scope.window,
@@ -78,6 +84,7 @@ fn admit(value: Value) -> Result<(Scope, PreparedTask), String> {
 
 #[derive(Clone)]
 struct Pending {
+    version: u32,
     correlation: Correlation,
     challenge: String,
 }
@@ -85,7 +92,7 @@ struct Pending {
 fn deliver(pending: &Mutex<Option<Pending>>, value: Value) -> Result<Value, String> {
     let fields = value.as_object().ok_or("invalid worker reply envelope")?;
     if fields.len() != 4
-        || value["agent_worker_version"] != 1
+        || !matches!(value["agent_worker_version"].as_u64(), Some(1 | 2))
         || value["kind"] != "reply"
         || !fields.contains_key("challenge")
         || !fields.contains_key("reply")
@@ -96,7 +103,8 @@ fn deliver(pending: &Mutex<Option<Pending>>, value: Value) -> Result<Value, Stri
         .lock()
         .map_err(|_| "pending worker request lock failed")?;
     if current.as_ref().is_some_and(|expected| {
-        value["challenge"].as_str() == Some(expected.challenge.as_str())
+        value["agent_worker_version"] == expected.version
+            && value["challenge"].as_str() == Some(expected.challenge.as_str())
             && Correlation::read(&value["reply"]).as_ref() == Some(&expected.correlation)
     }) {
         current.take();
@@ -115,6 +123,7 @@ struct Outgoing {
 /// the main thread's deadline. They are deliberately not joined on retirement:
 /// returning from main ends the one-task process even if an OS read is blocked.
 struct StdioTransport {
+    version: u32,
     outgoing: SyncSender<Outgoing>,
     incoming: Receiver<Result<Value, String>>,
     live: Arc<AtomicBool>,
@@ -169,6 +178,7 @@ impl StdioTransport {
             }
         });
         Self {
+            version: 1,
             outgoing,
             incoming,
             live,
@@ -209,7 +219,11 @@ impl StdioTransport {
     }
 
     fn serve(&mut self) -> Result<Value, String> {
-        let (scope, prepared) = admit(self.initial()?)?;
+        let initial = self.initial()?;
+        if let Some(version @ (1 | 2)) = initial["agent_worker_version"].as_u64() {
+            self.version = version as u32;
+        }
+        let (scope, prepared) = admit(initial)?;
         if !self.is_live() {
             return Err("worker connection closed before execution".into());
         }
@@ -236,11 +250,12 @@ impl Transport for StdioTransport {
                     return Err("a worker request is already pending".into());
                 }
                 *pending = Some(Pending {
+                    version: self.version,
                     correlation,
                     challenge: challenge.clone(),
                 });
             }
-            self.write(json!({"agent_worker_version":1,"kind":"request","challenge":challenge,"request":request}), WIRE_LIMIT)?;
+            self.write(json!({"agent_worker_version":self.version,"kind":"request","challenge":challenge,"request":request}), WIRE_LIMIT)?;
             let remaining = TIMEOUT
                 .checked_sub(began.elapsed())
                 .ok_or("worker request deadline exceeded")?;
@@ -286,7 +301,7 @@ fn serve() -> Result<(), String> {
         }
         terminal_started = true;
         transport.write(
-            json!({"agent_worker_version":1,"kind":"report","report_json":report_json}),
+            json!({"agent_worker_version":transport.version,"kind":"report","report_json":report_json}),
             TERMINAL_LIMIT,
         )?;
         if !transport.is_live() {
@@ -301,7 +316,7 @@ fn serve() -> Result<(), String> {
         // never follow a partial or complete report with a second terminal.
         if !terminal_started {
             let _ = transport.write(
-                json!({"agent_worker_version":1,"kind":"error","error":error_message(error)}),
+                json!({"agent_worker_version":transport.version,"kind":"error","error":error_message(error)}),
                 TERMINAL_LIMIT,
             );
         }
@@ -376,6 +391,45 @@ mod tests {
     }
 
     #[test]
+    fn named_start_requires_explicit_version_two_and_reply_versions_cannot_cross() {
+        let source = "fn main(title: string, content: string) = title";
+        let mut value = start(source, json!({"title":"Title", "content":"Content"}));
+        assert!(
+            admit(value.clone()).is_err(),
+            "legacy startup keeps its one-input limit"
+        );
+        value["agent_worker_version"] = json!(2);
+        assert!(admit(value.clone()).is_ok());
+        value["arguments"]["content"] = json!(true);
+        assert!(admit(value.clone()).is_err());
+        // Keep every other field valid so an argument failure cannot mask a
+        // regression in version admission.
+        for version in [
+            json!(0),
+            json!(3),
+            json!(-1),
+            json!("2"),
+            json!(null),
+            json!(2.0),
+        ] {
+            let mut value = start("fn main() = true", json!({}));
+            value["agent_worker_version"] = version;
+            assert!(admit(value).is_err());
+        }
+
+        let reply = json!({"transport_version":1,"window":"node","epoch":"instance","session":"run_1","request_id":1});
+        let pending = Mutex::new(Some(Pending {
+            version: 2,
+            correlation: Correlation::read(&reply).unwrap(),
+            challenge: "a".repeat(64),
+        }));
+        let mut envelope = json!({"agent_worker_version":1,"kind":"reply","challenge":"a".repeat(64),"reply":reply});
+        assert!(deliver(&pending, envelope.clone()).is_err());
+        envelope["agent_worker_version"] = json!(2);
+        assert_eq!(deliver(&pending, envelope).unwrap(), reply);
+    }
+
+    #[test]
     fn framed_json_rejects_duplicate_truncated_oversized_and_invalid_utf8_data() {
         for bytes in [
             b"{\"x\":1,\"x\":2}\n".as_slice(),
@@ -410,6 +464,7 @@ mod tests {
         let pending = Mutex::new(None);
         assert!(deliver(&pending, value.clone()).is_err());
         *pending.lock().unwrap() = Some(Pending {
+            version: 1,
             correlation: Correlation::read(&reply).unwrap(),
             challenge: "a".repeat(64),
         });

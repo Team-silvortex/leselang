@@ -1,4 +1,4 @@
-import { AgentWorkflowSession, prepareSemanticCatalog, type AgentWorkflowState, type AgentProvider } from "../bridge.js";
+import { AgentWorkflowSession, prepareSemanticCatalog, type AgentWorkflowState, type AgentProvider, type SemanticTaskInfo } from "../bridge.js";
 import { createAgentHost, type ApplicationConnection } from "./host.js";
 import { describeWorkflowOutcome } from "./workflow-display.js";
 import { createTauriModelWorkflowProvider, modelInfo } from "./model-provider.js";
@@ -7,6 +7,15 @@ export function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (!node) throw new Error("application element missing");
   return node as T;
+}
+
+/** Display an executable offline command for an already admitted task. */
+export function taskCommand(task: SemanticTaskInfo): string {
+  if (task.inputNames !== undefined) {
+    return task.inputNames.length === 0 ? `task ${task.id}`
+      : `task ${task.id}:${JSON.stringify(Object.fromEntries(task.inputNames.map((name) => [name, "文本"])))}`;
+  }
+  return task.inputName === undefined ? `task ${task.id}` : `task ${task.id}:文本`;
 }
 
 /** Shared conversation UI. Application objects and examples are supplied by its entry. */
@@ -58,7 +67,7 @@ export function createAgentChat(options: {
     const catalog = prepareSemanticCatalog(await api.core.invoke("agent_describe", { raw: true, taskCatalog: true, observedResults: true }));
     for (const task of catalog.tasks) {
       const item = document.createElement("li");
-      const command = task.inputName === undefined ? `task ${task.id}` : `task ${task.id}:文本`;
+      const command = taskCommand(task);
       item.textContent = `${command} — ${task.summary}`;
       tasks.append(item);
     }

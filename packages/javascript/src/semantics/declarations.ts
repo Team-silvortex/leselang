@@ -4,7 +4,7 @@
 export type SemanticInteger = number | bigint;
 export type SemanticScalarType = "integer" | "boolean" | "string" | "none" | "optional_string" | "string_list";
 
-/** The literal vocabulary shared by semantic versions 1 and 2. */
+/** The literal vocabulary shared by semantic versions 1, 2 and 3. */
 export type SemanticLiteral =
   | { readonly kind: "integer"; readonly value: SemanticInteger }
   | { readonly kind: "boolean"; readonly value: boolean }
@@ -110,7 +110,13 @@ export interface SemanticTaskDescriptionV2 extends TaskDescriptionBase {
   readonly verification: SemanticReportContractV2;
 }
 
-export type SemanticTaskDescription = SemanticTaskDescriptionV1 | SemanticTaskDescriptionV2;
+/** Version 3 explicitly selects bounded, named string arguments. */
+export interface SemanticTaskDescriptionV3 extends Omit<TaskDescriptionBase, "execution"> {
+  readonly execution: "no_text" | "named_strings";
+  readonly verification: SemanticReportContractV2;
+}
+
+export type SemanticTaskDescription = SemanticTaskDescriptionV1 | SemanticTaskDescriptionV2 | SemanticTaskDescriptionV3;
 
 export interface SemanticDescriptionV1 {
   readonly version: 1;
@@ -124,5 +130,11 @@ export interface SemanticDescriptionV2 {
   readonly tasks: readonly SemanticTaskDescriptionV2[];
 }
 
-/** Version 1 only admits fixed results; observed results require explicit version 2. */
-export type SemanticDescription = SemanticDescriptionV1 | SemanticDescriptionV2;
+export interface SemanticDescriptionV3 {
+  readonly version: 3;
+  readonly operations: readonly SemanticOperationSemantics[];
+  readonly tasks: readonly SemanticTaskDescriptionV3[];
+}
+
+/** Version 1 only admits fixed results; observed results require version 2 or 3. */
+export type SemanticDescription = SemanticDescriptionV1 | SemanticDescriptionV2 | SemanticDescriptionV3;

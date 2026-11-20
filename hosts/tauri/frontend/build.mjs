@@ -1,5 +1,5 @@
 import { copyFile, mkdir, readdir, writeFile } from "node:fs/promises";
-for (const file of ["index.html", "agent.html", "agent-board.html", "style.css"]) {
+for (const file of ["index.html", "agent.html", "agent-board.html", "agent-article.html", "style.css"]) {
   await copyFile(new URL(`public/${file}`, import.meta.url), new URL(`dist/${file}`, import.meta.url));
 }
 // Package imports are type-checked against @leselang/bridge. The reference

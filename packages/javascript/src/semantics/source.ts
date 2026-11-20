@@ -1,5 +1,5 @@
 /** Generate bounded LeseLang source from already-admitted declarations. */
-import { taskInput, type Catalog, type Type } from "./catalog.js";
+import { taskInputs, type Catalog, type Type } from "./catalog.js";
 import { fail, list, record, require_, text, type Json, type RecordValue } from "./json.js";
 
 function quote(value: string): string {
@@ -60,22 +60,58 @@ function sourceDepth(source: string): void {
   if (depth !== 0 || quoted) fail("generated source structure");
 }
 
+/** Minimize helper captures before counting helpers; longest first chunk wins ties. */
+function namedChunks(parameters: readonly (readonly unknown[])[], length: number, budget: number): number[] {
+  type Partition = { captures: number; ends: number[] };
+  const memo = new Map<string, Partition | null>();
+  const select = (start: number, remaining: number): Partition | null => {
+    if (start === length) return { captures: 0, ends: [] };
+    if (remaining === 0) return null;
+    const key = `${start}:${remaining}`;
+    if (memo.has(key)) return memo.get(key)!;
+    let best: Partition | null = null;
+    for (let end = Math.min(start + 9, length); end > start; end--) {
+      const captured = end === length ? 0 : parameters[end]!.length;
+      if (captured > 8) continue;
+      const tail = select(end, remaining - 1);
+      if (!tail) continue;
+      const candidate = { captures: captured + tail.captures, ends: [end, ...tail.ends] };
+      if (!best || candidate.captures < best.captures
+        || (candidate.captures === best.captures && candidate.ends.length < best.ends.length)) best = candidate;
+    }
+    memo.set(key, best);
+    return best;
+  };
+  return select(0, budget)?.ends ?? fail("helper parameter bound");
+}
+
 export function generate(catalog: Catalog, task: RecordValue): string {
   const steps = list(task.steps, 21).map((step) => record(step));
   require_(!steps.some((step) => step.kind === "call" && (step.operation === "main" || (step.operation as string).startsWith("_lese_"))), "generated operation collision");
   const known = new Map<string, Type>();
-  const input = taskInput(task);
-  if (input) known.set(input, "string");
-  const chunks: RecordValue[][] = [];
-  const parameters: [string, Type][][] = [];
-  for (let start = 0; start < steps.length; start += 9) {
+  for (const input of taskInputs(task, catalog.semanticVersion)) known.set(input, "string");
+  const available: [string, Type][][] = [];
+  for (let start = 0; start < steps.length; start++) {
     const live = new Set<string>(); uses(steps.slice(start), live); uses(task.result, live);
-    const selected = [...known].filter(([name]) => start === 0 || live.has(name)).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
-    if (selected.length > 8) fail("helper parameter bound"); parameters.push(selected);
-    const chunk = steps.slice(start, start + 9); chunks.push(chunk);
-    for (const step of chunk) if (step.kind === "call") known.set(step.binding as string, catalog.operations.get(step.operation as string)!.result);
+    available.push([...known].filter(([name]) => start === 0 || live.has(name))
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
+    const step = steps[start]!;
+    if (step.kind === "call") known.set(step.binding as string, catalog.operations.get(step.operation as string)!.result);
   }
   const contains = steps.some((step) => step.kind === "guard" && list(step.conditions, 8).some((condition) => record(condition).kind === "contains"));
+  // Legacy source remains byte-identical. Named inputs can otherwise make a
+  // fixed split retain avoidable locals and exhaust a host's binding budget.
+  const ends = catalog.semanticVersion === 3n ? namedChunks(available, steps.length, 8 - Number(contains))
+    : Array.from({ length: Math.ceil(steps.length / 9) }, (_, index) => Math.min((index + 1) * 9, steps.length));
+  const chunks: RecordValue[][] = [];
+  const parameters: [string, Type][][] = [];
+  let start = 0;
+  for (const end of ends) {
+    const selected = available[start]!;
+    if (selected.length > 8) fail("helper parameter bound"); parameters.push(selected);
+    chunks.push(steps.slice(start, end));
+    start = end;
+  }
   if (chunks.length + Number(contains) > 8) fail("helper count bound");
   let source = "// Generated from validated host semantic metadata; no retry or scheduler.\n";
   if (contains) source += 'fn _lese_contains(items: string_list, wanted: string) = fold(\n  _lese_found: false, items: items, item: "_lese_item",\n  next: or(left: _lese_found, right: eq(left: _lese_item, right: wanted)), limit: 64\n)\n';

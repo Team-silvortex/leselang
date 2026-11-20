@@ -34,16 +34,18 @@ test("an external installed Node SDK consumer runs real workflows, partial failu
     assert.deepEqual((await readdir(join(directory, "node_modules"))).sort(), [".package-lock.json", "@leselang"]);
 
     await mkdir(join(directory, "agent"));
-    for (const file of ["application.mjs", "catalog.mjs", "assistant.mjs"]) {
+    for (const file of ["application.mjs", "catalog.mjs", "assistant.mjs", "multi-input-application.mjs", "multi-input-catalog.mjs"]) {
       await copyFile(new URL(file, import.meta.url), join(directory, "agent", file));
     }
     await copyFile(new URL("../semantic-contract.mjs", import.meta.url), join(directory, "semantic-contract.mjs"));
     await writeFile(join(directory, "consumer.mjs"), String.raw`
 import assert from "node:assert/strict";
-import { AgentWorkflowSession, prepareSemanticWorkflow } from "@leselang/bridge";
+import { AgentWorkflowSession, createRegisteredAgentHost, defineSemanticCatalog, prepareSemanticWorkflow } from "@leselang/bridge";
 import { createNodeAgentTransport } from "@leselang/bridge/node";
 import { createPublicationApplication } from "./agent/application.mjs";
 import { createPublicationAgent } from "./agent/assistant.mjs";
+import { createArticleApplication } from "./agent/multi-input-application.mjs";
+import { createArticleCatalog } from "./agent/multi-input-catalog.mjs";
 
 assert.equal(typeof createNodeAgentTransport, "function");
 assert.equal(Object.hasOwn(await import("@leselang/bridge"), "createNodeAgentTransport"), false);
@@ -68,6 +70,64 @@ function workflow(host, text) {
   } } });
 }
 const acceptance = {};
+{
+  const application = createArticleApplication();
+  const transport = createNodeAgentTransport({ executable, catalog(base) {
+    const { semantics, ...catalog } = JSON.parse(createArticleCatalog(base));
+    semantics.tasks.find((task) => task.id === "publish_article").verification.predicates.push({
+      id: "requires_review", left: { kind: "path", path: [
+        { kind: "field", name: "objects_after" }, { kind: "match", field: "identifier", value: "publish" },
+        { kind: "field", name: "clicks" },
+      ] }, relation: { kind: "equal" }, right: { kind: "literal", value: { kind: "integer", value: 2 } },
+    });
+    return defineSemanticCatalog(catalog, semantics);
+  } });
+  const host = createRegisteredAgentHost({ window: "installed-diagnostic", epoch: "fresh-instance", application, transport,
+    observations: { before: "objects_before", after: "objects_after" } });
+  const session = new AgentWorkflowSession({ host, provider: { async plan({ catalog }) {
+    return prepareSemanticWorkflow(catalog, [
+      { task: "publish_article", arguments: { title: "Installed title", content: "Installed content" } },
+      { task: "read_content", arguments: {} },
+    ]);
+  } } });
+  try {
+    const outcome = await session.submit("Stop after the failed business condition");
+    assert.equal(outcome.status, "failed");
+    assert.equal(outcome.error, "application_verification_failed");
+    assert.equal(outcome.steps.length, 1);
+    assert.equal(outcome.possiblePartialEffects, true);
+    assert.deepEqual(outcome.verificationFailure, { code: "predicate_failed", predicate: "requires_review" });
+    assert.deepEqual(outcome.steps[0].verificationFailure, outcome.verificationFailure);
+    assert.ok(Object.isFrozen(outcome.verificationFailure));
+    assert.equal(report(outcome.steps[0]).effects, 12);
+    assert.equal(application.snapshot().publishes, 1);
+    acceptance.diagnostic = { status: outcome.status, failure: outcome.verificationFailure, effects: 12, publishes: 1 };
+  } finally { session.cancel(); host.close(); }
+}
+{
+  const initial = { title: 'Installed "title" ✓', content: 'Separate content \\ path\nnext line' };
+  const application = createArticleApplication(initial);
+  const transport = createNodeAgentTransport({ executable, catalog: createArticleCatalog });
+  const host = createRegisteredAgentHost({ window: "installed-named", epoch: "fresh-instance", application, transport,
+    observations: { before: "objects_before", after: "objects_after" } });
+  const session = new AgentWorkflowSession({ host, provider: { async plan({ catalog }) {
+    return prepareSemanticWorkflow(catalog, [
+      { task: "read_title", arguments: {} },
+      { task: "read_content", arguments: {} },
+      { task: "publish_article", arguments: { title: { fromStep: 0, format: "string" }, content: { fromStep: 1, format: "string" } } },
+      { task: "check_article", arguments: {} },
+    ]);
+  } } });
+  try {
+    const outcome = await session.submit("Publish the two verified fields");
+    assert.equal(outcome.status, "verified", outcome.error);
+    assert.deepEqual(outcome.steps.map((step) => report(step).effects), [2, 2, 12, 1]);
+    assert.ok(outcome.steps.every((step) => step.plan.inputMode === "named_strings"));
+    assert.deepEqual({ ...outcome.steps[2].plan.arguments }, initial);
+    assert.deepEqual(application.snapshot(), { ...initial, savedTitle: initial.title, savedContent: initial.content, publishes: 1, otherClicks: 0 });
+    acceptance.named = { status: outcome.status, effects: 17, publishes: 1 };
+  } finally { session.cancel(); host.close(); }
+}
 {
   const text = 'Packed external "应用" \\ path\nsecond line ✓';
   const application = createPublicationApplication({ initialDraft: text });
@@ -146,6 +206,8 @@ process.stdout.write(JSON.stringify(acceptance) + "\n");
 `);
     const acceptance = JSON.parse(run(process.execPath, ["consumer.mjs", worker], directory));
     assert.deepEqual(acceptance, {
+      diagnostic: { status: "failed", failure: { code: "predicate_failed", predicate: "requires_review" }, effects: 12, publishes: 1 },
+      named: { status: "verified", effects: 17, publishes: 1 },
       workflow: { status: "verified", effects: 14, publishes: 1 },
       partial: { status: "failed", possiblePartialEffects: true, publishes: 1 },
       cancelled: { status: "cancelled", possiblePartialEffects: true, publishes: 0, subsequentRead: "verified" },
@@ -153,7 +215,7 @@ process.stdout.write(JSON.stringify(acceptance) + "\n");
 
     await writeFile(join(directory, "consumer.ts"), `
 import { createNodeAgentTransport, type NodeAgentTransportOptions } from "@leselang/bridge/node";
-import { createRegisteredAgentHost, createRegisteredApplication, type RegisteredAgentTransport } from "@leselang/bridge";
+import { createRegisteredAgentHost, createRegisteredApplication, type RegisteredAgentTransport, type VerificationResult } from "@leselang/bridge";
 const options: NodeAgentTransportOptions = {
   executable: "/trusted/agent_worker", args: [], timeoutMs: 15_000,
   catalog(base: string): string { return base; },
@@ -166,6 +228,8 @@ const host = createRegisteredAgentHost({
   observations: { before: "objects_before", after: "objects_after" },
 });
 void host;
+const check = (report: Parameters<typeof host.verify>[0], plan: Parameters<typeof host.verify>[1], signal: AbortSignal): VerificationResult | Promise<VerificationResult> => host.verifyDetailed(report, plan, signal);
+void check;
 // @ts-expect-error worker paths are strings
 const badExecutable: NodeAgentTransportOptions = { executable: 123, catalog: (base) => base };
 // @ts-expect-error only the optional Node subpath exports a process carrier
@@ -175,7 +239,8 @@ void badExecutable; void rootCarrier;
     await writeFile(join(directory, "tsconfig.json"), JSON.stringify({
       compilerOptions: { noEmit: true, strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext",
         lib: ["ES2022", "DOM"], types: [], allowJs: true, checkJs: true, noUncheckedIndexedAccess: true },
-      files: ["consumer.ts", "semantic-contract.mjs", "agent/catalog.mjs", "agent/application.mjs"],
+      files: ["consumer.ts", "semantic-contract.mjs", "agent/catalog.mjs", "agent/application.mjs",
+        "agent/multi-input-catalog.mjs", "agent/multi-input-application.mjs"],
     }));
     run(process.execPath, [join(sdk, "node_modules/typescript/bin/tsc"), "--project", "tsconfig.json"], directory);
   } finally {

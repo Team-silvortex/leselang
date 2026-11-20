@@ -21,8 +21,8 @@ One user request + current host catalog
 
 This is an additive SDK interface. `AgentSession`, `AgentProvider`,
 `createSemanticProvider` and `createModelProvider` retain their single-task
-contracts. The Rust compiler, VM and task carrier do not gain a scheduler or a
-new execution mode. Each workflow step uses the ordinary explicit
+contracts. Workflow sequencing does not add a Rust or VM scheduler. Each
+workflow step uses the ordinary explicit
 `poll → authorize → dispatch → pump → accept` path.
 
 ## Construct A Workflow Session
@@ -62,9 +62,14 @@ const outcome = await session.submit("周五完成设计评审");
 This deterministic example treats the submitted message as literal text to save.
 It uses task identifiers from the Tauri reference catalog. A general application
 chooses its own provider and declarations; the SDK has no built-in form profile.
-Each step requires a declared task identifier, zero or one exactly named string
-argument, and the source produced by that catalog's `prepare` method. The SDK
-owns the admitted plan and uses host-authored task summaries.
+Each step requires a declared task identifier, exactly its declared string
+arguments, and the source produced by that catalog's `prepare` method. Semantic
+v1/v2 retain zero or one input; v3 supports zero to eight independently named
+strings. Every v3 plan carries `inputMode: "named_strings"`, including no-input
+tasks, and admission rejects a missing or mismatched marker. The SDK owns the
+admitted plan and uses host-authored task summaries. See the
+[named string input guide](named-task-inputs.md) for v3 declarations and the
+complete multi-field reference application.
 
 Before any `host.execute` call, the session validates all steps against the
 initial semantic catalog. An empty plan, a ninth step, an unknown task, a wrong
@@ -124,8 +129,8 @@ not the object returned by `prepareSemanticCatalog`. Its public step type is
 The example reads the actual accepted integer result from step 0, converts it
 to decimal text and supplies that text to step 1's `message` argument.
 
-Binding source types can come from a fixed result contract in `semantics v1`
-or `v2`, or from the explicit `scalar_type` of a v2 observed-result contract.
+Binding source types can come from a fixed result contract in semantic v1, v2
+or v3, or from the explicit `scalar_type` of a v2/v3 observed-result contract.
 An [observed result](host-semantics.md#version-2-observed-results) is verified
 against a separate actual observation in the same execution report. This allows
 the result to vary with application state without replacing verification with
@@ -143,7 +148,9 @@ There is no implicit coercion. `none`, `optional_string`, `string_list`, native
 objects and snapshots cannot be used as binding sources. Decimal conversion
 preserves the full `u64` value, including `18446744073709551615`; it does not pass
 through JavaScript `Number`. A resolved value must still fit the ordinary
-4,096-byte string input bound and pass text validation.
+4,096-byte string input bound and pass text validation. A v3 step rechecks its
+whole resolved argument map against the 16 KiB combined value bound before
+execution.
 
 Every reference must point to an earlier step, and each target argument can
 have at most one binding. A forward reference, self-reference, unknown argument,
@@ -152,9 +159,18 @@ any execution. These restrictions make cycles impossible. Several later steps
 may refer to the same earlier result. Bindings cannot select arbitrary report
 fields or carry native authority across sessions.
 
+For a v3 task, different named inputs may bind different earlier results in the
+same step. For example, `publish_article` can receive
+`title: { fromStep: 0, format: "string" }` and
+`content: { fromStep: 1, format: "string" }`. Each source must independently pass
+verification before its value becomes available. This uses the same binding
+descriptors and sequencing rules; the target's values remain entry arguments
+rather than text substituted into generated source.
+
 For a result that is referenced later, both its catalog-prepared semantic
-verifier and `host.verify` must accept the source step. Only then can the later
-step obtain its value from that step's actual accepted `report.result`. The
+verifier and `host.verify` (or the optional `host.verifyDetailed`) must accept
+the source step. Only then can the later step obtain its value from that step's
+actual accepted `report.result`. The
 catalog's expected result, a provider-supplied value, a summary or an unverified
 report cannot stand in for the execution result. Failed, cancelled and late
 source results never feed a target step. Cancellation and the pinned-catalog
@@ -225,7 +241,7 @@ const plan = prepareSemanticWorkflow(rawV2Catalog, [
 
 The requirement and result binding are independent. A target may instead have
 a literal argument or no argument. The requirement's source must be an earlier
-step with a declared string, integer or Boolean result in semantic v1 or v2.
+step with a declared string, integer or Boolean result in semantic v1, v2 or v3.
 Its format uses the same explicit conversion as a binding. `equals` is always
 a string: string expectations preserve exact text up to 4,096 UTF-8 bytes with
 no NUL; decimal expectations must be canonical unsigned digits in the `u64`
@@ -243,8 +259,9 @@ expected values reject the complete plan before any execution. An earlier
 requirement that would fail does not excuse an invalid later step.
 
 A requirement source must pass both its catalog's semantic report verifier
-and `host.verify`, even when no result binding uses that source. Before the
-target executes, its fresh catalog must still match the pinned description.
+and the host's selected Boolean or detailed verifier, even when no result binding
+uses that source. Before the target executes, its fresh catalog must still match
+the pinned description.
 The session then converts the source's actual accepted `report.result` and
 compares it exactly with `equals`. A mismatch produces
 `workflow_requirement_not_met` and stops the workflow before the target's
@@ -396,6 +413,14 @@ the submission; each child outcome retains the single-task session's own id.
 For bound inputs, inspect the attempted step's concrete plan to see the resolved
 argument; the aggregate plan intentionally retains its symbolic dependency.
 
+With the optional `AgentHost.verifyDetailed` hook, a failed step can include a
+bounded `verificationFailure`; the aggregate outcome and final failed state
+retain the same diagnostic. Successful and cancelled outcomes do not carry it.
+Legacy Boolean hosts and existing error strings remain unchanged. See
+[verification diagnostics](verification-diagnostics.md) for cause codes and
+report correlation versus fresh application-state checks. Diagnostics explain
+failure; they do not authorize repair or make a failed step usable as input.
+
 If execution or verification fails, later steps do not start. If earlier steps
 entered execution, the aggregate outcome retains `possiblePartialEffects: true`
 on failure or cancellation, even when those earlier steps verified successfully.
@@ -420,7 +445,9 @@ when deciding what follow-up work is appropriate.
 | --- | --- |
 | Steps per submission | 1–8 |
 | User message / initial catalog | 8 KiB / 256 KiB UTF-8 |
+| Inputs per task | v1/v2: zero or one string; v3: zero to eight named strings |
 | Each task argument / source | 4,096 bytes / 16 KiB UTF-8 |
+| Combined argument values per v3 task | 16 KiB UTF-8, checked again after result bindings resolve |
 | Result bindings | One per target string argument, referencing only an earlier step |
 | Result requirements | One per target step, at most eight; only strict equality to an earlier verified result |
 | Each step report | 128 KiB UTF-8; at most eight retained reports |
@@ -442,6 +469,15 @@ Exhaustion can stop a workflow after earlier steps have executed, and the
 aggregate failure retains that evidence. Model-request identities have their
 own existing 64-request page bound.
 
+The explicit v3 plan marker selects worker protocol v2 in the Node transport
+and `agent_start_named_task` in Tauri. Rust hosts use `prepare_named_task` with
+the existing prepared-task driver. All parameters are compiled and bound before
+application requests. Legacy plans retain worker v1, `prepare_task` and the
+original Tauri command's zero-or-one-string admission. Outer worker versions
+are pinned for the lifetime of each child; unsupported versions fail without
+fallback. This routing preserves the inner Bridge protocol, Fuel, live grants,
+cancellation and partial-effect behavior.
+
 ## Tauri Conversation Entry
 
 The Tauri model mode uses `createModelWorkflowProvider` with `resultBindings: true`
@@ -458,6 +494,12 @@ integer evidence.
 It also displays required and actual values when a result condition is evaluated.
 A failed requirement is shown as stopped work, with no claim that the target
 operation ran or that earlier effects were undone.
+
+The bundled form and board catalogs remain v2, so their existing offline
+commands retain literal text after the colon. When an application supplies a
+v3 catalog, the same conversation entry displays named-input commands such as
+`task publish_article:{"title":"文本","content":"文本"}`; a no-input command
+remains `task read_title`. Only v3 interprets that argument text as a JSON map.
 
 SDK and application tests can validate sequencing, all-step admission,
 cancel/late-result fencing, catalog changes and retained evidence without a paid

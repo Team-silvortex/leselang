@@ -4,6 +4,7 @@ import {
 } from "./session.js";
 import { boundedText, errorText, fault, fields, json, proposal } from "./data.js";
 import { prepareSemanticCatalog, type SemanticCatalog } from "../semantics/index.js";
+import { settleVerificationResult, type VerificationDiagnostic } from "../verification.js";
 import {
   admitWorkflowBindings, admitWorkflowRequirements, checkWorkflowRequirement, resolveWorkflowStep,
   type AgentWorkflowBinding, type AgentWorkflowRequirement, type AgentWorkflowRequirementOutcome,
@@ -39,6 +40,7 @@ export interface AgentWorkflowOutcome {
   /** Only comparisons that actually completed; a match does not imply execution. */
   readonly requirements?: readonly AgentWorkflowRequirementOutcome[];
   readonly error?: string;
+  readonly verificationFailure?: VerificationDiagnostic;
   /** Zero-based attempted or next step where progress stopped. */
   readonly stoppedStep?: number;
 }
@@ -81,6 +83,7 @@ function admit(value: unknown, catalog: SemanticCatalog, rawCatalog: unknown): A
     if (Object.values(step.arguments).some((value) => value.includes("\0"))) fault("invalid_workflow_arguments");
     const prepared = catalog.prepare(step.task, step.arguments).plan;
     if (step.source !== prepared.source) fault("invalid_workflow_source");
+    if (step.inputMode !== prepared.inputMode) fault("invalid_workflow_input_mode");
     // The full plan is owned before the first await that can enter execution.
     // Summaries and source are always taken from the host declaration.
     steps.push(prepared);
@@ -110,6 +113,7 @@ export class AgentWorkflowSession {
   constructor(options: AgentWorkflowSessionOptions) {
     if (typeof options.provider?.plan !== "function"
       || [options.host?.describe, options.host?.execute, options.host?.verify].some((fn) => typeof fn !== "function")
+      || (options.host?.verifyDetailed !== undefined && typeof options.host.verifyDetailed !== "function")
       || (options.onEvent !== undefined && typeof options.onEvent !== "function")) fault("invalid_agent_adapter");
     this.#provider = options.provider;
     this.#host = options.host;
@@ -143,7 +147,7 @@ export class AgentWorkflowSession {
     if (this.#active !== task || task.controller.signal.aborted) fault("agent_task_cancelled");
   }
 
-  #emit(task: Task, phase: AgentPhase, error?: string): void {
+  #emit(task: Task, phase: AgentPhase, error?: string, verificationFailure?: VerificationDiagnostic): void {
     const step = task.stepIndex === undefined ? undefined : task.plan?.steps[task.stepIndex];
     this.#state = Object.freeze({
       taskId: task.id, phase,
@@ -152,6 +156,7 @@ export class AgentWorkflowSession {
       ...(task.stepIndex !== undefined ? { stepIndex: task.stepIndex } : {}),
       ...(step ? { summary: step.summary } : {}),
       ...(error ? { error } : {}),
+      ...(phase === "failed" && verificationFailure ? { verificationFailure } : {}),
     });
     try { this.#onEvent?.(this.#state); } catch { /* Display observers do not authorize work. */ }
   }
@@ -160,6 +165,7 @@ export class AgentWorkflowSession {
     const signal = task.controller.signal;
     let status: AgentWorkflowOutcome["status"] = "failed";
     let error: string | undefined;
+    let verificationFailure: VerificationDiagnostic | undefined;
     try {
       this.#emit(task, "describing");
       this.#check(task);
@@ -214,6 +220,19 @@ export class AgentWorkflowSession {
             this.#check(task);
             return verified;
           },
+          ...(this.#host.verifyDetailed ? {
+            verifyDetailed: async (report: AgentJson, plan: WorkflowPlan, childSignal: AbortSignal) => {
+              this.#check(task);
+              if (referenced.has(task.stepIndex!)) {
+                const checked = catalog.prepare(plan.task!, plan.arguments).verifyDetailed(report);
+                if (!checked.verified) return checked;
+              }
+              this.#check(task);
+              const checked = await settleVerificationResult(this.#host.verifyDetailed!(report, plan, childSignal));
+              this.#check(task);
+              return checked;
+            },
+          } : {}),
         },
         onEvent: (state) => {
           // A verified step is not yet a verified workflow. Terminal child
@@ -230,6 +249,7 @@ export class AgentWorkflowSession {
         else {
           status = outcome.status;
           error = outcome.error;
+          verificationFailure = outcome.verificationFailure;
           break;
         }
         this.#check(task);
@@ -256,11 +276,12 @@ export class AgentWorkflowSession {
       steps: Object.freeze([...task.outcomes]),
       ...(task.requirements.length ? { requirements: Object.freeze([...task.requirements]) } : {}),
       ...(error ? { error } : {}),
+      ...(status === "failed" && verificationFailure ? { verificationFailure } : {}),
       ...(status !== "verified" && task.stepIndex !== undefined ? { stoppedStep: task.stepIndex } : {}),
     });
     task.child = undefined;
     this.#active = null;
-    this.#emit(task, status, error);
+    this.#emit(task, status, error, verificationFailure);
     return outcome;
   }
 }

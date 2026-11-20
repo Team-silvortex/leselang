@@ -2,7 +2,9 @@
 use crate::{AgentApplication, Scope, Transport};
 use serde_json::{Value, json};
 
-pub use leselang_registered_host::{PreparedTask, prepare_task, run_prepared_registered_task};
+pub use leselang_registered_host::{
+    PreparedTask, prepare_named_task, prepare_task, run_prepared_registered_task,
+};
 
 /// Run one admitted task through the original explicitly driven VM. The report
 /// records typed results and observations; it makes no business-verification

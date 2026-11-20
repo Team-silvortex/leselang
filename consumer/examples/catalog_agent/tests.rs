@@ -132,6 +132,62 @@ fn task_identifiers_are_open_but_bounded_and_inputs_wait_for_catalog_validation(
     assert!(parse(&"x".repeat(64)).is_ok());
 }
 
+#[test]
+fn named_cli_arguments_limit_total_utf8_bytes_before_discovery() {
+    let mut args: Vec<OsString> = ["--host", "host", "--output", "new"]
+        .into_iter()
+        .map(OsString::from)
+        .collect();
+    for name in ["first", "second", "third", "fourth"] {
+        args.extend(["--arg".into(), name.into(), "é".repeat(2048).into()]);
+    }
+    args.extend(["--arg".into(), "fifth".into(), "".into()]);
+    assert!(arguments(args.clone()).is_ok());
+    *args.last_mut().unwrap() = "x".into();
+    assert!(arguments(args).is_err());
+}
+
+#[test]
+fn named_cli_arguments_are_bounded_distinct_and_never_mixed_with_legacy_text() {
+    let parse = |suffix: &[&str]| {
+        let mut args = vec!["--host", "host", "--output", "new"];
+        args.extend_from_slice(suffix);
+        arguments(args.into_iter().map(OsString::from))
+    };
+    let parsed = parse(&["--arg", "title", "Title", "--arg", "message", "--execute"])
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        parsed.named_arguments,
+        [
+            ("title".into(), "Title".into()),
+            ("message".into(), "--execute".into())
+        ]
+    );
+    assert!(!parsed.execute);
+    for args in [
+        vec!["--arg"],
+        vec!["--arg", "title"],
+        vec!["--arg", "title", "one", "--arg", "title", "two"],
+        vec!["--arg", "body", "value"],
+        vec!["--arg", "0name", "value"],
+        vec!["--arg", "name", "nul\0"],
+        vec!["--arg", "name", "value", "--text", "old"],
+        vec!["--host-arg", "--arg"],
+    ] {
+        assert!(parse(&args).is_err());
+    }
+    assert!(parse(&["--arg", "name", &"x".repeat(4097)]).is_err());
+    let mut args = Vec::new();
+    let names = (0..9)
+        .map(|index| format!("input_{index}"))
+        .collect::<Vec<_>>();
+    for name in &names {
+        args.extend(["--arg", name.as_str(), "value"]);
+    }
+    assert!(parse(&args).is_err());
+}
+
 #[cfg(unix)]
 mod subprocess {
     use super::*;
@@ -205,6 +261,7 @@ exit "$(cat "$0.exit")"
                 output: self.0.join("artifacts"),
                 task: "fill_and_save".into(),
                 text: Some(text.into()),
+                named_arguments: vec![],
                 execute,
             }
         }
@@ -493,6 +550,126 @@ exit "$(cat "$0.exit")"
         rename_note_values(&mut report);
         fixture.write("host.report", &serde_json::to_vec(&report).unwrap());
         fixture
+    }
+
+    fn named_note_fixture(message: &str, title: &str) -> Fixture {
+        let fixture = declared_note_fixture(message);
+        let mut catalog: serde_json::Value =
+            serde_json::from_slice(&fs::read(fixture.0.join("host.catalog")).unwrap()).unwrap();
+        catalog["semantics"]["version"] = json!(3);
+        let task = &mut catalog["semantics"]["tasks"][0];
+        task["execution"] = json!("named_strings");
+        task["inputs"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"name":"title","scalar_type":"string"}));
+        task["verification"]["predicates"].as_array_mut().unwrap().push(json!({
+            "id":"title_matches", "left":{"kind":"input","name":"title"},
+            "relation":{"kind":"equal"}, "right":{"kind":"path","path":[{"kind":"field","name":"provided_title"}]}
+        }));
+        fixture.write("host.catalog", &serde_json::to_vec(&catalog).unwrap());
+        let mut report: serde_json::Value =
+            serde_json::from_slice(&fs::read(fixture.0.join("host.report")).unwrap()).unwrap();
+        report["provided_title"] = json!(title);
+        fixture.write("host.report", &serde_json::to_vec(&report).unwrap());
+        fixture
+    }
+
+    #[test]
+    fn v3_named_arguments_are_forwarded_separately_and_every_input_is_verified() {
+        let message = "literal \"\\\nmessage ✓";
+        let title = "second named input";
+        let fixture = named_note_fixture(message, title);
+        let mut options = fixture.options(true, "");
+        options.task = "publish_note".into();
+        options.text = None;
+        options.named_arguments = vec![
+            ("title".into(), title.into()),
+            ("message".into(), message.into()),
+        ];
+        let directory = run(options).unwrap();
+        assert_eq!(fixture.calls(), "describe\nrun\n");
+        assert_eq!(fixture.result()["status"], "verified");
+        let plan: serde_json::Value =
+            serde_json::from_slice(&fs::read(directory.join("plan.json")).unwrap()).unwrap();
+        assert_eq!(plan["planning_contract"], "catalog_semantics_v3");
+        assert_eq!(plan["arguments"], json!({"title":title,"message":message}));
+        let source = fs::read_to_string(directory.join("program.lese")).unwrap();
+        assert!(source.contains("fn main(message: string, title: string)"));
+        assert!(!source.contains(message));
+        assert!(!source.contains(title));
+        let bytes = fs::read(fixture.0.join("host.args")).unwrap();
+        let argv = bytes
+            .split(|byte| *byte == 0)
+            .filter(|arg| !arg.is_empty())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            argv[2..],
+            [
+                b"--entry".as_slice(),
+                b"main",
+                b"--arg",
+                b"title",
+                title.as_bytes(),
+                b"--arg",
+                b"message",
+                message.as_bytes(),
+                b"--report-json"
+            ]
+        );
+    }
+
+    #[test]
+    fn v3_cli_refuses_missing_named_inputs_before_execution_and_retains_failed_evidence() {
+        for mode in ["missing", "extra", "text", "wrong_report"] {
+            let fixture = named_note_fixture("message", "title");
+            let mut options = fixture.options(true, "");
+            options.task = "publish_note".into();
+            options.text = None;
+            options.named_arguments = vec![
+                ("message".into(), "message".into()),
+                ("title".into(), "title".into()),
+            ];
+            match mode {
+                "missing" => {
+                    options.named_arguments.pop();
+                }
+                "extra" => options
+                    .named_arguments
+                    .push(("unknown".into(), "value".into())),
+                "text" => {
+                    options.named_arguments.clear();
+                    options.text = Some("legacy shape".into());
+                }
+                "wrong_report" => {
+                    let mut report: serde_json::Value =
+                        serde_json::from_slice(&fs::read(fixture.0.join("host.report")).unwrap())
+                            .unwrap();
+                    report["provided_title"] = json!("different");
+                    fixture.write("host.report", &serde_json::to_vec(&report).unwrap());
+                }
+                _ => unreachable!(),
+            }
+            assert!(run(options).is_err());
+            assert_eq!(
+                fixture.calls(),
+                if mode == "wrong_report" {
+                    "describe\nrun\n"
+                } else {
+                    "describe\n"
+                }
+            );
+            assert_eq!(
+                fixture.result()["possible_partial_effects"],
+                mode == "wrong_report"
+            );
+        }
+        let fixture = declared_note_fixture("message");
+        let mut options = fixture.options(true, "message");
+        options.task = "publish_note".into();
+        options.named_arguments = vec![("message".into(), "message".into())];
+        assert!(run(options).is_err());
+        assert_eq!(fixture.calls(), "describe\n");
     }
 
     #[test]

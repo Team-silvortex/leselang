@@ -5,7 +5,7 @@ pub mod host;
 mod task;
 mod worker;
 
-pub use task::{PreparedTask, prepare_task, run_prepared_registered_task};
+pub use task::{PreparedTask, prepare_named_task, prepare_task, run_prepared_registered_task};
 pub use worker::main as worker_main;
 
 use leselang_vm::native::{

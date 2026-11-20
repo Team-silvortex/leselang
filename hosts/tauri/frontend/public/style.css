@@ -55,6 +55,12 @@ summary { cursor: pointer; color: #426b70; }
 .board-tasks h3 { font-size: 15px; margin: 0 0 14px; }
 .board-tasks p { font-size: 13px; }
 .board-tasks button { margin-top: 10px; }
+.article-editor #title { min-height: 64px; }
+.article-editor #content-label { margin-top: 18px; }
+.article-editor .actions { flex-wrap: wrap; }
+.article-result h3 { margin: 16px 0 8px; color: #536572; font-size: 13px; font-weight: 500; }
+.article-result #saved-title { min-height: 44px; }
+.article-result pre:empty::before { content: "尚未发布"; }
 @media (max-width: 620px) {
   main { grid-template-columns: minmax(0, 1fr); padding: 24px; }
   .board-tasks { grid-template-columns: minmax(0, 1fr); }

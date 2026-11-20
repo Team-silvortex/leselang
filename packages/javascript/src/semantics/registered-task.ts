@@ -1,7 +1,7 @@
 /** Expand registered-control steps into the existing finite semantic vocabulary. */
 import { verificationResultType } from "./catalog.js";
 import type {
-  SemanticLiteral, SemanticTaskDescriptionV2, SemanticTaskStep, SemanticTerm,
+  SemanticLiteral, SemanticTaskDescriptionV2, SemanticTaskDescriptionV3, SemanticTaskStep, SemanticTerm,
 } from "./declarations.js";
 import { bool, fail, list, ownDeclaration, record, require_, text, uint, type Json, type RecordValue } from "./json.js";
 
@@ -35,6 +35,12 @@ export type RegisteredTaskStep = SemanticTaskStep | RegisteredReadControlStep |
 export interface RegisteredTaskDefinition extends Omit<SemanticTaskDescriptionV2, "steps"> {
   readonly steps: readonly RegisteredTaskStep[];
   /** Every generated guard returns this explicitly selected scalar on failure. */
+  readonly failure: SemanticLiteral;
+}
+
+/** Explicit v3 declaration; the original constructor remains v2-only. */
+export interface RegisteredTaskDefinitionV3 extends Omit<SemanticTaskDescriptionV3, "steps"> {
+  readonly steps: readonly RegisteredTaskStep[];
   readonly failure: SemanticLiteral;
 }
 
@@ -96,10 +102,21 @@ function freeze(value: Json): Json {
  * Business success remains the application's explicit result and verification.
  */
 export function defineRegisteredTask(options: RegisteredTaskDefinition): SemanticTaskDescriptionV2 {
+  return expandRegisteredTask(options, 2n) as SemanticTaskDescriptionV2;
+}
+
+/** Expand v3 named-string tasks, then validate them against the real catalog. */
+export function defineRegisteredTaskV3(options: RegisteredTaskDefinitionV3): SemanticTaskDescriptionV3 {
+  return expandRegisteredTask(options, 3n) as SemanticTaskDescriptionV3;
+}
+
+function expandRegisteredTask(
+  options: RegisteredTaskDefinition | RegisteredTaskDefinitionV3, version: 2n | 3n,
+): SemanticTaskDescriptionV2 | SemanticTaskDescriptionV3 {
   const data = record(ownDeclaration(options, LIMIT),
     ["id", "summary", "inputs", "steps", "result", "execution", "verification", "failure"]);
   name(data.id); text(data.summary, 1024, true);
-  const inputs = list(data.inputs, 1);
+  const inputs = list(data.inputs, version === 3n ? 8 : 1);
   const declared = new Set<string>();
   const declare = (value: Json | undefined): string => {
     const result = name(value);
@@ -107,12 +124,13 @@ export function defineRegisteredTask(options: RegisteredTaskDefinition): Semanti
     declared.add(result);
     return result;
   };
-  if (inputs.length) {
-    const input = record(inputs[0], ["name", "scalar_type"]);
+  for (const raw of inputs) {
+    const input = record(raw, ["name", "scalar_type"]);
     require_(input.scalar_type === "string", "registered task input must be string");
     declare(input.name);
   }
-  require_(["named_text", "text", "no_text"].includes(text(data.execution, 16)), "registered task execution style");
+  require_((version === 3n ? ["named_strings", "no_text"] : ["named_text", "text", "no_text"])
+    .includes(text(data.execution, 16)), "registered task execution style");
   require_((data.execution === "no_text") === (inputs.length === 0), "registered task input convention");
   term(data.result);
   const verification = record(data.verification,
@@ -120,7 +138,7 @@ export function defineRegisteredTask(options: RegisteredTaskDefinition): Semanti
   text(verification.kind, 128, true);
   require_(uint(verification.max_fuel, 1_000_000n) > 0n, "registered task Fuel ceiling");
   bool(verification.require_verified);
-  const resultType = verificationResultType(verification.result, 2n);
+  const resultType = verificationResultType(verification.result, version);
   require_(literal(data.failure) === resultType, "registered task failure result type");
   const predicateIds = new Set<string>();
   for (const value of list(verification.predicates, 64, true)) {
@@ -217,5 +235,5 @@ export function defineRegisteredTask(options: RegisteredTaskDefinition): Semanti
     result: data.result!, execution: data.execution!, verification };
   // Expansion consumes the existing total data budget too; do not rely only on
   // the smaller authoring input or on downstream serialization to bound it.
-  return freeze(ownDeclaration(result, LIMIT)) as unknown as SemanticTaskDescriptionV2;
+  return freeze(ownDeclaration(result, LIMIT)) as unknown as SemanticTaskDescriptionV2 | SemanticTaskDescriptionV3;
 }

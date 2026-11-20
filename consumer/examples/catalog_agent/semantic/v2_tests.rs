@@ -235,7 +235,7 @@ fn unsupported_or_malformed_semantics_fail_during_planning_without_fallback() {
     let valid: Value = serde_json::from_slice(&catalog(ScalarType::String)).unwrap();
     let changes: &[fn(&mut Value)] = &[
         |v| v["semantics"]["version"] = json!(1),
-        |v| v["semantics"]["version"] = json!(3),
+        |v| v["semantics"]["version"] = json!(4),
         |v| v["semantics"]["version"] = json!(2.0),
         |v| v["semantics"]["version"] = json!("2"),
         |v| v["semantics"]["tasks"][0]["verification"]["result"]["path"] = json!([]),

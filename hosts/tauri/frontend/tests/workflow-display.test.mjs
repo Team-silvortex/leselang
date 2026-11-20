@@ -115,3 +115,113 @@ test("requirement admission errors display a local explanation before execution"
     assert.equal(display.reports, "");
   }
 });
+
+const diagnosticOutcome = (verificationFailure) => ({ taskId: 11, status: "failed", possiblePartialEffects: true,
+  plan, error: "application_verification_failed", stoppedStep: 1, verificationFailure,
+  steps: [step("verified", "integer", 3), { ...step("failed", "string", "saved"), verificationFailure }] });
+
+test("verification causes explain both the failed step and overall result without upgrading reported values", () => {
+  const explanations = [
+    ["invalid_report", "执行报告无法读取"],
+    ["report_identity_mismatch", "执行报告与本次任务不对应"],
+    ["report_budget_mismatch", "资源限制与应用声明不一致"],
+    ["host_verification_missing", "未包含宿主核对结果"],
+    ["result_mismatch", "返回结果不符合应用声明"],
+    ["result_evidence_invalid", "返回结果缺少有效的报告证据"],
+    ["result_evidence_mismatch", "返回结果与报告证据不一致"],
+    ["completion_unavailable", "未取得本次任务的完成凭据"],
+    ["plan_mismatch", "完成凭据与本次执行计划不对应"],
+    ["report_mismatch", "完成凭据与执行报告不对应"],
+    ["observation_invalid", "应用状态记录无效"],
+    ["before_observation_mismatch", "执行前的应用状态与报告记录不一致"],
+    ["after_observation_mismatch", "执行后再次读取的应用状态与报告记录不一致"],
+    ["verification_interrupted", "应用核对被中断"],
+    ["invalid_verification_result", "宿主未返回有效的核对结论"],
+  ];
+  for (const [code, explanation] of explanations) {
+    const diagnostic = { code };
+    const result = diagnosticOutcome(diagnostic);
+    const display = describeWorkflowOutcome(result);
+    assert.ok(display.outcome.includes(explanation), code);
+    assert.ok(display.steps[1].includes(explanation), code);
+    assert.ok(!display.outcome.includes(code), "internal codes only belong in evidence");
+    assert.ok(!display.steps[1].includes(code));
+    assert.match(display.outcome, /已验证 1\/3.*已发生的操作会保留.*不会自动重试/u);
+    assert.match(display.steps[1], /未完成，后续步骤已停止/u);
+    assert.doesNotMatch(display.steps[1], /已验证|saved/u);
+    assert.doesNotMatch(display.outcome, /已完成：|saved/u);
+    assert.match(display.steps[2], /未开始/u);
+    assert.ok(display.reports.includes(result.steps[1].report));
+    assert.ok(display.reports.includes(`验证诊断：${JSON.stringify(diagnostic)}`));
+  }
+});
+
+test("declared check failures name only the predicate and retain a separate diagnostic record", () => {
+  for (const code of ["predicate_failed", "predicate_evidence_invalid"]) {
+    const diagnostic = { code, predicate: "content_saved" };
+    const display = describeWorkflowOutcome(diagnosticOutcome(diagnostic));
+    assert.match(display.steps[1], /应用声明的检查“content_saved”/u);
+    assert.match(display.outcome, /应用声明的检查“content_saved”/u);
+    assert.ok(display.reports.includes(JSON.stringify(diagnostic)));
+    assert.doesNotMatch(display.steps[1], /predicate_|expected|actual|已验证/u);
+  }
+});
+
+test("a diagnostic without a returned report never invents an execution result", () => {
+  const diagnostic = { code: "completion_unavailable" };
+  const display = describeWorkflowOutcome({ taskId: 12, status: "failed", possiblePartialEffects: true,
+    plan, steps: [{ taskId: 1, status: "failed", possiblePartialEffects: true, verificationFailure: diagnostic }] });
+  assert.match(display.outcome, /未取得本次任务的完成凭据/u, "step diagnostic explains overall failure when not duplicated at top level");
+  assert.equal(display.reports, `步骤 1 · failed\n验证诊断：${JSON.stringify(diagnostic)}`);
+  assert.doesNotMatch(display.reports, /输入参数|result/u);
+  const overall = describeWorkflowOutcome({ taskId: 13, status: "failed", possiblePartialEffects: false,
+    steps: [], verificationFailure: diagnostic });
+  assert.match(overall.outcome, /未取得本次任务的完成凭据/u);
+  assert.equal(overall.reports, `工作流 · 验证诊断\n${JSON.stringify(diagnostic)}`);
+});
+
+test("malformed or unknown diagnostics remain failures and do not display untrusted claims", () => {
+  let getterReads = 0;
+  const accessor = { get code() { getterReads++; throw new Error("untrusted"); } };
+  const malformed = [false, true, null, [], "verified", {}, { code: false }, { code: "unknown_code" },
+    { code: "__proto__" }, { code: "predicate_failed" }, { code: "predicate_failed", predicate: "已验证！" },
+    { code: "predicate_failed", predicate: "true" }, { code: "predicate_failed", predicate: "_lese_internal" },
+    { code: "predicate_failed", predicate: "x".repeat(65) }, { code: "report_mismatch", predicate: "content_saved" },
+    { code: "predicate_failed", predicate: "content_saved", expected: "secret_expected", actual: "secret_actual" }, accessor];
+  for (const diagnostic of malformed) {
+    const display = describeWorkflowOutcome(diagnosticOutcome(diagnostic));
+    assert.match(display.outcome, /工作流未完成.*宿主未返回有效的核对结论/u);
+    assert.match(display.steps[1], /未完成.*宿主未返回有效的核对结论/u);
+    assert.match(display.steps[2], /未开始/u);
+    assert.doesNotMatch(display.outcome, /已完成：|unknown_code|secret_|已验证！|__proto__/u);
+    assert.doesNotMatch(display.steps[1], /已验证|unknown_code|secret_|__proto__/u);
+    assert.doesNotMatch(display.reports, /验证诊断|unknown_code|secret_|__proto__/u);
+  }
+  assert.equal(getterReads, 0, "display must not invoke a diagnostic accessor");
+});
+
+test("verified and cancelled outcomes never present stray diagnostics as failures", () => {
+  const verificationFailure = { code: "predicate_failed", predicate: "content_saved" };
+  for (const status of ["verified", "cancelled"]) {
+    const clean = { taskId: 14, status, possiblePartialEffects: status === "cancelled", plan,
+      steps: status === "verified" ? [step(status, "integer", 3), step(status, "string", "saved"), step(status, "none", null)]
+        : [step(status, "string", "saved")] };
+    const stray = { ...clean, verificationFailure, steps: clean.steps.map((value) => ({ ...value, verificationFailure })) };
+    assert.deepEqual(describeWorkflowOutcome(stray), describeWorkflowOutcome(clean));
+  }
+});
+
+test("legacy verification failures retain their exact display and unknown error text", () => {
+  const result = diagnosticOutcome(undefined);
+  delete result.verificationFailure;
+  delete result.steps[1].verificationFailure;
+  const display = describeWorkflowOutcome(result);
+  assert.deepEqual(display, {
+    summary: "本次共 3 个步骤，已验证 1 个。",
+    outcome: "工作流未完成。 应用结果未通过核对，后续步骤已停止。 已验证 1/3 个步骤。 已发生的操作会保留，请查看应用当前状态；不会自动重试。",
+    steps: ["步骤 1 · Inspect — 已验证（integer：3）。", "步骤 2 · Save — 未完成，后续步骤已停止。", "步骤 3 · Check — 未开始。"],
+    reports: `步骤 1 · verified\n输入参数：{}\n${result.steps[0].report}\n\n步骤 2 · failed\n输入参数：{}\n${result.steps[1].report}`,
+  });
+  const unknown = describeWorkflowOutcome({ ...result, error: "legacy_host_failure" });
+  assert.match(unknown.outcome, /legacy_host_failure/u);
+});

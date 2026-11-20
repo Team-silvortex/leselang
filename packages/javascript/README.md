@@ -63,6 +63,13 @@ observations. It has no Tauri dependency and adds no VM scheduler. The original
 [registered application host guide](../../docs/registered-agent-host.md) for the
 public adapters, report layout and cancellation contract.
 
+Hosts can opt into `AgentHost.verifyDetailed`; the session uses that hook once
+and preserves a bounded `verificationFailure` on failed outcomes and states.
+Existing Boolean `verify` hosts keep their original result shapes. The public
+`VerificationResult`, `VerificationDiagnostic` and `VerificationFailureCode`
+types describe the new records. See [verification diagnostics](../../docs/verification-diagnostics.md)
+for cause codes, one-use completion evidence and unchanged authorization limits.
+
 ## Optional Node Worker Transport
 
 Node applications can import `createNodeAgentTransport` and
@@ -130,8 +137,20 @@ may configure local aliases, for example
 `prepareSemanticCatalog(rawJson)` exposes the same validated task compiler and
 report verifier directly. Its `tasks` array describes available commands;
 `prepare(id, arguments)` returns a frozen `plan`, `expectedEffects`, `checks`
-and `verify(report)` function. A `WorkflowPlan` may include the declared `task`
+and both `verify(report)` and `verifyDetailed(report)` functions. The former
+retains its Boolean contract; the latter returns a structured verification result.
+A `WorkflowPlan` may include the declared `task`
 and zero or one named string input; existing `{ text: value }` plans remain valid.
+
+Semantic v3 separately supports up to eight named string inputs. Use
+`SemanticDescriptionV3` / `SemanticTaskDescriptionV3` and optionally
+`defineRegisteredTaskV3`. Its plans include `inputMode: "named_strings"`, and
+its task info exposes `inputNames`. The offline provider accepts
+`task TASK:{"title":"text","content":"text"}` only for v3; old colon text is
+still literal. Workflow bindings can populate several inputs independently.
+The Node carrier selects worker protocol v2 for these plans, while legacy plans
+retain v1. See [named task inputs](../../docs/named-task-inputs.md) for bounds and
+the corresponding Rust/Tauri entries.
 
 Version 1 fixed results and APIs remain unchanged. A host can separately opt into
 `semantics.version: 2`, whose `verification.result` may be
@@ -228,7 +247,8 @@ explicitly enabled, argument values may also use the inline result-reference
 form above; the model cannot supply a top-level `bindings` field. The independent
 `resultRequirements` option also defaults to `false`; enabling it permits the
 inline `requires` object above, but no top-level `requirements` or model-supplied
-comparison evidence. The combined response still has a 16 KiB limit. The Tauri
+comparison evidence. The combined response is limited to 16 KiB for v1/v2 and
+128 KiB for v3; an application's transport can impose a smaller limit. The Tauri
 conversation explicitly enables both options for this provider in model mode
 and adapts each offline command into a one-step workflow. Each step keeps the
 ordinary host session and Fuel behavior. See the repository's

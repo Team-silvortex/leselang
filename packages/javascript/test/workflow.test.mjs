@@ -37,6 +37,10 @@ function fixture(overrides = {}) {
         calls.verify++; trace.push(`verify:${plan.task}`);
         return overrides.verify ? overrides.verify(report, plan, signal, calls.verify) : report.task === plan.task;
       },
+      ...(overrides.verifyDetailed ? { async verifyDetailed(report, plan, signal) {
+        calls.detailed = (calls.detailed ?? 0) + 1;
+        return overrides.verifyDetailed(report, plan, signal, calls.detailed);
+      } } : {}),
     },
     onEvent(state) { events.push(state); overrides.event?.(state, session); },
   });
@@ -141,6 +145,62 @@ test("a failed second verification keeps evidence and delivered work without sta
   assert.equal(writes, 1);
   assert.equal(f.calls.execute, 2);
   assert.equal(f.session.state.completedSteps, 1);
+  assert.equal(Object.hasOwn(result, "verificationFailure"), false);
+});
+
+test("a detailed child failure reaches workflow outcome and state without repeating verification", async () => {
+  const failure = { code: "after_observation_mismatch" };
+  const f = fixture({ verifyDetailed: async (_report, _plan, _signal, count) =>
+    count === 2 ? { verified: false, diagnostic: failure } : { verified: true } });
+  const result = await f.session.submit("inspect, save, check");
+  failure.code = "changed_later";
+  assert.equal(result.status, "failed");
+  assert.equal(result.stoppedStep, 1);
+  assert.equal(result.steps.length, 2);
+  assert.equal(result.possiblePartialEffects, true);
+  assert.equal(result.error, "application_verification_failed");
+  assert.deepEqual(result.verificationFailure, { code: "after_observation_mismatch" });
+  assert.equal(result.verificationFailure, result.steps[1].verificationFailure);
+  assert.equal(result.verificationFailure, f.session.state.verificationFailure);
+  assert.ok(Object.isFrozen(result.verificationFailure));
+  assert.equal(f.calls.verify, 0);
+  assert.equal(f.calls.detailed, 2);
+  assert.equal(f.calls.execute, 2);
+  assert.equal(f.session.state.completedSteps, 1);
+});
+
+test("workflow cancellation during detailed verification omits late failure diagnostics", async () => {
+  const pending = deferred();
+  const f = fixture({ verifyDetailed: () => pending.promise });
+  const execution = f.session.submit("cancel detailed verification");
+  await until(() => f.calls.detailed === 1);
+  f.session.cancel();
+  pending.resolve({ verified: false, diagnostic: { code: "before_observation_mismatch" } });
+  const result = await execution;
+  assert.equal(result.status, "cancelled");
+  assert.equal(result.steps.length, 1);
+  assert.equal(result.steps[0].status, "cancelled");
+  assert.equal(result.possiblePartialEffects, true);
+  assert.equal(Object.hasOwn(result, "verificationFailure"), false);
+  assert.equal(Object.hasOwn(result.steps[0], "verificationFailure"), false);
+  assert.equal(Object.hasOwn(f.session.state, "verificationFailure"), false);
+  assert.equal(f.calls.verify, 0);
+  assert.equal(f.calls.execute, 1);
+});
+
+test("workflow detailed wrapper rejects synchronous thenables without invoking their getters", async () => {
+  let getters = 0;
+  // Keep the application callback synchronous; an async adapter owns its own assimilation.
+  const host = {
+    async describe() { return raw; }, async execute() { return {}; }, verify() { throw new Error("legacy verifier must not run"); },
+    verifyDetailed() { return { get then() { getters++; return (resolve) => resolve({ verified: true }); } }; },
+  };
+  const session = new AgentWorkflowSession({ host, provider: { async plan() { return workflow(); } } });
+  const result = await session.submit("reject malformed detail");
+  assert.equal(result.status, "failed");
+  assert.deepEqual(result.verificationFailure, { code: "invalid_verification_result" });
+  assert.equal(result.steps.length, 1);
+  assert.equal(getters, 0);
 });
 
 test("later execute exceptions and report failures retain earlier outcomes and stop once", async () => {

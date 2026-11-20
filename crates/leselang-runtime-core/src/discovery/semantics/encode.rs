@@ -367,3 +367,43 @@ impl Encode for v2::ResultContract {
         }
     }
 }
+
+impl v3::SemanticDescription {
+    pub(in crate::discovery) fn encode(
+        &self,
+        output: &mut Encoder,
+    ) -> Result<(), DescriptionError> {
+        object(
+            output,
+            &[
+                ("version", &self.version),
+                ("operations", &self.operations),
+                ("tasks", &self.tasks),
+            ],
+        )
+    }
+}
+impl Encode for v3::ExecutionStyle {
+    fn encode(&self, output: &mut Encoder) -> Result<(), DescriptionError> {
+        output.string(match self {
+            Self::NoText => "no_text",
+            Self::NamedStrings => "named_strings",
+        })
+    }
+}
+impl Encode for v3::TaskDescription {
+    fn encode(&self, output: &mut Encoder) -> Result<(), DescriptionError> {
+        object(
+            output,
+            &[
+                ("id", &self.id),
+                ("summary", &self.summary),
+                ("inputs", &self.inputs),
+                ("steps", &self.steps),
+                ("result", &self.result),
+                ("execution", &self.execution),
+                ("verification", &self.verification),
+            ],
+        )
+    }
+}

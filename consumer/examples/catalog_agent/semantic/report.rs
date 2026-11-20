@@ -60,15 +60,15 @@ fn path<'a>(report: &'a Value, path: &[ReportSegment]) -> Result<&'a Value, Stri
 fn report_term(
     report: &Value,
     term: &ReportTerm,
-    input: Option<&str>,
-    text: &str,
+    arguments: &[(&str, &str)],
 ) -> Result<Value, String> {
     match term {
         ReportTerm::Literal { value } => Ok(scalar_json(value)),
-        ReportTerm::Input { name } if Some(name.as_str()) == input => {
-            Ok(Value::String(text.into()))
-        }
-        ReportTerm::Input { .. } => Err("semantic report input is not declared".into()),
+        ReportTerm::Input { name } => arguments
+            .iter()
+            .find(|(input, _)| *input == name.as_str())
+            .map(|(_, value)| Value::String((*value).into()))
+            .ok_or_else(|| "semantic report input is not declared".into()),
         ReportTerm::Path { path: segments } => Ok(path(report, segments)?.clone()),
         ReportTerm::Scalar {
             path: segments,
@@ -116,6 +116,23 @@ pub(in crate::plan) fn verify(
     if text.len() > 4096 {
         return Err("expected input exceeds scalar bounds".into());
     }
+    let arguments = input
+        .map(|name| (name, text))
+        .into_iter()
+        .collect::<Vec<_>>();
+    verify_named(profile, effects, contract, &arguments, report_bytes)
+}
+
+pub(in crate::plan) fn verify_named(
+    profile: &str,
+    effects: usize,
+    contract: &v2::ReportContract,
+    arguments: &[(&str, &str)],
+    report_bytes: &[u8],
+) -> Result<Verified, String> {
+    if arguments.len() > v3::MAX_INPUTS || arguments.iter().any(|(_, value)| value.len() > 4096) {
+        return Err("expected inputs exceed scalar bounds".into());
+    }
     let report: Value = decode(report_bytes, MAX_REPORT_BYTES, "semantic run report")?;
     if !bounded(&report) {
         return Err("semantic report exceeds scalar text bounds".into());
@@ -141,8 +158,7 @@ pub(in crate::plan) fn verify(
                 scalar_type: *scalar_type,
                 path: path.clone(),
             },
-            input,
-            text,
+            arguments,
         )?,
     };
     if result.get("type").and_then(Value::as_str)
@@ -152,8 +168,8 @@ pub(in crate::plan) fn verify(
         return Err("semantic report result does not establish the declared postcondition".into());
     }
     for predicate in &contract.predicates {
-        let left = report_term(&report, &predicate.left, input, text)?;
-        let right = report_term(&report, &predicate.right, input, text)?;
+        let left = report_term(&report, &predicate.left, arguments)?;
+        let right = report_term(&report, &predicate.right, arguments)?;
         let satisfied = match predicate.relation {
             ReportRelation::Equal => left == right,
             ReportRelation::AtMost => left

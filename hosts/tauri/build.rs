@@ -8,6 +8,7 @@ fn main() {
             "agent_describe",
             "agent_start",
             "agent_start_task",
+            "agent_start_named_task",
             "agent_reply",
             "agent_cancel",
             "agent_closed",

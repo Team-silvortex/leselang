@@ -32,15 +32,42 @@ pub fn prepare_task(
     source: &str,
     arguments: Vec<(String, String)>,
 ) -> Result<PreparedTask, String> {
+    prepare_inputs(source, arguments, 1)
+}
+
+/// Explicit multi-input entry. Each string is at most 4096 UTF-8 bytes and
+/// the complete map at most 16 KiB; input data never becomes source code.
+pub fn prepare_named_task(
+    source: &str,
+    arguments: Vec<(String, String)>,
+) -> Result<PreparedTask, String> {
+    prepare_inputs(source, arguments, 8)
+}
+
+fn prepare_inputs(
+    source: &str,
+    arguments: Vec<(String, String)>,
+    max_inputs: usize,
+) -> Result<PreparedTask, String> {
     if source.len() > 16 * 1024 || source.contains('\0') {
         return Err("task source exceeds 16 KiB or contains NUL".into());
     }
-    if arguments.len() > 1
+    if arguments.len() > max_inputs
         || arguments
             .iter()
             .any(|(name, value)| !input_name(name) || value.len() > 4096 || value.contains('\0'))
+        || arguments
+            .iter()
+            .map(|(_, value)| value.len())
+            .sum::<usize>()
+            > 16 * 1024
     {
-        return Err("task arguments require zero or one bounded named string".into());
+        return Err(if max_inputs == 1 {
+            "task arguments require zero or one bounded named string"
+        } else {
+            "task arguments require at most eight bounded named strings totaling at most 16 KiB"
+        }
+        .into());
     }
     // The existing compiler uses only catalog/type metadata. An empty backend
     // supplies no native objects and refuses every operation if this changes.
@@ -51,13 +78,18 @@ pub fn prepare_task(
     if !matches!(program.result_type, PureType::Scalar(_)) {
         return Err("task result must be scalar; native identities cannot leave the worker".into());
     }
-    if program.entry_parameters.len() > 1
+    if program.entry_parameters.len() > max_inputs
         || program.entry_parameters.iter().any(|parameter| {
             !input_name(&parameter.name)
                 || parameter.domain != leselang_vm::native::core::ScalarType::String
         })
     {
-        return Err("task entry requires zero or one named string parameter".into());
+        return Err(if max_inputs == 1 {
+            "task entry requires zero or one named string parameter"
+        } else {
+            "task entry requires at most eight named string parameters"
+        }
+        .into());
     }
     let arguments = bind_entry_arguments(
         &program.entry_parameters,
