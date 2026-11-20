@@ -78,9 +78,12 @@ cleanup of an old Bridge independent of a newer attachment.
 
 This helper does not infer dependencies, mutate application state, schedule
 handlers or roll back completed work. Its inventory is static. Applications
-that need direct `register`, `replace` or `unregister` control can keep a custom
-connection. DOM identity checks and agreement between the model and rendered
-controls still belong in the application's readers and handlers.
+with conditional or remounted controls can opt into
+[`createDynamicRegisteredApplication`](dynamic-controls.md), which provides
+fixed logical slots, explicit `mount`, `replace` and `unmount`, and a structural
+identity check through `bindingRevision`. Custom connections using lower-level
+Bridge registration remain available. DOM identity checks and agreement between
+the model and rendered controls still belong in application readers and handlers.
 
 To describe tasks over those controls, use the optional
 [`defineRegisteredTask` constructor](registered-tasks.md), then validate the
@@ -145,15 +148,28 @@ monotonically increasing execution sessions within it; it never reuses a
 session or depends on a global random-number API. Recreating a host requires a
 new epoch, even if the application window has the same name.
 
+## Optional Execution Failure Reports
+
+Set `executionReports: "v1"` explicitly when the transport returns the bounded
+terminal failure report contract. The registered host exposes this choice to
+`AgentWorkflowSession`, so its referenced-source verification uses the same
+rules. Failure reports retain original evidence and stop before success-budget
+checks; even complete successful fields cannot override a terminal failure.
+Existing connections without the option keep generic `status` business fields
+uninterpreted. See [execution failure reports](execution-reports.md) for exact
+shapes, typed Rust producers and cancellation priority.
+
 ## Custom Application Connections
 
-`RegisteredApplicationConnection` has three synchronous methods:
+`RegisteredApplicationConnection` has three required synchronous methods and an
+optional structural identity reader:
 
 | Method | Application responsibility |
 | --- | --- |
 | `attach(bridge)` | Register the current application objects and connect their real handlers to this execution's Bridge. |
 | `detach(bridge)` | Remove that execution's connection without detaching a newer connection. It must tolerate cleanup after an incomplete attachment. |
 | `observe()` | Return a fresh, side-effect-free inventory of the application's actual public control state. |
+| `bindingRevision?()` | Return a nonnegative safe integer that increases on every structural binding change, including same-value replacement and ABA. |
 
 Each observation contains at most 64 records with exactly these fields:
 
@@ -174,6 +190,14 @@ Identifiers must be nonempty and unique. Text fields are bounded UTF-8 strings;
 invoking getters, custom serialization or coercion, and compares inventories
 by identifier rather than array position. These application observations do not
 include the protocol's execution-local `generation` and `revision` fields.
+
+The optional binding revision is separate from observations and wire data.
+The host checks it at execution boundaries and before/after independent
+verification. A changed identity stops execution or yields
+`application_bindings_changed` verification detail even when every visible value
+is unchanged. Already dispatched effects may remain; these checks do not provide
+atomic revocation. Connections without this hook retain their existing behavior.
+See [dynamic controls](dynamic-controls.md) for lifecycle and failure contracts.
 
 Observe the application's model and actual controls, not a cached report returned
 by the transport. For a DOM application, also check that the registered nodes

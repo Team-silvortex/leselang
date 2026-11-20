@@ -34,18 +34,19 @@ test("an external installed Node SDK consumer runs real workflows, partial failu
     assert.deepEqual((await readdir(join(directory, "node_modules"))).sort(), [".package-lock.json", "@leselang"]);
 
     await mkdir(join(directory, "agent"));
-    for (const file of ["application.mjs", "catalog.mjs", "assistant.mjs", "multi-input-application.mjs", "multi-input-catalog.mjs"]) {
+    for (const file of ["application.mjs", "catalog.mjs", "assistant.mjs", "multi-input-application.mjs", "multi-input-catalog.mjs", "dom-application.mjs"]) {
       await copyFile(new URL(file, import.meta.url), join(directory, "agent", file));
     }
     await copyFile(new URL("../semantic-contract.mjs", import.meta.url), join(directory, "semantic-contract.mjs"));
     await writeFile(join(directory, "consumer.mjs"), String.raw`
 import assert from "node:assert/strict";
-import { AgentWorkflowSession, createRegisteredAgentHost, defineSemanticCatalog, prepareSemanticWorkflow } from "@leselang/bridge";
+import { AgentSession, AgentWorkflowSession, createRegisteredAgentHost, createSemanticProvider, defineSemanticCatalog, prepareSemanticWorkflow } from "@leselang/bridge";
 import { createNodeAgentTransport } from "@leselang/bridge/node";
 import { createPublicationApplication } from "./agent/application.mjs";
 import { createPublicationAgent } from "./agent/assistant.mjs";
 import { createArticleApplication } from "./agent/multi-input-application.mjs";
 import { createArticleCatalog } from "./agent/multi-input-catalog.mjs";
+import { createDomArticleApplication, createDynamicDomArticleApplication } from "./agent/dom-application.mjs";
 
 assert.equal(typeof createNodeAgentTransport, "function");
 assert.equal(Object.hasOwn(await import("@leselang/bridge"), "createNodeAgentTransport"), false);
@@ -70,6 +71,142 @@ function workflow(host, text) {
   } } });
 }
 const acceptance = {};
+{
+  // Actual native classification through the installed optional Node entry.
+  // The default carrier keeps the previous exception contract for the same fault.
+  const outcomes = [];
+  for (const executionReports of [undefined, "v1"]) {
+    const application = createDynamicDomArticleApplication();
+    application.unmountPublish();
+    const transport = createNodeAgentTransport({ executable, catalog: createArticleCatalog, executionReports });
+    const host = createRegisteredAgentHost({ window: "installed-native-failure", epoch: "fresh-instance", application,
+      transport, executionReports: "v1", observations: { before: "objects_before", after: "objects_after" } });
+    const session = new AgentSession({ host, provider: createSemanticProvider() });
+    const args = { title: "Installed retained title", content: "Installed retained content" };
+    try {
+      const outcome = await session.submit("task publish_article:" + JSON.stringify(args));
+      assert.equal(outcome.status, "failed");
+      assert.equal(outcome.possiblePartialEffects, true);
+      assert.deepEqual(application.snapshot(), { ...args, savedTitle: "", savedContent: "", publishes: 0, otherClicks: 0 });
+      if (executionReports) {
+        assert.equal(outcome.error, "application_verification_failed");
+        assert.deepEqual(outcome.verificationFailure, { code: "execution_object_unavailable" });
+        assert.deepEqual(report(outcome), { schema_version: 1, kind: "javascript_task_run", profile: "javascript.registered",
+          status: "failed", error: "unknown registered object", possible_partial_effects: true,
+          execution_failure: { code: "execution_object_unavailable" } });
+      } else {
+        assert.equal(outcome.error, "node_worker_failed: unknown registered object");
+        assert.equal(outcome.report, undefined);
+        assert.equal(outcome.verificationFailure, undefined);
+      }
+      application.mountPublish();
+      const next = await session.submit("task publish_article:" + JSON.stringify(args));
+      assert.equal(next.status, "verified", next.error);
+      assert.equal(report(next).effects, 12);
+      assert.equal(application.snapshot().publishes, 1);
+      outcomes.push({ mode: executionReports ?? "legacy", code: outcome.verificationFailure?.code ?? null,
+        subsequentRun: next.status, publications: 1 });
+    } finally { session.cancel(); host.close(); application.dispose(); }
+  }
+  acceptance.nativeFailure = outcomes;
+}
+{
+  // Inject a terminal failure around a real worker report. This checks public
+  // report admission from the installed tarball, not a new Node wire format.
+  const application = createArticleApplication({ title: "Failed source", content: "Must remain a draft" });
+  const carrier = createNodeAgentTransport({ executable, catalog: createArticleCatalog });
+  let inject = true, executions = 0;
+  const host = createRegisteredAgentHost({ window: "installed-failure", epoch: "fresh-instance", application,
+    executionReports: "v1", observations: { before: "objects_before", after: "objects_after" },
+    transport: { describe: (signal) => carrier.describe(signal), reply: (reply) => carrier.reply(reply),
+      cancel: (scope) => carrier.cancel(scope), close: (endpoint) => carrier.close(endpoint),
+      async execute(run, signal) {
+        executions++;
+        const raw = await carrier.execute(run, signal);
+        return inject ? JSON.stringify({ ...JSON.parse(raw), status: "failed", error: "injected terminal failure",
+          possible_partial_effects: false, execution_failure: { code: "execution_failed" } }) : raw;
+      } } });
+  const session = new AgentWorkflowSession({ host, provider: { async plan({ catalog }) {
+    return prepareSemanticWorkflow(catalog, [
+      { task: "read_title", arguments: {} },
+      { task: "publish_article", arguments: { title: { fromStep: 0, format: "string" }, content: "Never publish" } },
+    ]);
+  } } });
+  try {
+    const result = await session.submit("Refuse terminal failure before binding the source value");
+    assert.equal(result.status, "failed");
+    assert.deepEqual(result.verificationFailure, { code: "execution_failed" });
+    assert.equal(result.steps.length, 1);
+    assert.equal(executions, 1);
+    assert.equal(report(result.steps[0]).effects, 2);
+    assert.equal(result.possiblePartialEffects, true);
+    assert.equal(application.snapshot().publishes, 0);
+    inject = false;
+    const single = new AgentSession({ host, provider: createSemanticProvider() });
+    const read = await single.submit("task read_title");
+    assert.equal(read.status, "verified", read.error);
+    acceptance.executionFailure = { code: result.verificationFailure.code, attempted: result.steps.length,
+      publications: 0, subsequentRead: read.status };
+  } finally { session.cancel(); host.close(); }
+}
+{
+  const application = createDynamicDomArticleApplication();
+  application.unmountPublish(); application.mountPublish();
+  assert.equal(application.bindingRevision(), 2);
+  const transport = createNodeAgentTransport({ executable, catalog: createArticleCatalog });
+  const host = createRegisteredAgentHost({ window: "installed-dynamic", epoch: "fresh-instance", application, transport,
+    observations: { before: "objects_before", after: "objects_after" } });
+  let replaceBeforeVerify = false;
+  const session = new AgentSession({ host, provider: createSemanticProvider(), onEvent(state) {
+    if (replaceBeforeVerify && state.phase === "verifying") application.remountPublish();
+  } });
+  try {
+    const command = 'task publish_article:{"title":"Remounted installed title","content":"Preserved installed content"}';
+    const first = await session.submit(command);
+    assert.equal(first.status, "verified", first.error);
+    assert.equal(report(first).effects, 12);
+    replaceBeforeVerify = true;
+    const failed = await session.submit(command);
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.error, "application_verification_failed");
+    assert.deepEqual(failed.verificationFailure, { code: "application_bindings_changed" });
+    assert.equal(report(failed).effects, 12);
+    assert.equal(failed.possiblePartialEffects, true);
+    assert.equal(application.snapshot().publishes, 2);
+    replaceBeforeVerify = false;
+    const read = await session.submit("task read_title");
+    assert.equal(read.status, "verified", read.error);
+    assert.equal(application.snapshot().publishes, 2);
+    acceptance.dynamic = { status: first.status, failure: failed.verificationFailure.code, publications: 2, subsequentRead: read.status };
+  } finally { session.cancel(); host.close(); application.dispose(); }
+}
+{
+  // EventTarget fixture + installed public DOM helpers + actual Rust worker.
+  // This does not emulate browser layout or claim a native GUI interaction.
+  const application = createDomArticleApplication();
+  const initial = { title: "Installed DOM title ✓", content: "Installed event content" };
+  application.manualInput("title", initial.title);
+  application.manualInput("content", initial.content);
+  const transport = createNodeAgentTransport({ executable, catalog: createArticleCatalog });
+  const host = createRegisteredAgentHost({ window: "installed-dom", epoch: "fresh-instance", application, transport,
+    observations: { before: "objects_before", after: "objects_after" } });
+  const session = new AgentWorkflowSession({ host, provider: { async plan({ catalog }) {
+    return prepareSemanticWorkflow(catalog, [
+      { task: "read_title", arguments: {} }, { task: "read_content", arguments: {} },
+      { task: "publish_article", arguments: { title: { fromStep: 0, format: "string" }, content: { fromStep: 1, format: "string" } } },
+      { task: "check_article", arguments: {} },
+    ]);
+  } } });
+  try {
+    const outcome = await session.submit("Use the installed DOM adapter to publish both verified fields");
+    assert.equal(outcome.status, "verified", outcome.error);
+    assert.deepEqual(outcome.steps.map((step) => report(step).effects), [2, 2, 12, 1]);
+    assert.deepEqual(application.snapshot(), { ...initial, savedTitle: initial.title, savedContent: initial.content, publishes: 1, otherClicks: 0 });
+    assert.deepEqual(application.eventCounts(), { title: 2, content: 2, publish: 1, other: 0 });
+    assert.equal(application.elements.savedContent.textContent, initial.content);
+    acceptance.dom = { status: outcome.status, effects: 17, publishes: 1, handlers: application.eventCounts() };
+  } finally { session.cancel(); host.close(); application.dispose(); }
+}
 {
   const application = createArticleApplication();
   const transport = createNodeAgentTransport({ executable, catalog(base) {
@@ -206,6 +343,13 @@ process.stdout.write(JSON.stringify(acceptance) + "\n");
 `);
     const acceptance = JSON.parse(run(process.execPath, ["consumer.mjs", worker], directory));
     assert.deepEqual(acceptance, {
+      nativeFailure: [
+        { mode: "legacy", code: null, subsequentRun: "verified", publications: 1 },
+        { mode: "v1", code: "execution_object_unavailable", subsequentRun: "verified", publications: 1 },
+      ],
+      executionFailure: { code: "execution_failed", attempted: 1, publications: 0, subsequentRead: "verified" },
+      dynamic: { status: "verified", failure: "application_bindings_changed", publications: 2, subsequentRead: "verified" },
+      dom: { status: "verified", effects: 17, publishes: 1, handlers: { title: 2, content: 2, publish: 1, other: 0 } },
       diagnostic: { status: "failed", failure: { code: "predicate_failed", predicate: "requires_review" }, effects: 12, publishes: 1 },
       named: { status: "verified", effects: 17, publishes: 1 },
       workflow: { status: "verified", effects: 14, publishes: 1 },
@@ -217,7 +361,7 @@ process.stdout.write(JSON.stringify(acceptance) + "\n");
 import { createNodeAgentTransport, type NodeAgentTransportOptions } from "@leselang/bridge/node";
 import { createRegisteredAgentHost, createRegisteredApplication, type RegisteredAgentTransport, type VerificationResult } from "@leselang/bridge";
 const options: NodeAgentTransportOptions = {
-  executable: "/trusted/agent_worker", args: [], timeoutMs: 15_000,
+  executable: "/trusted/agent_worker", args: [], timeoutMs: 15_000, executionReports: "v1",
   catalog(base: string): string { return base; },
   onStderr(text: string): void { void text; },
 };
@@ -225,6 +369,7 @@ const transport: RegisteredAgentTransport = createNodeAgentTransport(options);
 const host = createRegisteredAgentHost({
   window: "typed-node", epoch: "fresh-instance", transport,
   application: createRegisteredApplication({}),
+  executionReports: "v1",
   observations: { before: "objects_before", after: "objects_after" },
 });
 void host;
@@ -232,9 +377,11 @@ const check = (report: Parameters<typeof host.verify>[0], plan: Parameters<typeo
 void check;
 // @ts-expect-error worker paths are strings
 const badExecutable: NodeAgentTransportOptions = { executable: 123, catalog: (base) => base };
+// @ts-expect-error execution reports require the supported explicit dialect
+const badReports: NodeAgentTransportOptions = { executable: "/trusted/agent_worker", catalog: (base) => base, executionReports: "v2" };
 // @ts-expect-error only the optional Node subpath exports a process carrier
 import { createNodeAgentTransport as rootCarrier } from "@leselang/bridge";
-void badExecutable; void rootCarrier;
+void badExecutable; void badReports; void rootCarrier;
 `);
     await writeFile(join(directory, "tsconfig.json"), JSON.stringify({
       compilerOptions: { noEmit: true, strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext",

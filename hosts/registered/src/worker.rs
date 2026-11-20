@@ -3,8 +3,8 @@
 mod json_lines;
 
 use crate::{
-    PreparedTask, Scope, Transport, describe_registered, prepare_named_task, prepare_task,
-    run_prepared_registered_task,
+    ExecutionFailure, ExecutionFailureCode, PreparedTask, Scope, Transport, describe_registered,
+    prepare_named_task, prepare_task, run_prepared_registered_task_detailed,
 };
 use json_lines::{Correlation, challenge, read_record};
 use serde::Deserialize;
@@ -46,9 +46,25 @@ struct Start {
     arguments: BTreeMap<String, String>,
 }
 
-fn admit(value: Value) -> Result<(Scope, PreparedTask), String> {
+fn admit(mut value: Value) -> Result<(Scope, PreparedTask), String> {
+    // Version three opts into terminal execution reports without conflating
+    // that choice with the independent single/named-input admission rules.
+    // Legacy versions retain their exact field set, including rejecting this
+    // new field even when its value is null.
+    let named_inputs = if value["agent_worker_version"].as_u64() == Some(3) {
+        match value
+            .as_object_mut()
+            .and_then(|fields| fields.remove("input_mode"))
+        {
+            Some(Value::String(mode)) if mode == "single_string" => false,
+            Some(Value::String(mode)) if mode == "named_strings" => true,
+            _ => return Err("invalid worker input mode".into()),
+        }
+    } else {
+        value["agent_worker_version"].as_u64() == Some(2)
+    };
     let start: Start = serde_json::from_value(value).map_err(|_| "invalid worker start record")?;
-    if !matches!(start.agent_worker_version, 1 | 2) || start.kind != "start" {
+    if !matches!(start.agent_worker_version, 1..=3) || start.kind != "start" {
         return Err("unsupported worker start record".into());
     }
     if [
@@ -67,7 +83,7 @@ fn admit(value: Value) -> Result<(Scope, PreparedTask), String> {
     }
     // Complete syntax, type and argument admission before any Bridge request.
     let arguments = start.arguments.into_iter().collect();
-    let prepared = if start.agent_worker_version == 2 {
+    let prepared = if named_inputs {
         prepare_named_task(&start.source, arguments)?
     } else {
         prepare_task(&start.source, arguments)?
@@ -92,7 +108,7 @@ struct Pending {
 fn deliver(pending: &Mutex<Option<Pending>>, value: Value) -> Result<Value, String> {
     let fields = value.as_object().ok_or("invalid worker reply envelope")?;
     if fields.len() != 4
-        || !matches!(value["agent_worker_version"].as_u64(), Some(1 | 2))
+        || !matches!(value["agent_worker_version"].as_u64(), Some(1..=3))
         || value["kind"] != "reply"
         || !fields.contains_key("challenge")
         || !fields.contains_key("reply")
@@ -220,14 +236,15 @@ impl StdioTransport {
 
     fn serve(&mut self) -> Result<Value, String> {
         let initial = self.initial()?;
-        if let Some(version @ (1 | 2)) = initial["agent_worker_version"].as_u64() {
+        if let Some(version @ 1..=3) = initial["agent_worker_version"].as_u64() {
             self.version = version as u32;
         }
         let (scope, prepared) = admit(initial)?;
         if !self.is_live() {
             return Err("worker connection closed before execution".into());
         }
-        run_prepared_registered_task(self, scope, prepared)
+        let version = self.version;
+        execute_admitted(self, scope, prepared, version)
     }
 }
 
@@ -277,6 +294,45 @@ impl Transport for StdioTransport {
     fn is_live(&self) -> bool {
         self.live.load(Ordering::Acquire)
     }
+}
+
+fn execute_admitted(
+    transport: &mut impl Transport,
+    scope: Scope,
+    prepared: PreparedTask,
+    version: u32,
+) -> Result<Value, String> {
+    match run_prepared_registered_task_detailed(transport, scope, prepared) {
+        Ok(report) => Ok(report),
+        Err(error) if version == 3 && transport.is_live() => Ok(execution_failure_report(error)),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn execution_failure_report(error: ExecutionFailure) -> Value {
+    let code = error.code();
+    let message = error.to_string();
+    let message = if message.is_empty() {
+        "workflow execution failed".to_owned()
+    } else if message.len() <= 4096 {
+        message
+    } else {
+        let suffix = "… [truncated]";
+        let mut end = 4096 - suffix.len();
+        while !message.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}{suffix}", &message[..end])
+    };
+    json!({
+        "schema_version": 1,
+        "kind": "javascript_task_run",
+        "profile": "javascript.registered",
+        "status": if code == ExecutionFailureCode::Cancelled { "cancelled" } else { "failed" },
+        "error": message,
+        "possible_partial_effects": true,
+        "execution_failure": { "code": code.as_str() },
+    })
 }
 
 fn error_message(error: &str) -> String {
@@ -353,6 +409,7 @@ pub fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::run_prepared_registered_task;
 
     fn start(source: &str, arguments: Value) -> Value {
         json!({"agent_worker_version":1,"kind":"start","scope":{"window":"node","epoch":"instance","session":"run_1"},"source":source,"arguments":arguments})
@@ -406,7 +463,7 @@ mod tests {
         // regression in version admission.
         for version in [
             json!(0),
-            json!(3),
+            json!(4),
             json!(-1),
             json!("2"),
             json!(null),
@@ -427,6 +484,79 @@ mod tests {
         assert!(deliver(&pending, envelope.clone()).is_err());
         envelope["agent_worker_version"] = json!(2);
         assert_eq!(deliver(&pending, envelope).unwrap(), reply);
+    }
+
+    #[test]
+    fn execution_reports_require_version_three_with_an_explicit_bounded_input_mode() {
+        let mut single = start(
+            "fn main(content: string) = content",
+            json!({"content":"Text"}),
+        );
+        single["agent_worker_version"] = json!(3);
+        for invalid in [
+            None,
+            Some(json!(null)),
+            Some(json!(true)),
+            Some(json!("other")),
+        ] {
+            let mut value = single.clone();
+            if let Some(mode) = invalid {
+                value["input_mode"] = mode;
+            }
+            assert!(admit(value).is_err());
+        }
+        single["input_mode"] = json!("single_string");
+        assert!(admit(single.clone()).is_ok());
+        single["input_mode"] = json!("named_strings");
+        assert!(admit(single).is_ok());
+
+        let mut named = start(
+            "fn main(title: string, content: string) = title",
+            json!({"title":"Title", "content":"Content"}),
+        );
+        named["agent_worker_version"] = json!(3);
+        named["input_mode"] = json!("single_string");
+        assert!(admit(named.clone()).is_err());
+        named["input_mode"] = json!("named_strings");
+        assert!(admit(named.clone()).is_ok());
+        named["arguments"]["content"] = json!("文".repeat(1366));
+        assert!(admit(named).is_err(), "the UTF-8 input bound is unchanged");
+
+        for version in [1, 2] {
+            for mode in [json!(null), json!("single_string"), json!("named_strings")] {
+                let mut legacy = start("fn main() = true", json!({}));
+                legacy["agent_worker_version"] = json!(version);
+                legacy["input_mode"] = mode;
+                assert!(admit(legacy).is_err(), "legacy frames remain exact");
+            }
+        }
+        let mut extra = start("fn main() = true", json!({}));
+        extra["agent_worker_version"] = json!(3);
+        extra["input_mode"] = json!("single_string");
+        extra["execution_reports"] = json!("v1");
+        assert!(admit(extra).is_err());
+    }
+
+    #[test]
+    fn reply_gate_pins_all_three_versions_without_consuming_foreign_replies() {
+        let reply = json!({"transport_version":1,"window":"node","epoch":"instance","session":"run_1","request_id":1});
+        for version in [1, 2, 3] {
+            let pending = Mutex::new(Some(Pending {
+                version,
+                correlation: Correlation::read(&reply).unwrap(),
+                challenge: "a".repeat(64),
+            }));
+            for foreign in [0, 1, 2, 3, 4] {
+                if foreign != version {
+                    let envelope = json!({"agent_worker_version":foreign,"kind":"reply","challenge":"a".repeat(64),"reply":reply});
+                    assert!(deliver(&pending, envelope).is_err());
+                    assert!(pending.lock().unwrap().is_some());
+                }
+            }
+            let envelope = json!({"agent_worker_version":version,"kind":"reply","challenge":"a".repeat(64),"reply":reply});
+            assert_eq!(deliver(&pending, envelope.clone()).unwrap(), reply);
+            assert!(deliver(&pending, envelope).is_err());
+        }
     }
 
     #[test]
@@ -553,12 +683,125 @@ mod tests {
 
     #[test]
     fn closed_transport_never_starts_a_registered_task() {
-        let (scope, prepared) = admit(start("fn main() = true", json!({}))).unwrap();
-        let mut transport = EmptyRegistry {
-            requests: 0,
-            live: false,
-        };
-        assert!(run_prepared_registered_task(&mut transport, scope, prepared).is_err());
-        assert_eq!(transport.requests, 0);
+        for version in [1, 2, 3] {
+            let (scope, prepared) = admit(start("fn main() = true", json!({}))).unwrap();
+            let mut transport = EmptyRegistry {
+                requests: 0,
+                live: false,
+            };
+            assert!(execute_admitted(&mut transport, scope, prepared, version).is_err());
+            assert_eq!(transport.requests, 0);
+        }
+    }
+
+    #[test]
+    fn live_missing_object_failure_is_a_terminal_report_only_with_explicit_version_three() {
+        let source = "fn main() = bind(target: gui.find(name: \"missing\"), body: true)";
+        for version in [1, 2, 3] {
+            let (scope, prepared) = admit(start(source, json!({}))).unwrap();
+            let mut transport = EmptyRegistry {
+                requests: 0,
+                live: true,
+            };
+            let result = execute_admitted(&mut transport, scope, prepared, version);
+            if version == 3 {
+                assert_eq!(
+                    result.unwrap(),
+                    json!({
+                        "schema_version":1, "kind":"javascript_task_run", "profile":"javascript.registered",
+                        "status":"failed", "error":"unknown registered object", "possible_partial_effects":true,
+                        "execution_failure":{"code":"execution_object_unavailable"},
+                    })
+                );
+            } else {
+                assert_eq!(result.unwrap_err(), "unknown registered object");
+            }
+            assert_eq!(
+                transport.requests, 1,
+                "only the registry bootstrap was sent"
+            );
+        }
+    }
+
+    #[test]
+    fn version_three_success_preserves_exact_report_effect_and_fuel_accounting() {
+        let source = "fn main() = bind(first: gui.list(), body: gui.list())";
+        let mut expected = None;
+        for version in [1, 2, 3] {
+            let (scope, prepared) = admit(start(source, json!({}))).unwrap();
+            let mut transport = EmptyRegistry {
+                requests: 0,
+                live: true,
+            };
+            let report = execute_admitted(&mut transport, scope, prepared, version).unwrap();
+            assert_eq!(report["effects"], 2);
+            assert!(report.get("status").is_none());
+            assert!(report.get("execution_failure").is_none());
+            if let Some(old) = &expected {
+                assert_eq!(&report, old);
+            }
+            expected = Some(report);
+        }
+    }
+
+    #[test]
+    fn transport_retirement_never_becomes_a_report_and_live_error_text_cannot_select_a_code() {
+        struct BrokenRegistry {
+            live: bool,
+            retire: bool,
+        }
+        impl Transport for BrokenRegistry {
+            fn exchange(&mut self, _: Value) -> Result<Value, String> {
+                if self.retire {
+                    self.live = false;
+                }
+                Err("unknown registered object".into())
+            }
+            fn is_live(&self) -> bool {
+                self.live
+            }
+        }
+        for retire in [false, true] {
+            let (scope, prepared) = admit(start("fn main() = true", json!({}))).unwrap();
+            let mut transport = BrokenRegistry { live: true, retire };
+            let result = execute_admitted(&mut transport, scope, prepared, 3);
+            if retire {
+                assert_eq!(result.unwrap_err(), "unknown registered object");
+            } else {
+                let report = result.unwrap();
+                assert_eq!(report["error"], "unknown registered object");
+                assert_eq!(report["execution_failure"]["code"], "execution_failed");
+            }
+        }
+    }
+
+    #[test]
+    fn report_error_text_is_bounded_without_interpreting_it_as_a_failure_code() {
+        for message in [
+            String::new(),
+            "x".repeat(4096),
+            "x".repeat(4097),
+            "文".repeat(1366),
+        ] {
+            let report = execution_failure_report(ExecutionFailure::from(message.clone()));
+            assert_eq!(report["execution_failure"]["code"], "execution_failed");
+            let text = report["error"].as_str().unwrap();
+            assert!(!text.is_empty());
+            assert!(text.len() <= 4096);
+            if message.is_empty() {
+                assert_eq!(text, "workflow execution failed");
+            } else if message.len() <= 4096 {
+                assert_eq!(text, message);
+            } else {
+                assert!(text.ends_with("… [truncated]"));
+            }
+        }
+        let report = execution_failure_report(ExecutionFailure::from("unknown registered object"));
+        assert_eq!(report["execution_failure"]["code"], "execution_failed");
+        let report = execution_failure_report(ExecutionFailure::from(crate::Error::Fuel));
+        assert_eq!(
+            report["execution_failure"]["code"],
+            "execution_fuel_exhausted"
+        );
     }
 }

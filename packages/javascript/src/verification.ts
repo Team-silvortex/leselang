@@ -2,6 +2,12 @@
 export type VerificationFailureCode =
   | "invalid_report"
   | "report_identity_mismatch"
+  | "execution_failed"
+  | "execution_object_unavailable"
+  | "execution_fuel_exhausted"
+  | "execution_deadline_exceeded"
+  | "execution_scope_closed"
+  | "execution_cancelled"
   | "report_budget_mismatch"
   | "host_verification_missing"
   | "result_mismatch"
@@ -15,6 +21,7 @@ export type VerificationFailureCode =
   | "observation_invalid"
   | "before_observation_mismatch"
   | "after_observation_mismatch"
+  | "application_bindings_changed"
   | "verification_interrupted"
   | "invalid_verification_result";
 
@@ -30,9 +37,12 @@ export type VerificationResult =
 
 const codes = new Set<VerificationFailureCode>([
   "invalid_report", "report_identity_mismatch", "report_budget_mismatch", "host_verification_missing",
+  "execution_failed", "execution_object_unavailable", "execution_fuel_exhausted",
+  "execution_deadline_exceeded", "execution_scope_closed", "execution_cancelled",
   "result_mismatch", "result_evidence_invalid", "result_evidence_mismatch", "predicate_evidence_invalid",
   "predicate_failed", "completion_unavailable", "plan_mismatch", "report_mismatch", "observation_invalid",
   "before_observation_mismatch", "after_observation_mismatch", "verification_interrupted", "invalid_verification_result",
+  "application_bindings_changed",
 ]);
 const invalid: VerificationResult = Object.freeze({ verified: false,
   diagnostic: Object.freeze({ code: "invalid_verification_result" }) });

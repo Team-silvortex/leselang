@@ -1,5 +1,5 @@
-import { createRegisteredApplication, type ActionContext, type RegisteredActionContext,
-  type RegisteredControl, type ControlState } from "../bridge.js";
+import { createRegisteredApplication, type ControlState } from "../bridge.js";
+import { createDomButtonControl } from "../dom-bridge.js";
 import { BoardModel, type BoardTaskId } from "./model.js";
 
 export interface BoardTaskElements {
@@ -19,13 +19,6 @@ export interface BoardElements {
 export function createBoardView(elements: BoardElements) {
   const model = new BoardModel();
   const ids = ["review", "archive"] as const;
-  const contexts: Partial<Record<BoardTaskId, RegisteredActionContext>> = {};
-  const pending: Partial<Record<BoardTaskId, Promise<void>>> = {};
-  const direct: RegisteredActionContext = {
-    signal: new AbortController().signal,
-    commit: <T>(mutation: () => T): T => mutation(),
-    changed: (...names) => application.changed(...names),
-  };
 
   function current(node: HTMLElement): void {
     if (!node.isConnected || document.getElementById(node.id) !== node) {
@@ -68,44 +61,27 @@ export function createBoardView(elements: BoardElements) {
       enabled: task.status === "pending", editable: false, clicks: task.completions };
   }
 
-  for (const id of ids) {
-    render(id);
-    elements[id].button.addEventListener("click", () => {
-      const action = contexts[id] ?? direct;
-      const guarded: ActionContext = {
-        signal: action.signal,
-        commit: <T>(mutation: () => T): T => action.commit(() => {
-          // Recheck the real instances and all public observations after the await.
-          for (const other of ids) state(other);
-          return mutation();
-        }),
-      };
-      pending[id] = model.complete(id, guarded, () => {
+  function control(id: BoardTaskId) {
+    return createDomButtonControl({
+      element: elements[id].button, read: () => state(id),
+      changed: (...names) => application.changed(...names),
+      beforeCommit() {
+        // Recheck the real instances and all public observations after the await.
+        for (const other of ids) state(other);
+      },
+      onClick(action) { return model.complete(id, action, () => {
         render(id);
         action.changed(id);
         status(`已完成「${model.task(id).title}」。另一条任务保持原状态。`);
-      });
-      void pending[id]!.catch(() => {
+      }); },
+      onError() {
         try { status("任务未完成。请核对当前状态；不会自动重试。", true); }
         catch { /* A replaced page cannot publish task completion. */ }
-      });
+      },
     });
   }
-
-  function control(id: BoardTaskId): RegisteredControl {
-    return {
-      read: () => state(id),
-      async click(context) {
-        state(id);
-        pending[id] = undefined;
-        contexts[id] = context;
-        try { elements[id].button.click(); } finally { contexts[id] = undefined; }
-        const completion = pending[id];
-        if (!completion) throw new Error("board completion handler did not run");
-        await completion;
-      },
-    };
-  }
-  const application = createRegisteredApplication({ review: control("review"), archive: control("archive") });
-  return application;
+  for (const id of ids) render(id);
+  const review = control("review"), archive = control("archive");
+  const application = createRegisteredApplication({ review: review.control, archive: archive.control });
+  return { ...application, dispose() { review.dispose(); archive.dispose(); } };
 }

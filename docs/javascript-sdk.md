@@ -24,8 +24,9 @@ tasks and the host independently verifies their declared report conditions.
 See the
 [in-app agent guide](agent-entry.md) for message-to-workflow planning, explicit
 execution, verification and cancellation across sequential tasks.
-The Tauri task carrier now accepts no input or one exact named string and
-returns any existing scalar result type. Its raw report preserves full `u64`
+The Tauri task carrier accepts no input, one exact named string, or opt-in
+[v3 named string inputs](named-task-inputs.md), and returns any existing scalar
+result type. Its raw report preserves full `u64`
 values; the in-app host checks declared predicates and fresh observations.
 The Node reference below retains its existing Boolean publication contract.
 The additional [Node-owned agent](node-agent-host.md) uses the public registered
@@ -43,6 +44,17 @@ builds its application connection from a static map of `read`, `click` and
 observations. An application supplies those handlers and a trusted transport;
 it need not copy the Tauri reference's evidence and lifetime code. The original
 `AgentHost` and `Bridge` interfaces remain available for other host contracts.
+
+The optional [`createDynamicRegisteredApplication`](dynamic-controls.md) adds
+explicit mount, replacement and unmount for fixed logical names. Its structural
+revision lets the registered host detect same-value replacement independently
+of observation values; static connections keep their original API.
+
+For application-owned DOM controls, the optional
+[`@leselang/bridge/dom` entry](dom-controls.md) supplies text and button bindings
+that route manual and agent events through the same declared handlers. It handles
+per-invocation completion and lifecycle fencing while the application retains its
+own readers, business rules and semantic verification.
 
 ## Register An Application Adapter
 

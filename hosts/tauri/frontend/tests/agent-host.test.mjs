@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { createAgentHost } from "../dist/agent/host.js";
-import { prepareSemanticCatalog, prepareSemanticWorkflow, AgentWorkflowSession } from "../dist/bridge.js";
+import { prepareSemanticCatalog, prepareSemanticWorkflow, AgentSession, AgentWorkflowSession } from "../dist/bridge.js";
+import { describeWorkflowOutcome } from "../dist/agent/workflow-display.js";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 function deferred() {
@@ -652,5 +653,128 @@ test("verified application observations gate later native execution and retain m
     assert.equal(f.form.visible.find((row) => row.identifier === "save").clicks, mode === "matches" ? 1 : 0);
     assert.equal(f.form.visible.find((row) => row.identifier === "other").clicks, 0);
     assert.equal(f.form.active, null);
+  }
+});
+
+// Native Registry::finish's terminal envelope, carried as original JSON text.
+// These tests exercise the real frontend host/session chain with a mocked IPC carrier.
+function executionFailure(code, overrides = {}) {
+  return {
+    schema_version: 1, kind: "tauri_task_run", profile: "tauri.typescript",
+    status: code === "execution_cancelled" ? "cancelled" : "failed",
+    error: code === "execution_object_unavailable" ? "unknown registered object" : "native execution stopped",
+    possible_partial_effects: true, execution_failure: { code }, ...overrides,
+  };
+}
+
+test("Tauri explicitly admits terminal execution reports and retains their exact failed evidence", async () => {
+  const f = await fixture();
+  assert.equal(f.host.executionReports, "v1");
+  const session = new AgentSession({ host: f.host, provider: { plan: async () => plan } });
+  try {
+    const pending = session.submit("save with an unavailable target");
+    const start = await waitForStart(f, 0);
+    const raw = JSON.stringify(executionFailure("execution_object_unavailable"));
+    start.resolve(raw);
+    const outcome = await pending;
+    assert.equal(outcome.status, "failed");
+    assert.equal(outcome.error, "application_verification_failed");
+    assert.equal(outcome.report, raw);
+    assert.deepEqual(outcome.verificationFailure, { code: "execution_object_unavailable" });
+    assert.equal(outcome.possiblePartialEffects, true);
+    assert.equal(f.form.active, null);
+    assert.equal(f.form.writes, 0);
+    assert.deepEqual(await f.host.verifyDetailed(raw, plan, new AbortController().signal),
+      { verified: false, diagnostic: { code: "completion_unavailable" } });
+  } finally { session.cancel(); f.host.close(); }
+});
+
+test("failed source reports never supply a binding even when complete success fields are also present", async () => {
+  for (const includeSuccess of [false, true]) {
+    const f = await fixture(observedCatalog);
+    const session = new AgentWorkflowSession({ host: f.host, provider: { plan: async () => observedWorkflow() } });
+    try {
+      const initial = structuredClone(f.form.visible);
+      const pending = session.submit("read before saving");
+      const start = await waitForStart(f, 0);
+      const raw = JSON.stringify({ ...(includeSuccess ? readEvidence(initial) : {}),
+        ...executionFailure("execution_object_unavailable") });
+      start.resolve(raw);
+      const outcome = await pending;
+      assert.equal(outcome.status, "failed");
+      assert.equal(outcome.steps.length, 1);
+      assert.equal(f.starts.length, 1, "the native save is never started");
+      assert.equal(outcome.steps[0].report, raw);
+      assert.deepEqual(outcome.verificationFailure, { code: "execution_object_unavailable" });
+      assert.deepEqual(outcome.steps[0].verificationFailure, outcome.verificationFailure);
+      assert.equal(outcome.possiblePartialEffects, true);
+      assert.deepEqual(f.form.visible, initial);
+      const display = describeWorkflowOutcome(outcome);
+      assert.match(display.outcome, /应用执行未完成.*目标控件当前不存在或尚未挂载/u);
+      assert.doesNotMatch(display.outcome, /资源限制与应用声明不一致/u);
+      assert.match(display.steps[1], /未开始/u);
+      assert.match(display.steps[2], /未开始/u);
+      assert.ok(display.reports.includes(raw));
+    } finally { session.cancel(); f.host.close(); }
+  }
+});
+
+test("a later native failure preserves the prior save and stops the remaining workflow", async () => {
+  const f = await fixture();
+  const workflow = prepareSemanticWorkflow(catalog, [
+    { task: "fill_and_save", arguments: { text: "retain committed save" } },
+    { task: "inspect_controls", arguments: {} },
+    { task: "check_controls", arguments: {} },
+  ]);
+  const session = new AgentWorkflowSession({ host: f.host, provider: { plan: async () => workflow } });
+  try {
+    const pending = session.submit("save then inspect");
+    const first = await waitForStart(f, 0);
+    const saved = evidence("retain committed save");
+    f.form.visible = structuredClone(saved.native_after);
+    const savedRaw = JSON.stringify(saved);
+    first.resolve(savedRaw);
+    const second = await waitForStart(f, 1);
+    const failedRaw = JSON.stringify(executionFailure("execution_scope_closed", { possible_partial_effects: false }));
+    second.resolve(failedRaw);
+    const outcome = await pending;
+    assert.deepEqual(outcome.steps.map((step) => step.status), ["verified", "failed"]);
+    assert.equal(outcome.steps[0].report, savedRaw);
+    assert.equal(outcome.steps[1].report, failedRaw);
+    assert.deepEqual(outcome.verificationFailure, { code: "execution_scope_closed" });
+    assert.equal(outcome.possiblePartialEffects, true, "a remote field cannot erase prior effects");
+    assert.equal(f.starts.length, 2);
+    assert.deepEqual(f.form.visible, saved.native_after);
+    assert.equal(f.form.visible.find((row) => row.identifier === "save").clicks, 1);
+    const display = describeWorkflowOutcome(outcome);
+    assert.match(display.outcome, /应用连接已关闭.*已验证 1\/3.*已发生的操作会保留/u);
+    assert.match(display.steps[2], /未开始/u);
+    assert.ok(display.reports.includes(savedRaw) && display.reports.includes(failedRaw));
+  } finally { session.cancel(); f.host.close(); }
+});
+
+test("remote cancellation is failed evidence while local cancellation still wins over a late report", async () => {
+  for (const cancelLocally of [false, true]) {
+    const f = await fixture();
+    const session = new AgentSession({ host: f.host, provider: { plan: async () => plan } });
+    try {
+      const pending = session.submit("retain cancellation ownership");
+      const start = await waitForStart(f, 0);
+      if (cancelLocally) assert.equal(session.cancel(), true);
+      const raw = JSON.stringify(executionFailure("execution_cancelled"));
+      start.resolve(raw);
+      const outcome = await pending;
+      assert.equal(outcome.status, cancelLocally ? "cancelled" : "failed");
+      assert.equal(outcome.possiblePartialEffects, true);
+      if (cancelLocally) {
+        assert.equal(outcome.report, undefined);
+        assert.equal(Object.hasOwn(outcome, "verificationFailure"), false);
+      } else {
+        assert.equal(outcome.report, raw);
+        assert.deepEqual(outcome.verificationFailure, { code: "execution_cancelled" });
+      }
+      assert.equal(f.form.active, null);
+      assert.equal(f.starts.length, 1);
+    } finally { session.cancel(); f.host.close(); }
   }
 });

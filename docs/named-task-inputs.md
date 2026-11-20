@@ -76,11 +76,17 @@ later tasks without undoing earlier changes.
 
 ## Versioned Execution
 
-The Node transport maps the v3 plan marker to worker protocol v2. Startup keeps
+By default the Node transport maps the v3 plan marker to worker protocol v2. Startup keeps
 the source and named-string-map shape, but all outer request, reply and terminal
 records carry `agent_worker_version: 2`. Version, scope, serial and challenge
 must agree throughout the child process. Unsupported versions fail without
 fallback. The inner Bridge protocol and execution-report schema remain version 1.
+
+Transport `executionReports: "v1"` instead selects worker protocol v3 and writes
+the separate `input_mode: "named_strings"` field, including for zero-input plans.
+This enables bounded execution-failure reports without changing the named-input
+contract. Plans without the marker use v3 `single_string` and keep the zero-or-one
+input limit. See the [Node protocol guide](node-agent-host.md#worker-protocol-and-bounds).
 
 Rust hosts use `prepare_named_task(source, arguments)` with the existing
 prepared-task driver. Compilation and complete binding precede application

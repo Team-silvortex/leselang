@@ -48,14 +48,18 @@ Each host includes it privately; it is not an additional language crate or a
 shared runtime service. The cross-language golden fixtures live outside any
 one Consumer or host so their shared compatibility role is explicit.
 
-The JavaScript package's `src/index.ts` is the browser public export boundary;
-`src/node/index.ts` is the optional Node transport entry.
+The JavaScript package's `src/index.ts` is the portable public export boundary;
+`src/node/index.ts` is the optional Node transport entry and `src/dom/index.ts`
+is the optional application-owned DOM binding entry. Neither optional entry is
+imported by the root.
 Its private implementation is grouped by responsibility:
 
 | SDK path under `packages/javascript/src/` | Responsibility |
 | --- | --- |
 | `bridge.ts` | Registered-object protocol and mutation gates |
+| `dom/controls.ts` | Shared manual/agent text and button handlers, event completion and DOM binding lifetime |
 | `node/transport.ts` | Node child lifecycle and bounded delivery to the standalone worker |
+| `agent/registered-application.ts` | Static declarations or dynamic fixed logical slots, structural identity and connection lifetime |
 | `agent/session.ts`, `agent/data.ts` | Single-task lifetime and bounded owned plan/report data |
 | `agent/registered-host.ts`, `agent/registered-evidence.ts` | Reusable registered-application host, transport lifecycle and independent observation evidence |
 | `agent/workflow.ts`, `agent/workflow-bindings.ts` | Sequential admission, catalog pinning, verified-result inputs and requirements |
@@ -77,22 +81,44 @@ from the independent `hosts/registered` workspace. That workspace owns the singl
 catalog metadata builder, compiler adapter and explicit VM driver. Tauri keeps
 its application catalogs and maps shared execution evidence to its fixed report
 profile and field names.
-Native startup's `AgentApplication` pins the form or task board page, described
+
+The registered host's optional detailed Rust entry retains `ExecutionFailure`
+before errors become legacy strings. Both entries share the same driver; native
+Tauri lifecycle flags add cancellation, deadline and closed-scope categories.
+The JavaScript `executionReports: "v1"` opt-in is host configuration rather than
+catalog metadata or model output. It recognizes bounded terminal failure reports
+before success evidence, including workflow sources used by later steps. Default
+generic report behavior and legacy Node worker error frames remain unchanged.
+The optional Node transport independently selects worker v3 with that option,
+retaining explicit single/named input modes. Only admitted execution failures on
+a live connection become worker-authored reports; admission, broken delivery and
+process failures remain exceptions. Report delivery still requires clean child
+closure, then the host's one-use correlation and verification checks.
+Native startup's `AgentApplication` pins the form, task board or article page, described
 catalog and report profile; page requests cannot switch that choice. The legacy
-form runner remains exclusive to the form application. Both identities use the
+form runner remains exclusive to the form application. All three identities use the
 same prepared-task compiler and explicit VM driver.
-In `frontend/src/`, `form/{model,view}.ts` and `board/{model,view}.ts` hold the two
-applications' state and rendering. `agent/chat.ts` owns their common conversation
+In `frontend/src/`, `form/{model,view}.ts`, `board/{model,view}.ts` and
+`article/{model,view}.ts` hold the applications' state and rendering. Their views
+share public DOM helpers while retaining independent model/DOM readers.
+`agent/chat.ts` owns their common conversation
 flow; `agent/host.ts` only maps the public SDK's registered host to Tauri channels
 and commands. `agent/` also holds provider adapters and result/workflow displays.
-The `app.ts`, `agent-app.ts` and `agent-board-app.ts` entry points compose those
+The `app.ts`, `agent-app.ts`, `agent-board-app.ts` and `agent-article-app.ts` entry points compose those
 modules. Static pages and tests
 remain under `frontend/public/` and `frontend/tests/`; `frontend/dist/` is generated.
+
+Dynamic application slots reuse Bridge registration and generations. Their
+application-level `bindingRevision` is checked by the registered host separately
+from snapshot values, so a same-value remount cannot validate an old report.
+It is not a transport field or additional authority. The Article preview removes
+and recreates its editor controls through this path without changing its catalog.
 
 The runtime's public `discovery::semantics` module retains its v1 DTOs and API.
 Private `semantics/validation.rs` shares borrowed validation helpers;
 `semantics/encode.rs` bounds JSON output. `semantics/v2.rs` holds the additive v2
-declarations, serde and conversion API. Fixed v1 catalog bytes remain unchanged.
+declarations, serde and conversion API; `semantics/v3.rs` adds named string inputs.
+Fixed v1/v2 catalog bytes remain unchanged.
 
 The independent Rust catalog agent keeps orchestration in
 `consumer/examples/catalog_agent.rs`. Its private `plan.rs` exposes the internal

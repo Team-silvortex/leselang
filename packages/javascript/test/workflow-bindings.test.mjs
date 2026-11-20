@@ -62,6 +62,7 @@ function fixture(steps, options = {}) {
   const session = new AgentWorkflowSession({
     provider: { async plan() { return options.plan ?? prepareSemanticWorkflow(declaration.raw, steps); } },
     host: {
+      ...(Object.hasOwn(options, "executionReports") ? { executionReports: options.executionReports } : {}),
       async describe() { calls.describe++; return declaration.raw; },
       async execute(plan, signal) {
         calls.execute++; plans.push(plan);
@@ -323,4 +324,87 @@ test("successful referenced semantic evidence invokes the detailed application v
   assert.equal(f.calls.detailed, 2);
   assert.deepEqual(f.writes, ["3"]);
   assert.equal(Object.hasOwn(result, "verificationFailure"), false);
+});
+
+test("opt-in failed source reports stop bindings and requirements before the application verifier", async () => {
+  for (const dependency of ["binding", "requirement"]) {
+    for (const detailed of [false, true]) {
+      const target = dependency === "binding" ? write(ref(0, "string"))
+        : { ...write("not executed"), requires: { fromStep: 0, format: "string", equals: "expected" } };
+      const raw = exact({ schema_version: 1, profile: "bindings.fixture", kind: "binding_test",
+        status: "failed", error: "unknown registered object", possible_partial_effects: false,
+        execution_failure: { code: "execution_object_unavailable" } });
+      const f = fixture([source("read_text"), target], {
+        executionReports: "v1", execute: () => raw,
+        ...(detailed ? { verifyDetailed: () => ({ verified: true }) } : {}),
+      });
+      const result = await f.session.submit("do not forward a failed observation");
+      assert.equal(result.status, "failed");
+      assert.equal(result.error, "application_verification_failed");
+      assert.equal(result.stoppedStep, 0);
+      assert.equal(result.steps.length, 1);
+      assert.equal(result.steps[0].report, raw);
+      assert.equal(result.possiblePartialEffects, true, "report claims cannot clear the session's conservative flag");
+      assert.equal(f.calls.execute, 1);
+      assert.equal(f.calls.verify, 0);
+      assert.equal(f.calls.detailed ?? 0, 0, "the existing semantic-before-application ordering is preserved");
+      assert.deepEqual(f.writes, []);
+      assert.equal(result.requirements, undefined);
+      if (detailed) {
+        assert.deepEqual(result.verificationFailure, { code: "execution_object_unavailable" });
+        assert.deepEqual(f.session.state.verificationFailure, result.verificationFailure);
+        assert.deepEqual(result.steps[0].verificationFailure, result.verificationFailure);
+      } else assert.equal(Object.hasOwn(result, "verificationFailure"), false);
+    }
+  }
+});
+
+test("workflow captures trusted execution-report policy once and rejects unsupported modes before planning", async () => {
+  for (const executionReports of [null, true, "v2", "", {}, []]) {
+    assert.throws(() => fixture([source("read_count")], { executionReports }), /invalid_agent_adapter/);
+  }
+  const declared = catalog();
+  let policyReads = 0, selected = "v1", executes = 0, verifies = 0;
+  const failure = exact({ schema_version: 1, profile: "bindings.fixture", kind: "binding_test",
+    status: "cancelled", error: "remote execution cancelled", possible_partial_effects: false,
+    execution_failure: { code: "execution_cancelled" } });
+  const host = {
+    get executionReports() { policyReads++; return selected; },
+    async describe() { return declared.raw; },
+    async execute() { executes++; return failure; },
+    verify() { verifies++; return true; },
+    verifyDetailed() { verifies++; return { verified: true }; },
+  };
+  const session = new AgentWorkflowSession({ host, provider: {
+    async plan() { return prepareSemanticWorkflow(declared.raw, [source("read_text"), write(ref(0, "string"))]); },
+  } });
+  assert.equal(policyReads, 1);
+  selected = undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await session.submit("use a trusted report contract");
+    assert.equal(result.status, "failed", "a remote cancellation does not replace local cancellation state");
+    assert.deepEqual(result.verificationFailure, { code: "execution_cancelled" });
+    assert.equal(result.possiblePartialEffects, true);
+    assert.equal(result.steps[0].report, failure);
+  }
+  assert.equal(policyReads, 1);
+  assert.equal(executes, 2);
+  assert.equal(verifies, 0);
+});
+
+test("legacy source reports keep business status fields and opt-in successes keep existing verification calls", async () => {
+  const steps = [source("read_count"), write(ref(0, "decimal"))];
+  const legacy = fixture(steps, { execute: (_plan, _signal, raw) => exact({ ...JSON.parse(raw),
+    status: "failed", execution_failure: { code: "business metadata" } }),
+  verifyDetailed: () => ({ verified: true }) });
+  const accepted = await legacy.session.submit("business fields keep their original meaning");
+  assert.equal(accepted.status, "verified");
+  assert.equal(legacy.calls.detailed, 2);
+  assert.deepEqual(legacy.writes, ["3"]);
+  const configured = fixture(steps, { executionReports: "v1", verifyDetailed: () => ({ verified: true }) });
+  const checked = await configured.session.submit("ordinary successful reports remain unchanged");
+  assert.equal(checked.status, "verified");
+  assert.equal(configured.calls.verify, 0);
+  assert.equal(configured.calls.detailed, 2);
+  assert.deepEqual(configured.writes, ["3"]);
 });

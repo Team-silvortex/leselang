@@ -13,10 +13,14 @@ mod task;
 pub use application::AgentApplication;
 pub use task::{
     PreparedTask, prepare_named_task, prepare_task, run_prepared_registered_task,
-    run_prepared_task, run_prepared_task_for_application, run_task,
+    run_prepared_registered_task_detailed, run_prepared_task, run_prepared_task_for_application,
+    run_prepared_task_for_application_detailed, run_task,
 };
 
-pub use leselang_registered_host::{Error, Scope, Transport, describe_registered, run_registered};
+pub use leselang_registered_host::{
+    Error, ExecutionFailure, ExecutionFailureCode, Scope, Transport, describe_registered,
+    run_registered,
+};
 
 use serde_json::{Value, json};
 

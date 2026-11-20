@@ -24,9 +24,11 @@ test("WebView assets preserve the installed browser SDK without the Node carrier
   const expected = await modules(installed, true);
   assert.ok(expected.includes("index.js"));
   assert.ok(expected.includes("agent/registered-host.js"));
+  assert.ok(expected.includes("dom/index.js"));
   assert.deepEqual(await modules(bundled), expected);
   for (const file of expected) {
     assert.equal(await readFile(new URL(file, bundled), "utf8"), await readFile(new URL(file, installed), "utf8"), file);
   }
   assert.equal(await readFile(new URL("../dist/bridge.js", import.meta.url), "utf8"), 'export * from "./sdk/index.js";\n');
+  assert.equal(await readFile(new URL("../dist/dom-bridge.js", import.meta.url), "utf8"), 'export * from "./sdk/dom/index.js";\n');
 });

@@ -4,7 +4,11 @@ import { createFormView } from "../dist/form/view.js";
 import { Bridge } from "../dist/bridge.js";
 
 class Element extends EventTarget {
-  constructor(id) { super(); this.id = id; }
+  constructor(id) {
+    super(); this.id = id;
+    this.tagName = id === "input" ? "TEXTAREA" : ["save", "other"].includes(id) ? "BUTTON" : "SPAN";
+  }
+  type = "button";
   isConnected = true;
   disabled = false;
   readOnly = false;
@@ -12,10 +16,14 @@ class Element extends EventTarget {
   value = "";
   dataset = {};
   afterClick;
+  dispatchEvent(event) {
+    const result = super.dispatchEvent(event);
+    if (event.type === "click") this.afterClick?.();
+    return result;
+  }
   click() {
     if (this.disabled) return;
     this.dispatchEvent(new Event("click"));
-    this.afterClick?.();
   }
 }
 
@@ -35,7 +43,8 @@ async function withForm(run) {
     .map((id) => [id, node(id)]));
   elements.save.textContent = "Save";
   elements.other.textContent = "Other control";
-  globalThis.document = { getElementById(id) { return nodes.get(id); } };
+  globalThis.document = { defaultView: { Event }, getElementById(id) { return nodes.get(id); } };
+  for (const element of nodes.values()) element.ownerDocument = globalThis.document;
   const view = createFormView(elements);
   const { bridge, call } = connection("form-task");
   const observed = (identifier) => view.observe().find((row) => row.identifier === identifier);
@@ -44,7 +53,7 @@ async function withForm(run) {
     elements.input.dispatchEvent(new Event("input"));
   };
   try { await run({ view, elements, nodes, bridge, call, observed, input }); }
-  finally { bridge.close(); globalThis.document = previous; }
+  finally { bridge.close(); view.dispose(); globalThis.document = previous; }
 }
 
 async function target(call, name) {

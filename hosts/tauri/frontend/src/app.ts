@@ -55,6 +55,7 @@ async function connect(): Promise<void> {
   };
   window.addEventListener("pagehide", () => {
     closeBridge();
+    form.dispose();
     void api.core.invoke("bridge_closed").catch(() => {});
   }, { once: true });
   await api.core.invoke("bridge_ready", {

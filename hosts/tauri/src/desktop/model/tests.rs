@@ -68,6 +68,9 @@ fn server(raw: Vec<u8>, delay: Duration) -> (Config, JoinHandle<String>) {
                 Err(error) => panic!("local test listener: {error}"),
             }
         };
+        // Accept is polled nonblockingly; request parsing uses its own bounded
+        // blocking reads and must not depend on the first packet already arriving.
+        stream.set_nonblocking(false).unwrap();
         let received = read_request(&mut stream);
         thread::sleep(delay);
         let _ = stream.write_all(&raw);

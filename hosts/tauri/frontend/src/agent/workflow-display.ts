@@ -15,11 +15,18 @@ const messages: Readonly<Record<string, string>> = {
   workflow_result_unverified: "前序结果尚未通过验证，剩余步骤已停止。",
   workflow_requirement_not_met: "前序已验证结果不符合本次指令的条件，目标步骤未执行，后续步骤已停止。",
   application_verification_failed: "应用结果未通过核对，后续步骤已停止。",
+  application_bindings_changed: "应用控件已重新挂载或移除，本次任务已停止；请重新观察当前应用。",
 };
 
 const verificationMessages: Readonly<Record<VerificationDiagnostic["code"], string>> = {
   invalid_report: "执行报告无法读取，请查看原始报告。",
   report_identity_mismatch: "执行报告与本次任务不对应，请核对任务来源。",
+  execution_failed: "宿主报告本次执行失败，请查看原始报告和当前应用状态。",
+  execution_object_unavailable: "目标控件当前不存在或尚未挂载，请返回相应界面后重新提交任务。",
+  execution_fuel_exhausted: "本次执行的计算预算已耗尽，后续步骤已停止。",
+  execution_deadline_exceeded: "本次执行超过宿主时限，当前操作可能已部分完成。",
+  execution_scope_closed: "本次执行所属的应用连接已关闭，请重新观察当前应用。",
+  execution_cancelled: "宿主报告本次执行已取消，当前任务未取得可验证结果。",
   report_budget_mismatch: "执行报告的资源限制与应用声明不一致，请核对宿主配置。",
   host_verification_missing: "执行报告未包含宿主核对结果，请检查宿主的验证配置。",
   result_mismatch: "返回结果不符合应用声明，请查看原始报告。",
@@ -33,12 +40,13 @@ const verificationMessages: Readonly<Record<VerificationDiagnostic["code"], stri
   observation_invalid: "应用状态记录无效，请检查宿主的状态读取。",
   before_observation_mismatch: "执行前的应用状态与报告记录不一致，请查看原始报告。",
   after_observation_mismatch: "执行后再次读取的应用状态与报告记录不一致，请查看当前应用状态。",
+  application_bindings_changed: "应用控件已重新挂载或移除，原执行凭据已失效，请重新观察当前应用。",
   verification_interrupted: "应用核对被中断，请查看当前应用状态。",
   invalid_verification_result: "宿主未返回有效的核对结论，请检查宿主的验证配置。",
 };
 
 /** Only diagnostic codes and declared predicate identifiers belong in this UI. */
-function describeVerificationFailure(value: unknown): { text: string; raw?: string } | undefined {
+function describeVerificationFailure(value: unknown): { text: string; raw?: string; execution?: true } | undefined {
   if (value === undefined) return undefined;
   const invalid = { text: verificationMessages.invalid_verification_result };
   try {
@@ -59,6 +67,7 @@ function describeVerificationFailure(value: unknown): { text: string; raw?: stri
     return {
       text: predicateCode ? text.replace("应用声明的检查", `应用声明的检查“${predicate}”`) : text,
       raw: JSON.stringify({ code, ...(predicateCode ? { predicate } : {}) }),
+      ...(code.startsWith("execution_") ? { execution: true as const } : {}),
     };
   } catch { return invalid; }
 }
@@ -95,7 +104,9 @@ export function describeWorkflowOutcome(result: AgentWorkflowOutcome): {
   const requirementError = result.error?.startsWith("invalid_workflow_requirement") || result.error === "duplicate_workflow_requirement";
   const reason = result.error && result.status !== "cancelled"
     ? ` ${bindingError ? "步骤之间的输入关系不符合应用声明，未开始执行。"
-      : requirementError ? "步骤前置条件不符合应用声明，未开始执行。" : messages[result.error] ?? result.error}` : "";
+      : requirementError ? "步骤前置条件不符合应用声明，未开始执行。"
+      : result.error === "application_verification_failed" && verificationFailure?.execution
+        ? "应用执行未完成，后续步骤已停止。" : messages[result.error] ?? result.error}` : "";
   const outcome = result.status === "verified"
     ? `已完成：${completed} 个步骤均已在执行后通过应用核对。`
     : (result.status === "cancelled" ? "工作流已取消。" : "工作流未完成。") + reason

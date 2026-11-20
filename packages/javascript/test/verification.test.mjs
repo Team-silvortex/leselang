@@ -197,3 +197,108 @@ test("several failures preserve the original verification order", () => {
   evidence.observations = [{ name: "selected", value: "different" }];
   rejected(observed, evidence, "result_evidence_mismatch");
 });
+
+const executionCodes = ["execution_failed", "execution_object_unavailable", "execution_fuel_exhausted",
+  "execution_deadline_exceeded", "execution_scope_closed", "execution_cancelled"];
+function executionReport(code, changes = {}) {
+  return { schema_version: 1, profile: "diagnostics.records", kind: "record_run",
+    status: code === "execution_cancelled" ? "cancelled" : "failed", error: "Host-owned failure detail",
+    possible_partial_effects: true, ...(code ? { execution_failure: { code } } : {}), ...changes };
+}
+const prepareExecution = (options) => prepareSemanticCatalog(exact(declaration(options)), { executionReports: "v1" })
+  .prepare("read_record", {});
+
+test("opt-in terminal execution reports reject before success budgets across semantic versions", () => {
+  for (const version of [1, 2, 3]) {
+    for (const observed of version === 1 ? [false] : [false, true]) {
+      const prepared = prepareExecution({ version, observed });
+      assert.deepEqual(prepared.plan, prepare({ version, observed }).plan, "report policy never changes source or arguments");
+      assert.deepEqual(prepared.verifyDetailed(report()), { verified: true }, "old success reports have no extra required fields");
+      for (const code of executionCodes) {
+        for (const raw of [executionReport(code), exact(executionReport(code))]) {
+          const result = rejected(prepared, raw, code);
+          assert.deepEqual(Object.keys(result.diagnostic), ["code"]);
+          assert.equal(JSON.stringify(result).includes("Host-owned failure detail"), false);
+        }
+        // Successful-looking fields cannot promote an explicitly failed execution.
+        rejected(prepared, { ...report(), ...executionReport(code) }, code);
+      }
+      rejected(prepared, executionReport(undefined), "execution_failed");
+      rejected(prepared, executionReport(undefined, { status: "cancelled" }), "execution_cancelled");
+      rejected(prepared, executionReport(undefined, { error: "unknown registered object" }), "execution_failed");
+      rejected(prepared, executionReport("execution_failed", { possible_partial_effects: false }), "execution_failed");
+    }
+  }
+});
+
+test("without report opt-in status and failure markers remain ordinary business fields", () => {
+  const legacy = prepare();
+  for (const extra of [
+    { status: "failed" }, { status: "cancelled" }, { status: "published" },
+    { execution_failure: { code: "application-defined", note: "business metadata" } },
+    executionReport("execution_object_unavailable"),
+  ]) {
+    const evidence = { ...report(), ...extra };
+    assert.deepEqual(legacy.verifyDetailed(evidence), { verified: true });
+    assert.equal(legacy.verify(evidence), true);
+  }
+  // Legacy minimal failures keep their historical interpretation.
+  rejected(legacy, executionReport("execution_object_unavailable"), "report_budget_mismatch");
+});
+
+test("execution report policy is strict, owned once and cannot invoke option getters", () => {
+  let invoked = 0;
+  const getter = { get executionReports() { invoked++; return "v1"; } };
+  for (const options of [null, true, "v1", [], { executionReports: "v2" }, { executionReports: null },
+    { executionReports: "v1", extra: true }, { [Symbol("extra")]: "v1" }, getter,
+    Object.create({ executionReports: "v1" }), Object.defineProperty({}, "executionReports", { value: "v1" })]) {
+    assert.throws(() => prepareSemanticCatalog(exact(declaration()), options), /invalid_semantics: report options/);
+  }
+  assert.equal(invoked, 0);
+  const options = { executionReports: "v1" };
+  const selected = prepareSemanticCatalog(exact(declaration()), options);
+  options.executionReports = undefined;
+  rejected(selected.prepare("read_record", {}), executionReport("execution_scope_closed"), "execution_scope_closed");
+  for (const legacyOptions of [undefined, {}, { executionReports: undefined }, Object.create(null)]) {
+    const legacy = prepareSemanticCatalog(exact(declaration()), legacyOptions).prepare("read_record", {});
+    assert.equal(legacy.verify({ ...report(), status: "application-owned" }), true);
+  }
+});
+
+test("malformed terminal reports and conflicting status codes are rejected without trusting error prose", () => {
+  const prepared = prepareExecution();
+  const malformed = [
+    { status: "success" }, { status: "verified" }, { status: "unknown" }, { status: null }, { status: 1 },
+    { error: "" }, { error: 42 }, { error: null }, { error: "文".repeat(1366) },
+    { possible_partial_effects: null }, { possible_partial_effects: "true" }, { possible_partial_effects: 0 },
+    { execution_failure: null }, { execution_failure: [] }, { execution_failure: "execution_failed" },
+    { execution_failure: {} }, { execution_failure: { code: "not_in_contract" } },
+    { execution_failure: { code: "predicate_failed" } },
+    { execution_failure: { code: "execution_failed", predicate: "private" } },
+    { execution_failure: { code: "execution_failed", error: "private exception" } },
+    { status: "failed", execution_failure: { code: "execution_cancelled" } },
+    { status: "cancelled", execution_failure: { code: "execution_scope_closed" } },
+  ];
+  for (const change of malformed) rejected(prepared, { ...executionReport("execution_failed"), ...change }, "invalid_report");
+  for (const field of ["status", "error", "possible_partial_effects"]) {
+    const value = executionReport("execution_failed"); delete value[field];
+    rejected(prepared, value, "invalid_report");
+  }
+  rejected(prepared, { ...report(), execution_failure: { code: "execution_failed" } }, "invalid_report");
+  let invoked = 0;
+  const getter = executionReport("execution_failed");
+  Object.defineProperty(getter.execution_failure, "code", { enumerable: true, get() { invoked++; return "execution_failed"; } });
+  rejected(prepared, getter, "invalid_report");
+  rejected(prepared, exact(executionReport("execution_failed")).replace('"code":"execution_failed"',
+    '"code":"execution_failed","code":"execution_cancelled"'), "invalid_report");
+  assert.equal(invoked, 0);
+});
+
+test("execution diagnoses follow report identity and never bypass bounded evidence decoding", () => {
+  const prepared = prepareExecution();
+  for (const change of [{ schema_version: 2 }, { profile: "foreign.private" }, { kind: "foreign_run" }]) {
+    rejected(prepared, { ...executionReport("execution_fuel_exhausted"), ...change }, "report_identity_mismatch");
+  }
+  rejected(prepared, { ...executionReport("execution_failed"), profile: "foreign", private: "x".repeat(4097) }, "invalid_report");
+  rejected(prepared, executionReport("execution_failed", { error: "x".repeat(4096) }), "execution_failed");
+});

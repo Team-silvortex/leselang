@@ -1,6 +1,7 @@
 use leselang_tauri_host::{
-    AgentApplication, Scope, Transport, prepare_named_task, prepare_task,
+    AgentApplication, ExecutionFailureCode, Scope, Transport, prepare_named_task, prepare_task,
     run_prepared_registered_task, run_prepared_task, run_prepared_task_for_application,
+    run_prepared_task_for_application_detailed,
 };
 use serde_json::{Value, json};
 
@@ -139,4 +140,53 @@ fn article_named_arguments_use_the_shared_vm_and_native_report_fields() {
     assert!(report.get("objects_after").is_none());
     assert_eq!(report["effects"], 0);
     assert_eq!(transport.requests, 1);
+}
+
+#[test]
+fn detailed_application_entry_preserves_success_and_typed_missing_object_failure() {
+    for application in [
+        AgentApplication::Form,
+        AgentApplication::TaskBoard,
+        AgentApplication::Article,
+    ] {
+        let source = "fn main() = bind(first: gui.list(), body: gui.list())";
+        let mut transport = EmptyRegistry {
+            live: true,
+            requests: 0,
+        };
+        let expected = run_prepared_task_for_application(
+            &mut transport,
+            scope(),
+            prepare_task(source, vec![]).unwrap(),
+            application,
+        )
+        .unwrap();
+        let report = run_prepared_task_for_application_detailed(
+            &mut transport,
+            scope(),
+            prepare_task(source, vec![]).unwrap(),
+            application,
+        )
+        .unwrap();
+        assert_eq!(report, expected);
+        assert!(report.get("execution_failure").is_none());
+        let missing = "fn main() = bind(target: gui.find(name: \"missing\"), body: true)";
+        let failure = run_prepared_task_for_application_detailed(
+            &mut transport,
+            scope(),
+            prepare_task(missing, vec![]).unwrap(),
+            application,
+        )
+        .unwrap_err();
+        assert_eq!(failure.code(), ExecutionFailureCode::ObjectUnavailable);
+        assert_eq!(failure.to_string(), "unknown registered object");
+        let old = run_prepared_task_for_application(
+            &mut transport,
+            scope(),
+            prepare_task(missing, vec![]).unwrap(),
+            application,
+        )
+        .unwrap_err();
+        assert_eq!(old, failure.to_string());
+    }
 }

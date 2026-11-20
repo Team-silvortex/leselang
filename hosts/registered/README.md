@@ -40,6 +40,15 @@ claim; the application must verify its own declared conditions and fresh state.
 The independent [Rust Consumer](tests/consumer/src/main.rs) runs two Effects
 using only these public APIs.
 
+The additive `run_prepared_registered_task_detailed` entry returns
+`ExecutionFailure`, with a closed `ExecutionFailureCode` and the original error
+text. The old string-error entry projects the same implementation; there is still
+one VM driver. Classification uses typed host errors and never interprets an
+arbitrary transport message as a native cause. The public `Error` enum and
+legacy Node worker error frames are unchanged. Tauri and explicitly opted-in
+Node workers carry these details in the
+[execution failure report contract](../../docs/execution-reports.md).
+
 Semantic v3 plans explicitly carry `inputMode: "named_strings"`, including
 zero-input tasks. The Node transport maps this marker to worker protocol v2;
 startup, requests, replies and terminal records all carry
@@ -51,11 +60,21 @@ its selected version, scope, serial and challenge. See the
 [named string input guide](../../docs/named-task-inputs.md) for declarations,
 binding rules, bounds and failures.
 
+Transport `executionReports: "v1"` explicitly selects worker protocol v3. Its
+start record requires `input_mode: "single_string"` or `"named_strings"`, retaining
+the chosen input limit; v1/v2 reject this field. An admitted task that fails while
+the transport remains live can produce a bounded failed report from the detailed
+entry. Successful reports remain unchanged. Admission, broken transport and
+output errors retain the original error channel; cancellation does not fabricate
+a report. Node still requires clean process closure before delivering either a
+successful or failed report to the host's verifier.
+
 ## Ownership And Compatibility
 
 | Source | Responsibility |
 | --- | --- |
 | `src/lib.rs` | Public types, offline catalog projection and explicit VM driver |
+| `src/failure.rs` | Optional typed execution failures and legacy error-text preservation |
 | `src/catalog.rs` | Shared operation/type metadata used by compilation and discovery |
 | `src/gateway.rs` | Bounded registered-object transport, observations and lifecycle checks |
 | `src/host.rs` | Local object authority, metering, dispatch and reply acceptance |

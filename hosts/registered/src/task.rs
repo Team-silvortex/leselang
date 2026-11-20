@@ -1,5 +1,5 @@
 //! Bounded task admission and typed reports for the application-owned agent entry.
-use crate::{Error, Scope, Transport, drive, gateway, host};
+use crate::{Error, ExecutionFailure, Scope, Transport, drive, gateway, host};
 use leselang_vm::{
     embedding::bind_entry_arguments,
     native::{
@@ -111,18 +111,27 @@ pub fn run_prepared_registered_task(
     scope: Scope,
     task: PreparedTask,
 ) -> Result<Value, String> {
-    let gui =
-        gateway::RemoteGui::registered(transport, scope).map_err(|error| error.to_string())?;
+    run_prepared_registered_task_detailed(transport, scope, task).map_err(|error| error.to_string())
+}
+
+/// Optional typed failure path through the same driver and successful report.
+/// The legacy entry projects only the original error text.
+pub fn run_prepared_registered_task_detailed(
+    transport: &mut dyn Transport,
+    scope: Scope,
+    task: PreparedTask,
+) -> Result<Value, ExecutionFailure> {
+    let gui = gateway::RemoteGui::registered(transport, scope).map_err(ExecutionFailure::from)?;
     let before = gui.public_snapshots();
     let (value, effects, fuel_remaining) = host::with_host(&gui, |host, scope| {
         drive(host, scope, &task.program, task.arguments)
     })
-    .map_err(|error| error.to_string())??;
+    .map_err(ExecutionFailure::from)??;
     let result = typed_result(value)?;
-    let after = gui.verify_snapshots().map_err(|error| error.to_string())?;
+    let after = gui.verify_snapshots().map_err(ExecutionFailure::from)?;
     // Pure tasks and empty registries may perform no final transport read.
     // Cancellation still fences the report even in that zero-Effect case.
-    if !gateway::Backend::is_open(&gui).map_err(|error| error.to_string())? {
+    if !gateway::Backend::is_open(&gui).map_err(ExecutionFailure::from)? {
         return Err("task authority closed before completion".into());
     }
     Ok(json!({

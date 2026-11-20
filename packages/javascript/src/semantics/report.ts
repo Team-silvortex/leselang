@@ -1,7 +1,7 @@
 /** Check fresh host evidence against the task's admitted report contract. */
 import { verificationResultType, type Catalog } from "./catalog.js";
 import { bool, decode, encoder, fail, list, record, require_, text, uint, U64_MAX, type Json, type RecordValue, type ScalarType } from "./json.js";
-import { rejectVerification, VERIFICATION_SUCCESS, type VerificationResult } from "../verification.js";
+import { rejectVerification, VERIFICATION_SUCCESS, type VerificationFailureCode, type VerificationResult } from "../verification.js";
 
 function scalar(value: Json | undefined, type: ScalarType): Json {
   if (value === undefined) fail("missing report scalar");
@@ -63,7 +63,32 @@ function reportBounds(value: Json): void {
     for (const [key, entry] of Object.entries(value)) { text(key, 4096); reportBounds(entry); }
   }
 }
-export function verifyDetailed(catalog: Catalog, task: RecordValue, args: Readonly<Record<string, string>>, effects: number, raw: unknown): VerificationResult {
+const executionCodes = new Set<VerificationFailureCode>([
+  "execution_failed", "execution_object_unavailable", "execution_fuel_exhausted",
+  "execution_deadline_exceeded", "execution_scope_closed", "execution_cancelled",
+]);
+
+/** Only an explicitly selected host contract gives these otherwise ordinary fields meaning. */
+function executionFailure(report: RecordValue): VerificationResult | undefined {
+  const hasStatus = Object.hasOwn(report, "status"), hasFailure = Object.hasOwn(report, "execution_failure");
+  if (!hasStatus && !hasFailure) return undefined;
+  try {
+    require_(report.status === "failed" || report.status === "cancelled", "execution report status");
+    text(report.error, 4096, true);
+    bool(report.possible_partial_effects);
+    let code: VerificationFailureCode = report.status === "cancelled" ? "execution_cancelled" : "execution_failed";
+    if (hasFailure) {
+      const marker = record(report.execution_failure, ["code"]);
+      require_(typeof marker.code === "string" && executionCodes.has(marker.code as VerificationFailureCode), "execution failure code");
+      code = marker.code as VerificationFailureCode;
+      require_((report.status === "cancelled") === (code === "execution_cancelled"), "execution failure status mismatch");
+    }
+    return rejectVerification(code);
+  } catch { return rejectVerification("invalid_report"); }
+}
+
+export function verifyDetailed(catalog: Catalog, task: RecordValue, args: Readonly<Record<string, string>>, effects: number, raw: unknown,
+  executionReports?: "v1"): VerificationResult {
   let report: RecordValue;
   try {
     report = record(decode(raw, 128 * 1024)); reportBounds(report);
@@ -72,6 +97,10 @@ export function verifyDetailed(catalog: Catalog, task: RecordValue, args: Readon
   try {
     require_(uint(report.schema_version) === 1n && report.profile === catalog.profile && report.kind === contract.kind, "report identity");
   } catch { return rejectVerification("report_identity_mismatch"); }
+  if (executionReports === "v1") {
+    const failed = executionFailure(report);
+    if (failed) return failed;
+  }
   try {
     require_(uint(report.effects) === BigInt(effects) && uint(report.fuel_remaining) <= uint(contract.max_fuel), "report budget");
   } catch { return rejectVerification("report_budget_mismatch"); }

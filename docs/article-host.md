@@ -60,6 +60,24 @@ Publication crosses a Promise boundary and rechecks captured state before its
 explicit commit. Cancellation, revocation and stale changes fence a late commit;
 already-completed edits remain visible. No automatic retry or rollback occurs.
 
+The manual “预览草稿 / 继续编辑” control exercises dynamic view lifetime. Preview
+unmounts the four logical slots and removes the editor's DOM; returning creates
+new elements with the same names and restores the draft. Published values and
+counts remain visible throughout. This uses the public
+[`createDynamicRegisteredApplication`](dynamic-controls.md) and optional DOM
+bindings. The host checks structural identity separately from visible state, so
+same-value replacement during an attempt cannot validate the old report.
+Tasks remain declared in the catalog while the editor is absent; a task that
+needs a missing control fails its actual lookup. Returning to edit permits a new
+explicit task without retrying the earlier one. Preview navigation itself is a
+manual application feature and is not an extra agent operation.
+
+The conversation explicitly enables the [execution failure report contract](execution-reports.md).
+For example, reading the title while the editor is absent reports
+`execution_object_unavailable` and displays a missing-control explanation.
+It retains the original native report and stops; returning to edit allows a new
+explicit submission without retrying the failed task.
+
 ## Bind Both Verified Observations
 
 The public workflow helper can bind two independent observed results into the

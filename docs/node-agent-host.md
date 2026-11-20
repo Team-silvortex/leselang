@@ -88,10 +88,12 @@ import { createNodeAgentTransport } from "@leselang/bridge/node";
 const transport = createNodeAgentTransport({
   executable: "/absolute/path/to/leselang-agent-worker",
   catalog: addApplicationSemantics,
+  executionReports: "v1",
 });
 const host = createRegisteredAgentHost({
   window: "my-application", epoch: randomUUID(), application, transport,
   observations: { before: "objects_before", after: "objects_after" },
+  executionReports: "v1",
 });
 const session = new AgentSession({ host, provider: createSemanticProvider() });
 try {
@@ -111,6 +113,14 @@ worker's base catalog; `args?: readonly string[]`, `timeoutMs?: number` and
 declaration. Node 24 is the tested runtime, and the carrier uses only built-in
 modules. The root browser entry does not import or re-export it.
 
+The example explicitly enables `executionReports: "v1"` on both the transport
+and host. The transport requests worker protocol v3; the host admits its bounded
+execution-failure reports. These are separate choices: a report verifier does
+not configure a worker, and a worker does not choose the host's verification
+contract. The setting is captured at construction. Omitting it retains the
+original protocol and exception behavior. Unsupported workers fail without
+downgrade or retry. See [execution failure reports](execution-reports.md).
+
 The package remains private and is installed from a local build or packed
 tarball. The tarball contains both public entries and declarations, with no
 runtime npm dependencies or worker binary. No copying of the carrier source
@@ -122,7 +132,7 @@ Node ESM program:
 ```js
 import { createPublicationAgent } from "./consumer/javascript/agent/assistant.mjs";
 
-const assistant = createPublicationAgent();
+const assistant = createPublicationAgent({ executionReports: "v1" });
 try {
   const published = await assistant.session.submit("task publish_article:Hello from Node");
   const read = await assistant.session.submit("task read_publication");
@@ -188,7 +198,15 @@ are sent as separate fields over stdin; `spawn` runs with `shell: false`.
 The private line-oriented carrier defaults to `agent_worker_version: 1`. Plans
 with explicit `inputMode: "named_strings"` use version 2; every record in that
 execution must retain its selected version, without fallback. See
-[v3 named task inputs](named-task-inputs.md). `--serve`
+[v3 named task inputs](named-task-inputs.md). With transport
+`executionReports: "v1"`, both kinds of plan use worker version 3, and the start
+record additionally requires `input_mode: "single_string"` or `"named_strings"`.
+`single_string` still allows zero or one input; `named_strings` allows zero to
+eight. A semantic v3 plan with no inputs still selects `named_strings`.
+Versions 1 and 2 reject the additional field; version 3 rejects its absence,
+`null`, unknown values and extra fields. Inner Bridge messages remain version 1.
+Worker version, semantic catalog version and report dialect are distinct.
+`--serve`
 accepts one initial `start` record containing `scope`, `source` and `arguments`.
 Complete syntax, type and argument admission occurs before the first request
 for a registered object. Subsequent `request` and `reply` records carry a fresh
@@ -198,6 +216,11 @@ unsolicited, duplicate and foreign delivery fails the execution.
 
 One terminal `report` record contains the original report JSON in the
 `report_json` string. An `error` record instead reports bounded failure text.
+In worker v3, a live connection can deliver a failed execution as a report after
+successful task admission. It contains the fixed identity below, `status`,
+bounded `error`, `possible_partial_effects: true` and a typed
+`execution_failure.code`. It does not invent a result, Effect count, Fuel balance
+or final observation. Successful report bytes keep their existing shape.
 The worker fixes the report profile to `javascript.registered`, kind to
 `javascript_task_run`, and observation fields to `objects_before` /
 `objects_after`. Neither a provider nor the startup record selects these values.
@@ -208,9 +231,11 @@ not parse result integers through JavaScript Number.
 | --- | --- |
 | Startup JSON line | 128 KiB |
 | Source | 16 KiB, with no NUL |
-| Task inputs | v1: zero or one string; v2: up to eight. Each is at most 4096 UTF-8 bytes, with no NUL; v2 values total at most 16 KiB |
+| Task inputs | v1 / v3 `single_string`: zero or one string; v2 / v3 `named_strings`: up to eight. Each is at most 4096 UTF-8 bytes, with no NUL; named values total at most 16 KiB |
 | Request/reply envelope | 64 KiB; the inner gateway message still has its existing 32 KiB limit |
 | Original report JSON | 128 KiB |
+| v3 failed report error text | Nonempty, at most 4096 UTF-8 bytes; truncation preserves character boundaries |
+| Error-frame text, all worker versions | At most 1024 UTF-8 bytes |
 | Terminal envelope / accumulated incomplete frame | 512 KiB |
 | Base catalog | 256 KiB |
 | Worker stderr | 128 KiB |
@@ -234,6 +259,24 @@ protocol and supplies no restart recovery or persisted authority.
 
 ## Cancellation And Failure
 
+An opted-in worker may report `execution_object_unavailable` for a missing
+registered control, or `execution_failed` for an application callback failure.
+Classification uses the Rust error type, not matching exception text. A handler
+throwing the words `unknown registered object` cannot claim the native category.
+The session retains the raw failed report and stops with
+`application_verification_failed` plus a `verificationFailure` code. Failure
+reports still consume one-use completion evidence and cannot supply a value to
+later workflow bindings. They never imply rollback or authorize a retry.
+
+Admission failures, malformed or closed pipes, deadlines and process errors
+remain carrier exceptions without fabricated reports. Even in v3, a failure
+report is accepted only after clean process closure, with no pending request or
+trailing output. An incomplete delivery cannot become a valid failed report.
+A correlated carrier reply whose inner application result or snapshot is invalid
+can instead produce a generic `execution_failed` report: the carrier is still
+live, while the registered gateway refuses that result. This is execution failure
+evidence, not successful acceptance of the invalid application data.
+
 Cancel through `AgentSession.cancel()` or `AgentWorkflowSession.cancel()` so the
 public host closes the Bridge mutation gate immediately. The transport then
 terminates only the matching worker and waits for actual child closure before
@@ -252,7 +295,10 @@ and subsequent late commits are refused.
 
 `--fault-after-commit` demonstrates the complementary case: the application
 mutation has already happened before the handler throws. Its state survives the
-failed worker, and a later separately requested read can inspect it. Neither
+failed execution, and a later separately requested read can inspect it. The
+offline CLI explicitly enables v3 and prints each retained raw report and its
+verification diagnostic. The composition helper defaults to the legacy behavior
+unless given `executionReports: "v1"`. Neither
 carrier nor workflow silently retries publication.
 
 ## Sources And Verification

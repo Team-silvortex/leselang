@@ -13,6 +13,7 @@ if (args.length || Buffer.byteLength(text) > 4096 || text.includes("\0")) {
 } else {
   const app = createPublicationAgent({
     application: createPublicationApplication({ initialDraft: text, faultAfterCommit }),
+    executionReports: "v1",
     onStderr: (chunk) => process.stderr.write(chunk),
   });
   const workflow = new AgentWorkflowSession({
@@ -31,10 +32,12 @@ if (args.length || Buffer.byteLength(text) > 4096 || text.includes("\0")) {
     const result = await workflow.submit("Run the declared offline publication workflow");
     process.stdout.write(JSON.stringify({ kind: "node_agent_demo", status: result.status,
       possiblePartialEffects: result.possiblePartialEffects, error: result.error,
+      verificationFailure: result.verificationFailure,
       steps: result.steps.map((step) => {
         const report = typeof step.report === "string" ? JSON.parse(step.report) : null;
         return { task: step.plan?.task, status: step.status, result: report?.result,
-          effects: report?.effects, fuel_remaining: report?.fuel_remaining };
+          effects: report?.effects, fuel_remaining: report?.fuel_remaining,
+          verificationFailure: step.verificationFailure, report: step.report };
       }),
       application: app.application.snapshot(),
     }) + "\n");

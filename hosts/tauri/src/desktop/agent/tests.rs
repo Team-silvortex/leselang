@@ -662,6 +662,7 @@ fn host_application_identity_is_preserved_on_success_and_every_failure_path() {
             if mode == "success" {
                 assert_eq!(report["result"]["type"], "none");
                 assert!(report.get("status").is_none());
+                assert!(report.get("execution_failure").is_none());
             } else {
                 assert_eq!(
                     report["status"],
@@ -675,9 +676,124 @@ fn host_application_identity_is_preserved_on_success_and_every_failure_path() {
                 assert_eq!(report["possible_partial_effects"], true);
                 assert!(report.get("result").is_none());
                 assert!(report.get("verified").is_none());
+                let code = match mode {
+                    "cancel" => "execution_cancelled",
+                    "deadline" => "execution_deadline_exceeded",
+                    "closed" | "retired" => "execution_scope_closed",
+                    _ => "execution_failed",
+                };
+                assert_eq!(report["execution_failure"], json!({"code":code}), "{mode}");
             }
             assert!(!endpoint.is_live());
             assert!(registry.active.is_none());
         }
+    }
+}
+
+#[test]
+fn typed_failure_details_preserve_partial_effects_and_lifecycle_priority() {
+    for native in [
+        ExecutionFailureCode::ObjectUnavailable,
+        ExecutionFailureCode::FuelExhausted,
+        ExecutionFailureCode::Failed,
+        ExecutionFailureCode::Cancelled,
+    ] {
+        for lifecycle in ["active", "cancel", "deadline", "closed"] {
+            let mut registry = Registry::default();
+            let (run, endpoint) = begin(&mut registry, "one");
+            match lifecycle {
+                "cancel" => {
+                    run.cancel();
+                    run.expired.store(true, Ordering::Release);
+                    registry.close();
+                }
+                "deadline" => {
+                    run.expired.store(true, Ordering::Release);
+                    registry.close();
+                }
+                "closed" => registry.close(),
+                _ => {}
+            }
+            let report = registry.finish(
+                &run,
+                Err(ExecutionFailure::new(native, "original host failure")),
+            );
+            let expected = match lifecycle {
+                "cancel" => ExecutionFailureCode::Cancelled,
+                "deadline" => ExecutionFailureCode::DeadlineExceeded,
+                "closed" => ExecutionFailureCode::ScopeClosed,
+                _ if native == ExecutionFailureCode::Cancelled => ExecutionFailureCode::Failed,
+                _ => native,
+            };
+            assert_eq!(
+                report["execution_failure"],
+                json!({"code":expected.as_str()})
+            );
+            assert_eq!(report["possible_partial_effects"], true);
+            assert_eq!(
+                report["status"],
+                if lifecycle == "cancel" {
+                    "cancelled"
+                } else {
+                    "failed"
+                }
+            );
+            if lifecycle == "active" {
+                assert_eq!(report["error"], "original host failure");
+            }
+            assert!(report.get("result").is_none());
+            assert!(report.get("effects").is_none());
+            assert!(report.get("fuel_remaining").is_none());
+            assert!(report.get("verified").is_none());
+            assert!(!endpoint.is_live());
+            assert!(registry.active.is_none());
+        }
+    }
+}
+
+#[test]
+fn execution_failure_report_text_is_nonempty_and_bounded_without_changing_legacy_errors() {
+    for original in [
+        String::new(),
+        "x".repeat(4096),
+        "x".repeat(4097),
+        "文".repeat(1366),
+    ] {
+        let failure =
+            ExecutionFailure::new(ExecutionFailureCode::ObjectUnavailable, original.clone());
+        assert_eq!(
+            failure.to_string(),
+            original,
+            "the typed/legacy error text is unchanged"
+        );
+        let mut registry = Registry::default();
+        let (run, endpoint) = begin(&mut registry, "one");
+        let report = registry.finish(&run, Err(failure));
+        let message = report["error"].as_str().unwrap();
+        assert!(!message.is_empty());
+        assert!(message.len() <= 4096, "UTF-8 byte bound");
+        if original.is_empty() {
+            assert_eq!(message, "workflow execution failed");
+        } else if original.len() <= 4096 {
+            assert_eq!(message, original);
+        } else {
+            let prefix = message.strip_suffix("… [truncated]").unwrap();
+            assert!(original.starts_with(prefix));
+            assert!(!prefix.is_empty());
+            assert!(
+                message.len() >= 4094,
+                "retain as much complete UTF-8 text as the bound permits"
+            );
+        }
+        assert_eq!(
+            report["execution_failure"],
+            json!({"code":"execution_object_unavailable"})
+        );
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["possible_partial_effects"], true);
+        assert_eq!(report["profile"], "tauri.typescript");
+        assert!(report.get("result").is_none());
+        assert!(report.get("verified").is_none());
+        assert!(!endpoint.is_live());
     }
 }

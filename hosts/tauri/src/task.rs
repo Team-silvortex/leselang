@@ -1,9 +1,10 @@
 //! Tauri report identities around the shared registered task execution.
-use crate::{AgentApplication, Scope, Transport};
+use crate::{AgentApplication, ExecutionFailure, Scope, Transport};
 use serde_json::{Value, json};
 
 pub use leselang_registered_host::{
     PreparedTask, prepare_named_task, prepare_task, run_prepared_registered_task,
+    run_prepared_registered_task_detailed,
 };
 
 /// Run one admitted task through the original explicitly driven VM. The report
@@ -26,7 +27,19 @@ pub fn run_prepared_task_for_application(
     task: PreparedTask,
     application: AgentApplication,
 ) -> Result<Value, String> {
-    let mut report = run_prepared_registered_task(transport, scope, task)?;
+    run_prepared_task_for_application_detailed(transport, scope, task, application)
+        .map_err(|error| error.to_string())
+}
+
+/// Preserve typed registered failures while applying the host-selected identity
+/// to successful reports. Existing string-error APIs retain their contract.
+pub fn run_prepared_task_for_application_detailed(
+    transport: &mut dyn Transport,
+    scope: Scope,
+    task: PreparedTask,
+    application: AgentApplication,
+) -> Result<Value, ExecutionFailure> {
+    let mut report = run_prepared_registered_task_detailed(transport, scope, task)?;
     let fields = report
         .as_object_mut()
         .ok_or("invalid registered task report")?;

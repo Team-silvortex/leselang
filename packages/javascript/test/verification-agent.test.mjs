@@ -53,6 +53,41 @@ test("successful detailed and legacy Boolean verification keep their outcome sha
   }
 });
 
+test("binding replacement diagnostics retain a completed attempt's partial effects", async () => {
+  const diagnostic = { code: "application_bindings_changed" };
+  const f = fixture({ verified: false, diagnostic });
+  const outcome = await f.session.submit("verify the same mounted controls");
+  diagnostic.code = "report_mismatch";
+  assert.equal(outcome.status, "failed");
+  assert.equal(outcome.error, "application_verification_failed");
+  assert.equal(outcome.possiblePartialEffects, true);
+  assert.deepEqual(outcome.verificationFailure, { code: "application_bindings_changed" });
+  assert.ok(Object.isFrozen(outcome.verificationFailure));
+  assert.deepEqual({ ...outcome.report }, { report: "application data" });
+  assert.equal(f.calls.verify, 0);
+  assert.equal(f.calls.detailed, 1);
+});
+
+test("execution report diagnostics remain ordinary failed outcomes with bounded detail", async () => {
+  const codes = ["execution_failed", "execution_object_unavailable", "execution_fuel_exhausted",
+    "execution_deadline_exceeded", "execution_scope_closed", "execution_cancelled"];
+  for (const code of codes) {
+    const f = fixture({ verified: false, diagnostic: { code } });
+    const outcome = await f.session.submit("check terminal execution evidence");
+    assert.equal(outcome.status, "failed", "a reported cancellation is not the local AbortSignal");
+    assert.equal(outcome.error, "application_verification_failed");
+    assert.equal(outcome.possiblePartialEffects, true);
+    assert.deepEqual(outcome.verificationFailure, { code });
+    assert.deepEqual(f.session.state.verificationFailure, { code });
+    assert.deepEqual({ ...outcome.report }, { report: "application data" });
+    assert.equal(f.calls.verify, 0);
+    assert.equal(f.calls.detailed, 1);
+    const malformed = fixture({ verified: false, diagnostic: { code, predicate: "not_an_execution_field" } });
+    assert.deepEqual((await malformed.session.submit("reject extra detail")).verificationFailure,
+      { code: "invalid_verification_result" });
+  }
+});
+
 test("host detail records cannot grant success through accessors, coercion or malformed shapes", async () => {
   let getters = 0;
   const getter = () => { getters++; return true; };
@@ -62,6 +97,7 @@ test("host detail records cannot grant success through accessors, coercion or ma
     { verified: true, diagnostic: { code: "predicate_failed", predicate: "check" } },
     { verified: true, extra: true }, { verified: false }, { verified: false, diagnostic: { code: "unknown" } },
     { verified: false, diagnostic: { code: "result_mismatch", predicate: "check" } },
+    { verified: false, diagnostic: { code: "application_bindings_changed", predicate: "check" } },
     { verified: false, diagnostic: { code: "predicate_failed" } },
     { verified: false, diagnostic: { code: "predicate_failed", predicate: "x".repeat(65) } },
     { verified: false, diagnostic: { code: "predicate_failed", predicate: "content of message" } },

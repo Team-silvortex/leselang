@@ -30,12 +30,31 @@ export interface SemanticCatalog {
   prepare(task: string, arguments_: Readonly<Record<string, string>>): PreparedSemanticTask;
 }
 
+/** Trusted report policy, separate from model-selected plans and catalog bytes. */
+export interface SemanticReportOptions {
+  /** Explicitly interpret the bounded v1 execution-failure report contract. */
+  readonly executionReports?: "v1";
+}
+
+function reportConfiguration(options: SemanticReportOptions | undefined): "v1" | undefined {
+  if (options === undefined) return undefined;
+  if (!options || typeof options !== "object" || Array.isArray(options)
+    || ![Object.prototype, null].includes(Object.getPrototypeOf(options))) fail("report options");
+  const keys = Reflect.ownKeys(options);
+  if (keys.some((key) => key !== "executionReports")) fail("report options");
+  const field = Object.getOwnPropertyDescriptor(options, "executionReports");
+  if (!field) return undefined;
+  if (!field.enumerable || !("value" in field) || (field.value !== undefined && field.value !== "v1")) fail("report options");
+  return field.value;
+}
+
 /**
  * Validate semantics v1/v2/v3 without a profile-specific strategy or runtime action.
  * Raw JSON preserves duplicate-key and u64 checks; decoded objects must contain
  * only exact safe Number integers. Returned plans contain strings, never BigInt.
  */
-export function prepareSemanticCatalog(value: unknown): SemanticCatalog {
+export function prepareSemanticCatalog(value: unknown, options?: SemanticReportOptions): SemanticCatalog {
+  const executionReports = reportConfiguration(options);
   const catalog = validate(decode(value, 256 * 1024));
   const tasks = Object.freeze([...catalog.tasks.values()].map((task): SemanticTaskInfo => {
     const inputs = taskInputs(task, catalog.semanticVersion);
@@ -64,8 +83,8 @@ export function prepareSemanticCatalog(value: unknown): SemanticCatalog {
       const expectedEffects = list(task.steps, 21).filter((step) => record(step).kind === "call").length;
       const checks = Object.freeze(list(record(task.verification).predicates, 64).map((predicate) => record(predicate).id as string));
       return Object.freeze({ plan, expectedEffects, checks,
-        verify: (report: unknown) => verifyDetailed(catalog, task, args, expectedEffects, report).verified,
-        verifyDetailed: (report: unknown) => verifyDetailed(catalog, task, args, expectedEffects, report) });
+        verify: (report: unknown) => verifyDetailed(catalog, task, args, expectedEffects, report, executionReports).verified,
+        verifyDetailed: (report: unknown) => verifyDetailed(catalog, task, args, expectedEffects, report, executionReports) });
     },
   });
 }

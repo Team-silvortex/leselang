@@ -54,6 +54,7 @@ test("the public browser runtime and declarations never reach the opt-in Node ca
   const manifest = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
   const browser = manifest.exports["."];
   const node = manifest.exports["./node"];
+  const dom = manifest.exports["./dom"];
   assert.equal(typeof node.import, "string", "the Node carrier has its own public entry");
   assert.equal(typeof node.types, "string", "the Node carrier has its own public declarations");
   const runtime = await browserGraph(new URL(browser.import, root), false);
@@ -63,6 +64,11 @@ test("the public browser runtime and declarations never reach the opt-in Node ca
   assert.ok(declarations.has(new URL("agent/registered-host.d.ts", dist).href));
   assert.ok(!runtime.has(new URL(node.import, root).href));
   assert.ok(!declarations.has(new URL(node.types, root).href));
+  const domRuntime = await browserGraph(new URL(dom.import, root), false);
+  const domDeclarations = await browserGraph(new URL(dom.types, root), true);
+  assert.ok(!runtime.has(new URL(dom.import, root).href), "the root entry does not eagerly import DOM bindings");
+  assert.ok(!domRuntime.has(new URL(node.import, root).href));
+  assert.ok(!domDeclarations.has(new URL(node.types, root).href));
   await readFile(new URL(node.import, root), "utf8");
   await readFile(new URL(node.types, root), "utf8");
 });

@@ -54,6 +54,16 @@ Use the returned application's `changed(...names)` for manual updates to the
 currently attached execution. The helper owns registration and cleanup, while
 the application owns its model, DOM checks and actual actions.
 
+For conditional or remounted views, `createDynamicRegisteredApplication` accepts
+fixed logical names whose initial controls may be `null`. Its
+`DynamicRegisteredApplication` adds explicit `mount`, `replace`, `unmount` and
+`bindingRevision`. Empty slots are absent from observations and discovery;
+successful structure changes advance the application revision even when all
+visible values remain equal. The registered host uses this optional identity
+reader to refuse old completion evidence after replacement. Existing static
+connections keep their original shape. See [dynamic controls](../../docs/dynamic-controls.md)
+for DOM lifecycle, partial effects and recovery through a fresh explicit task.
+
 The optional `createRegisteredAgentHost` supplies
 the host implementation from this application connection and a trusted execution
 transport. It admits semantic plans, owns each Bridge lifetime and matches the
@@ -69,6 +79,55 @@ Existing Boolean `verify` hosts keep their original result shapes. The public
 `VerificationResult`, `VerificationDiagnostic` and `VerificationFailureCode`
 types describe the new records. See [verification diagnostics](../../docs/verification-diagnostics.md)
 for cause codes, one-use completion evidence and unchanged authorization limits.
+
+An application can explicitly set `executionReports: "v1"` on its registered
+host to recognize bounded terminal failure reports before checking successful
+budgets/results. `prepareSemanticCatalog` accepts the same option through
+`SemanticReportOptions`; workflow source-result checks capture the host's choice.
+Legacy generic reports keep their own `status` business fields uninterpreted.
+See [execution failure reports](../../docs/execution-reports.md) for the fixed
+codes, cancellation distinction and unchanged Node worker error frames.
+
+## Optional DOM Controls
+
+Import `createDomButtonControl` and `createDomTextControl` from
+`@leselang/bridge/dom` when your application owns the DOM handlers. Each builder
+returns `{ control, dispose }`; pass its control to `createRegisteredApplication`.
+For example, a button can reuse the application's business logic:
+
+```ts
+import { createRegisteredApplication } from "@leselang/bridge";
+import { createDomButtonControl } from "@leselang/bridge/dom";
+
+const save = createDomButtonControl({
+  element: saveButton, // Mounted, stable ID and type="button".
+  read: readSaveState, // Independently check the rendered DOM and model.
+  changed: (...names) => application.changed(...names),
+  beforeCommit: checkCurrentApplicationState,
+  async onClick(context) {
+    const prepared = await prepareSave(context.signal);
+    context.commit(() => {
+      commitAndRenderSave(prepared);
+      context.changed("save");
+    });
+  },
+});
+const application = createRegisteredApplication({ save: save.control });
+```
+
+The helper installs the shared manual/agent listener, so do not also register
+the old business listener. Button handlers may await and must explicitly commit
+mutations. Text `onInput(text, context)` handlers run synchronously inside one
+commit with the DOM assignment and receive only `signal` and `changed`.
+`validateText` can refuse an agent's text before assignment. Dispose bindings
+when the view unmounts; closing a session does not disable ordinary manual input.
+
+The adapter correlates an exact synthetic event with one invocation. It does not
+simulate trusted user input, focus, default browser actions or framework renders.
+Your readers, semantic predicates and independent application verification remain
+responsible for determining whether the intended result occurred. Importing this
+optional entry is safe without browser globals; creating bindings requires DOM
+elements. The root and Node entries do not import it automatically.
 
 ## Optional Node Worker Transport
 
@@ -93,6 +152,10 @@ Pass this transport to `createRegisteredAgentHost` with your registered
 application and `observations: { before: "objects_before", after: "objects_after" }`.
 `catalog` is a synchronous callback returning raw JSON text. Optional `args`
 are a fixed argument prefix; optional `onStderr` receives bounded diagnostics.
+Set `executionReports: "v1"` on both this transport and the registered host to
+request worker v3 and admit its typed execution-failure reports. Omitting the
+transport option preserves worker v1/v2 and their original exception behavior.
+Task admission and process/pipe failures remain exceptions in every version.
 Executable and arguments are trusted application configuration. The package
 does not install a Rust binary or download one at runtime.
 
@@ -319,17 +382,20 @@ excluding the opt-in Node transport.
 
 ## Source Organization
 
-Within the repository, `src/index.ts` and `src/node/index.ts` define the root
-and optional Node public entries. The implementation modules below are not
+Within the repository, `src/index.ts`, `src/node/index.ts` and `src/dom/index.ts`
+define the root, optional Node and optional DOM public entries. The
+[DOM control guide](../../docs/dom-controls.md) shows shared manual/agent handlers
+with scoped commits, Promise completion and view disposal. The implementation modules below are not
 additional package subpaths:
 
 | Path under `src/` | Responsibility |
 | --- | --- |
 | `bridge.ts` | Registered-object protocol |
 | `node/transport.ts` | Optional Node child lifecycle and bounded worker delivery |
+| `dom/controls.ts` | Optional application-owned DOM text/button bindings and per-event action lifetime |
 | `agent/session.ts`, `agent/data.ts` | Single-task lifetime and owned bounded data |
 | `agent/registered-host.ts`, `agent/registered-evidence.ts` | Optional application host, transport lifecycle and independent observations |
-| `agent/registered-application.ts` | Optional static control declarations, connection lifetime and scoped change notifications |
+| `agent/registered-application.ts` | Static or dynamic fixed control declarations, connection lifetime and scoped change notifications |
 | `agent/workflow.ts`, `agent/workflow-bindings.ts` | Sequential tasks, verified-result dependencies and requirements |
 | `providers/semantic.ts`, `providers/model.ts` | Offline command and model selection providers |
 | `semantics/index.ts` | Semantic API assembly |

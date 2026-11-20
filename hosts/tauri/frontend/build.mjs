@@ -21,3 +21,4 @@ async function copyModules(from, to, root = false) {
 }
 await copyModules(new URL(".", installedEntry), sdk, true);
 await writeFile(new URL("dist/bridge.js", import.meta.url), 'export * from "./sdk/index.js";\n');
+await writeFile(new URL("dist/dom-bridge.js", import.meta.url), 'export * from "./sdk/dom/index.js";\n');

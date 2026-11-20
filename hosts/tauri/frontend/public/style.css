@@ -58,6 +58,11 @@ summary { cursor: pointer; color: #426b70; }
 .article-editor #title { min-height: 64px; }
 .article-editor #content-label { margin-top: 18px; }
 .article-editor .actions { flex-wrap: wrap; }
+.article-editor > .result-heading { align-items: center; margin-bottom: 16px; }
+.article-editor > .result-heading h2 { margin-bottom: 0; }
+.article-draft-preview h3 { margin: 16px 0 8px; color: #536572; font-size: 13px; font-weight: 500; }
+.article-draft-preview #draft-preview-title { min-height: 44px; }
+.article-draft-preview pre:empty::before { content: "（空）"; }
 .article-result h3 { margin: 16px 0 8px; color: #536572; font-size: 13px; font-weight: 500; }
 .article-result #saved-title { min-height: 44px; }
 .article-result pre:empty::before { content: "尚未发布"; }

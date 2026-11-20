@@ -13,6 +13,8 @@ export interface NodeAgentTransportOptions {
   readonly args?: readonly string[];
   /** Add the application's declared semantics to the worker's base raw catalog. */
   readonly catalog: (baseCatalog: string) => string;
+  /** Opt into worker protocol 3 execution failure reports; enable the host's matching report contract too. */
+  readonly executionReports?: "v1";
   /** Whole-child deadline, including clean process closure: 20..60000 ms (default 15000). */
   readonly timeoutMs?: number;
   /** Display-only diagnostics; callback exceptions cannot authorize execution. */
@@ -24,7 +26,7 @@ interface ActiveWorker {
   fail(reason: unknown): void;
   reply(reply: Reply): Promise<void>;
 }
-type CapturedRun = Pick<RegisteredAgentRun, "scope" | "onRequest"> & { readonly version: 1 | 2 };
+type CapturedRun = Pick<RegisteredAgentRun, "scope" | "onRequest"> & { readonly version: 1 | 2 | 3 };
 
 const START_LIMIT = 128 * 1024;
 const REQUEST_LIMIT = 64 * 1024;
@@ -140,6 +142,8 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
     || (options.onStderr !== undefined && typeof options.onStderr !== "function")) {
     throw failure("node_worker_invalid_options");
   }
+  const executionReports = options.executionReports;
+  if (executionReports !== undefined && executionReports !== "v1") throw failure("node_worker_invalid_options");
   const timeoutMs = options.timeoutMs ?? 15_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 20 || timeoutMs > 60_000) throw failure("node_worker_invalid_timeout");
   const executable = options.executable, args = [...(options.args ?? [])];
@@ -314,13 +318,14 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
       const source = run.source, inputMode = run.inputMode, supplied = run.arguments;
       if (!validText(source, 16 * 1024) || source.includes("\0")) throw failure("node_worker_invalid_source");
       if (inputMode !== undefined && inputMode !== "named_strings") throw failure("node_worker_invalid_input_mode");
-      const version = inputMode === "named_strings" ? 2 : 1;
+      const namedInputs = inputMode === "named_strings";
+      const version = executionReports === "v1" ? 3 : namedInputs ? 2 : 1;
       if (!supplied || typeof supplied !== "object" || Array.isArray(supplied)
         || ![Object.prototype, null].includes(Object.getPrototypeOf(supplied))) {
         throw failure("node_worker_invalid_arguments");
       }
       const keys = Reflect.ownKeys(supplied);
-      if (keys.length > (version === 2 ? 8 : 1)) throw failure("node_worker_invalid_arguments");
+      if (keys.length > (namedInputs ? 8 : 1)) throw failure("node_worker_invalid_arguments");
       const arguments_: Record<string, string> = Object.create(null);
       let total = 0;
       for (const name of keys) {
@@ -336,7 +341,8 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
       }
       const captured: CapturedRun = { scope, onRequest, version };
       const bytes = Buffer.from(JSON.stringify({ agent_worker_version: version, kind: "start",
-        scope, source, arguments: arguments_ }) + "\n");
+        scope, source, arguments: arguments_,
+        ...(version === 3 ? { input_mode: namedInputs ? "named_strings" : "single_string" } : {}) }) + "\n");
       if (bytes.length > START_LIMIT) throw failure("node_worker_start_limit");
       endpoint ??= Object.freeze({ window: scope.window, epoch: scope.epoch });
       return launch("--serve", signal, captured, bytes);

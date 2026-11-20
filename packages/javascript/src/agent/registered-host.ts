@@ -10,6 +10,8 @@ export interface RegisteredApplicationConnection {
   attach(bridge: Bridge): void;
   detach(bridge: Bridge): void;
   observe(): unknown;
+  /** Optional structural identity; changes only when logical control bindings change. */
+  bindingRevision?(): number;
 }
 
 export interface RegisteredAgentEndpoint {
@@ -35,6 +37,8 @@ export interface RegisteredAgentTransport {
 }
 
 export interface RegisteredAgentHostOptions extends RegisteredAgentEndpoint {
+  /** Opt into the bounded v1 execution-failure report contract for this host. */
+  readonly executionReports?: "v1";
   readonly application: RegisteredApplicationConnection;
   readonly transport: RegisteredAgentTransport;
   /** Distinct top-level report field names, chosen by the trusted application. */
@@ -55,6 +59,7 @@ interface Completion {
   readonly before: string;
   readonly report: string | null;
   readonly verification: VerificationResult;
+  readonly bindingRevision?: number;
   readonly run: Slot;
   live(): boolean;
 }
@@ -66,11 +71,15 @@ interface Completion {
  * No VM loop, scheduler, automatic retry or rollback is installed here.
  */
 export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): RegisteredAgentHost {
+  const selectedBindingRevision = options?.application?.bindingRevision;
+  const executionReports = options?.executionReports;
   if (!options || typeof options !== "object"
     || !options.application || !options.transport
     || [options.application.attach, options.application.detach, options.application.observe,
       options.transport.describe, options.transport.execute, options.transport.reply,
       options.transport.cancel, options.transport.close].some((method) => typeof method !== "function")
+    || (selectedBindingRevision !== undefined && typeof selectedBindingRevision !== "function")
+    || (executionReports !== undefined && executionReports !== "v1")
     || (options.onSource !== undefined && typeof options.onSource !== "function")) {
     fault("invalid_registered_host_options");
   }
@@ -88,11 +97,29 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
   }
   const observationFields = Object.freeze({ before: selected.before, after: selected.after });
   const { application, transport, onSource } = options;
+  // Keep one application-owned method identity, even if the caller later rewrites its object.
+  const bindingRevision = selectedBindingRevision?.bind(application);
   let active: Slot | null = null;
   let closed = false;
   let catalog: SemanticCatalog | null = null;
   let completed: Completion | null = null;
   let lastSession = 0;
+
+  function readBindingRevision(): number | undefined {
+    if (!bindingRevision) return undefined;
+    let revision: unknown;
+    try { revision = bindingRevision(); }
+    catch { fault("invalid_registered_binding_revision"); }
+    if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision < 0) {
+      fault("invalid_registered_binding_revision");
+    }
+    return revision;
+  }
+  function sameBindings(revision: number | undefined): boolean {
+    if (!bindingRevision) return true;
+    try { return readBindingRevision() === revision; }
+    catch { return false; }
+  }
 
   function check(signal: AbortSignal): void {
     if (closed) fault("registered_host_closed");
@@ -127,19 +154,28 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
       if (typeof report !== "string" || evidence.report === null) return rejectVerification("invalid_report");
       if (report !== evidence.report) return rejectVerification("report_mismatch");
       if (!live()) return rejectVerification("verification_interrupted");
+      const initialBindings = sameBindings(evidence.bindingRevision);
+      if (!live()) return rejectVerification("verification_interrupted");
+      if (!initialBindings) return rejectVerification("application_bindings_changed");
       if (!evidence.verification.verified) return evidence.verification;
       const observed = observations(report, observationFields);
       const after = snapshots(application.observe());
       if (!live()) return rejectVerification("verification_interrupted");
+      const finalBindings = sameBindings(evidence.bindingRevision);
+      if (!live()) return rejectVerification("verification_interrupted");
+      if (!finalBindings) return rejectVerification("application_bindings_changed");
       if (observed.before !== evidence.before) return rejectVerification("before_observation_mismatch");
       if (observed.after !== after) return rejectVerification("after_observation_mismatch");
       return VERIFICATION_SUCCESS;
     } catch {
-      return rejectVerification(live() ? "observation_invalid" : "verification_interrupted");
+      if (!live()) return rejectVerification("verification_interrupted");
+      const unchanged = sameBindings(evidence.bindingRevision);
+      if (!live()) return rejectVerification("verification_interrupted");
+      return rejectVerification(unchanged ? "observation_invalid" : "application_bindings_changed");
     } finally { if (active === current) active = null; }
   }
 
-  return {
+  const host: RegisteredAgentHost = {
     async describe(signal) {
       available(signal);
       const controller = new AbortController();
@@ -153,7 +189,7 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
         const described = json(await transport.describe(controller.signal), "catalog", 256 * 1024);
         check(signal);
         if (active !== current || controller.signal.aborted) fault("registered_host_cancelled");
-        const prepared = prepareSemanticCatalog(described);
+        const prepared = prepareSemanticCatalog(described, executionReports ? { executionReports } : undefined);
         check(signal);
         if (active !== current || controller.signal.aborted) fault("registered_host_cancelled");
         catalog = prepared;
@@ -178,6 +214,9 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
       let detached = false;
       let cleanupFailed = false;
       let cleanupError: unknown;
+      let initialBindingRevision: number | undefined;
+      let bindingsCaptured = false;
+      let bindingsChanged = false;
       const detach = () => {
         if (!attachmentStarted || attaching || detached) return;
         detached = true;
@@ -200,7 +239,19 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
       const live = () => !closed && !stopped && !signal.aborted && !controller.signal.aborted;
       const checkRun = () => {
         check(signal);
+        if (bindingsChanged) fault("application_bindings_changed");
         if (!live() || active !== current) fault("registered_host_cancelled");
+      };
+      const checkBindings = () => {
+        if (!bindingRevision || !bindingsCaptured) return;
+        const unchanged = sameBindings(initialBindingRevision);
+        // Revision readers are application callbacks and cannot override cancellation.
+        checkRun();
+        if (!unchanged) {
+          bindingsChanged = true;
+          current.stop();
+          fault("application_bindings_changed");
+        }
       };
       // Claim the slot and cancellation fence before any application callback,
       // including observe() and partially successful attach().
@@ -211,6 +262,9 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
       let candidate: Completion | null = null;
       try {
         checkRun();
+        initialBindingRevision = readBindingRevision();
+        bindingsCaptured = true;
+        checkRun();
         const ownedPlan = proposal(plan);
         checkRun();
         if (!ownedPlan.task) fault("registered_plan_task_required");
@@ -219,28 +273,43 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
         checkRun();
         const before = snapshots(application.observe());
         checkRun();
+        checkBindings();
         attachmentStarted = true;
         attaching = true;
         try { application.attach(bridge); } finally { attaching = false; }
         checkRun();
+        checkBindings();
         onSource?.(prepared.plan.source);
         checkRun();
+        checkBindings();
         const run: RegisteredAgentRun = Object.freeze({
           scope: bridge.scope, source: prepared.plan.source, arguments: prepared.plan.arguments,
           ...(prepared.plan.inputMode ? { inputMode: prepared.plan.inputMode } : {}),
           onRequest(request: unknown) {
             // This closure always retains its own bridge and stop function.
             // Late requests receive rejection without affecting a later run.
-            void bridge.handle(request).then((reply) => transport.reply(reply)).catch(current.stop);
+            if (bindingRevision && live() && active === current) {
+              try { checkBindings(); } catch { current.stop(); }
+            }
+            void bridge.handle(request).then((reply) => {
+              if (bindingRevision && live() && active === current) checkBindings();
+              return transport.reply(reply);
+            }).catch(current.stop);
           },
         });
         started = true;
-        report = await transport.execute(run, controller.signal);
+        try { report = await transport.execute(run, controller.signal); }
+        catch (error) {
+          if (bindingsChanged && !signal.aborted && !closed) fault("application_bindings_changed");
+          throw error;
+        }
+        if (bindingsChanged) { check(signal); fault("application_bindings_changed"); }
         if (live()) {
           const raw = typeof report === "string" && report.length <= 128 * 1024
             && new TextEncoder().encode(report).length <= 128 * 1024 ? report : null;
           const verification = raw === null ? rejectVerification("invalid_report") : prepared.verifyDetailed(raw);
-          candidate = { prepared, before, report: raw, verification, run: current, live };
+          candidate = { prepared, before, report: raw, verification,
+            bindingRevision: initialBindingRevision, run: current, live };
         }
       } finally {
         bridge.close();
@@ -272,4 +341,6 @@ export function createRegisteredAgentHost(options: RegisteredAgentHostOptions): 
       quietly(() => transport.close(endpoint));
     },
   };
+  if (executionReports) Object.defineProperty(host, "executionReports", { enumerable: true, value: executionReports });
+  return host;
 }

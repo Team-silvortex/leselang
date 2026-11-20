@@ -7,6 +7,7 @@ const worker = fileURLToPath(new URL("./fixtures/node-worker.mjs", import.meta.u
 const scope = (session = "run_1") => ({ window: "node_app", epoch: "fresh_epoch", session });
 const signal = () => new AbortController().signal;
 const expected = '{"integer":18446744073709551615}';
+const expectedFailure = '{ "schema_version":1,"profile":"javascript.registered","kind":"javascript_task_run","status":"failed","error":"fixture missing object","possible_partial_effects":true,"execution_failure":{"code":"execution_object_unavailable"} }';
 function deferred() {
   let resolve;
   const promise = new Promise((yes) => { resolve = yes; });
@@ -42,6 +43,8 @@ test("an explicit named-input run pins protocol two without changing adjacent le
   const f = fixture(t, "echo_arguments");
   const first = JSON.parse(await f.carrier.execute(f.run(), signal()));
   assert.equal(first.version, 1);
+  assert.deepEqual(first.start_keys, ["agent_worker_version", "kind", "scope", "source", "arguments"]);
+  assert.equal(Object.hasOwn(first, "input_mode"), false);
   const arguments_ = { title: 'Quoted "标题"', content: "literal\\path\n正文 ✓" };
   const next = { ...f.run("run_2"), inputMode: "named_strings", source: "fn main(title: string, content: string) = title", arguments: arguments_ };
   const pending = f.carrier.execute(next, signal());
@@ -50,9 +53,64 @@ test("an explicit named-input run pins protocol two without changing adjacent le
   next.source = "later source";
   const second = JSON.parse(await pending);
   assert.equal(second.version, 2);
+  assert.deepEqual(second.start_keys, first.start_keys);
+  assert.equal(Object.hasOwn(second, "input_mode"), false);
   assert.equal(second.source, "fn main(title: string, content: string) = title");
   assert.deepEqual(second.arguments, { title: 'Quoted "标题"', content: "literal\\path\n正文 ✓" });
   assert.equal(JSON.parse(await f.carrier.execute(f.run("run_3"), signal())).version, 1);
+});
+
+test("explicit execution reports capture protocol three while preserving each run's input mode", async (t) => {
+  let optionReads = 0, executionReports = "v1";
+  const carrier = createNodeAgentTransport({ executable: process.execPath, args: [worker, "echo_arguments"],
+    catalog: (raw) => raw, get executionReports() { optionReads++; return executionReports; } });
+  t.after(() => carrier.close(scope()));
+  executionReports = undefined;
+  const run = (session, changes = {}) => ({ scope: scope(session), source: "fn main() = true", arguments: {},
+    onRequest(request) {
+      void carrier.reply({ transport_version: 1, ...scope(session), request_id: request.request_id,
+        status: "ok", value: [], error: null }).catch(() => {});
+    }, ...changes });
+  const first = JSON.parse(await carrier.execute(run("run_1"), signal()));
+  assert.equal(first.version, 3);
+  assert.equal(first.input_mode, "single_string");
+  assert.deepEqual(first.start_keys, ["agent_worker_version", "kind", "scope", "source", "arguments", "input_mode"]);
+  const arguments_ = { title: "标题", content: "正文\n✓" };
+  const next = run("run_2", { source: "fn main(title: string, content: string) = title",
+    inputMode: "named_strings", arguments: arguments_ });
+  const pending = carrier.execute(next, signal());
+  next.inputMode = undefined;
+  next.source = "changed source";
+  arguments_.content = "changed argument";
+  const second = JSON.parse(await pending);
+  assert.equal(second.version, 3);
+  assert.equal(second.input_mode, "named_strings");
+  assert.equal(second.source, "fn main(title: string, content: string) = title");
+  assert.deepEqual(second.arguments, { title: "标题", content: "正文\n✓" });
+  assert.equal(JSON.parse(await carrier.execute(run("run_3"), signal())).input_mode, "single_string");
+  assert.equal(optionReads, 1);
+});
+
+test("protocol three does not broaden single-input admission or named input bounds", async (t) => {
+  const f = fixture(t, "normal", { executionReports: "v1" });
+  for (const change of [
+    { arguments: { title: "one", content: "two" } },
+    { inputMode: "single_string" },
+    { inputMode: null },
+    { inputMode: "named_strings", arguments: Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`p${i}`, "x"])) },
+    { inputMode: "named_strings", arguments: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`p${i}`, "x".repeat(2049)])) },
+  ]) await assert.rejects(f.carrier.execute({ ...f.run(), ...change }, signal()), /invalid_(arguments|input_mode)/);
+  assert.equal(f.received.length, 0);
+  assert.equal(await f.carrier.execute({ ...f.run(), inputMode: "named_strings",
+    arguments: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`p${i}`, "x".repeat(2048)])) }, signal()), expected);
+});
+
+test("protocol three returns a worker-authored failure report as its exact original string", async (t) => {
+  const f = fixture(t, "failure_normal", { executionReports: "v1" });
+  assert.equal(await f.carrier.execute(f.run(), signal()), expectedFailure);
+  assert.equal(f.received.length, 1);
+  // Semantic acceptance belongs to the separately opted-in registered host.
+  assert.equal(JSON.parse(expectedFailure).status, "failed");
 });
 
 test("named input bounds and markers reject before dispatch and never evaluate argument getters", async (t) => {
@@ -79,11 +137,43 @@ test("named input bounds and markers reject before dispatch and never evaluate a
 });
 
 test("a worker cannot upgrade or downgrade the selected startup protocol", async (t) => {
-  for (const [mode, inputMode] of [["downgrade", "named_strings"], ["upgrade", undefined]]) {
-    const f = fixture(t, mode);
+  for (const [mode, inputMode, executionReports] of [
+    ["downgrade", "named_strings"], ["upgrade", undefined],
+    ["upgrade_three", undefined], ["upgrade_three", "named_strings"],
+    ["downgrade", undefined, "v1"], ["downgrade_two", "named_strings", "v1"],
+  ]) {
+    const f = fixture(t, mode, { executionReports });
     await assert.rejects(f.carrier.execute({ ...f.run(), ...(inputMode ? { inputMode } : {}) }, signal()), /invalid_version/);
     assert.equal(f.received.length, 0);
   }
+});
+
+test("execution failure reports cannot bypass clean child closure or frame validation", async (t) => {
+  for (const mode of ["report_nonzero", "duplicate_terminal", "truncated", "extra_key", "pending_report", "after_report"]) {
+    const f = fixture(t, `failure_${mode}`, { executionReports: "v1" });
+    await assert.rejects(f.carrier.execute(f.run("run_1", mode === "pending_report" ? () => {} : undefined), signal()),
+      undefined, mode);
+  }
+  const error = fixture(t, "error", { executionReports: "v1" });
+  await assert.rejects(error.carrier.execute(error.run(), signal()), /node_worker_failed: fixture_failure/);
+  const hanging = fixture(t, "failure_report_hang", { executionReports: "v1", timeoutMs: 500 });
+  await assert.rejects(hanging.carrier.execute(hanging.run(), signal()), /node_worker_deadline/);
+});
+
+test("cancelling after a failure report still rejects until its child closes", async (t) => {
+  const ready = deferred();
+  const f = fixture(t, "failure_report_held", { executionReports: "v1",
+    onStderr(text) { if (text.includes("report_sent")) ready.resolve(); } });
+  const controller = new AbortController();
+  let settled = false;
+  const pending = f.carrier.execute(f.run(), controller.signal).finally(() => { settled = true; });
+  const rejected = assert.rejects(pending, /node_worker_cancelled/);
+  await ready.promise;
+  assert.equal(settled, false);
+  controller.abort();
+  await assert.rejects(f.carrier.execute(f.run("run_2"), signal()), /node_worker_busy/);
+  await rejected;
+  assert.equal(settled, true);
 });
 
 test("a terminal report does not release the process slot before clean child closure", async (t) => {
@@ -212,7 +302,8 @@ test("public options reject invalid paths, arguments and deadlines before spawni
   for (const changed of [null, { executable: "relative-worker" }, { executable: 123 },
     { executable: `${process.execPath}\0` }, { executable: `/${"x".repeat(4096)}` },
     { catalog: null }, { args: "--serve" }, { args: [null] }, { args: ["bad\0argument"] },
-    { args: Array(17).fill("argument") }, { onStderr: true }]) {
+    { args: Array(17).fill("argument") }, { onStderr: true },
+    ...[null, true, 1, "v2", {}, new String("v1")].map((executionReports) => ({ executionReports }))]) {
     assert.throws(() => createNodeAgentTransport(changed === null ? null : { ...options, ...changed }),
       /node_worker_invalid_options/);
   }

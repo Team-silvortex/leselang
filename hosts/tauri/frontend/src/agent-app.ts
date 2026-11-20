@@ -16,3 +16,4 @@ createAgentChat({
   offlineExample: "task fill_and_save:周五完成设计评审",
   modelExample: "读取当前输入框的文本，原样保存，再核对控件",
 });
+window.addEventListener("pagehide", () => form.dispose(), { once: true });

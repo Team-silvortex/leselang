@@ -27,6 +27,8 @@ These references serve different layers:
 | [Independent Rust catalog agent](agent-workflow.md) | A separate Consumer executable that discovers, generates, executes one task and verifies; no model call |
 | [Application agent entry](agent-entry.md) | `AgentSession`, provider and application-host responsibilities |
 | [Registered application agent host](registered-agent-host.md) | Reusable `createRegisteredAgentHost`, application connection, transport and independent observation checks |
+| [Application DOM controls](dom-controls.md) | Optional shared text/button event handlers, scoped commits, completion and view disposal |
+| [Dynamic application controls](dynamic-controls.md) | Fixed logical slots, explicit mount/replace/unmount and independent binding identity verification |
 | [Node-owned agent and Rust worker](node-agent-host.md) | A live independent JS application using the public host and optional Node transport with a fresh real VM worker per task |
 | [Standalone registered-object core](../hosts/registered/README.md) | Framework-free Rust library and worker, shared with the Tauri compatibility layer |
 | [JavaScript/TypeScript semantic authoring](semantic-authoring.md) | Public declaration types and validated composition of application task catalogs |
@@ -34,6 +36,7 @@ These references serve different layers:
 | [Registered GUI task declarations](registered-tasks.md) | Reusable read, set-text and click sequences with explicit application verification |
 | [JavaScript sequential workflows](agent-workflows.md) | `AgentWorkflowSession`, complete-plan admission, result bindings and per-step verification |
 | [Verification diagnostics](verification-diagnostics.md) | Optional detailed verification, bounded failure reasons and unchanged stop/authority boundaries |
+| [Execution failure reports](execution-reports.md) | Explicit report contract, typed host failure causes and terminal-failure rejection before success evidence |
 | [Model provider](model-provider.md) | Natural-language task selection through an application-owned transport |
 | [Shared fixtures](../fixtures/host-semantics/README.md) | Catalog bytes and generated source compared across Rust and JavaScript |
 

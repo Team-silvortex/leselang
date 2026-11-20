@@ -28,7 +28,7 @@ function evidence(text = plan.arguments.text, clicks = 0) {
 function fixture(options = {}) {
   const f = { starts: [], replies: [], cancellations: [], closures: [], descriptions: [],
     bridges: [], active: null, visible: evidence().native_before, hooks: {}, writes: 0,
-    deferredReplies: [], deferReplies: false, mutation: null };
+    deferredReplies: [], deferReplies: false, mutation: null, bindingRevision: 0, bindingReads: 0 };
   const row = (id) => f.visible.find((entry) => entry.identifier === id);
   f.application = {
     observe() { f.hooks.observe?.(); return f.visible; },
@@ -42,6 +42,7 @@ function fixture(options = {}) {
           async setText(text, context) {
             await (f.mutation?.promise ?? Promise.resolve());
             context.commit(() => { row(id).value = text; f.writes++; });
+            f.hooks.afterAction?.(id);
           },
           async click(context) {
             await (f.mutation?.promise ?? Promise.resolve());
@@ -50,6 +51,7 @@ function fixture(options = {}) {
               if (id === "save") row(id).value = row("input").value;
               f.writes++;
             });
+            f.hooks.afterAction?.(id);
           },
         });
       }
@@ -60,6 +62,10 @@ function fixture(options = {}) {
       if (f.active === bridge) f.active = null;
       f.hooks.detach?.(bridge);
     },
+  };
+  if (options.bindings) f.application.bindingRevision = () => {
+    f.bindingReads++;
+    return f.hooks.bindingRevision ? f.hooks.bindingRevision() : f.bindingRevision;
   };
   f.transport = {
     describe(abort) {
@@ -84,6 +90,7 @@ function fixture(options = {}) {
   f.host = createRegisteredAgentHost({
     window: "external-main", epoch: "page-1", application: f.application, transport: f.transport,
     observations: options.observations ?? { before: "native_before", after: "native_after" },
+    ...(options.executionReports === undefined ? {} : { executionReports: options.executionReports }),
     onSource(source) { f.hooks.source?.(source); },
   });
   f.ready = () => f.host.describe(signal());
@@ -142,6 +149,13 @@ test("public host configuration rejects malformed endpoints, evidence fields and
     }
     const options = valid(); options[owner] = null;
     assert.throws(() => createRegisteredAgentHost(options), owner);
+  }
+  for (const bindingRevision of [null, 0, "0", {}, []]) {
+    const options = valid(); options.application.bindingRevision = bindingRevision;
+    assert.throws(() => createRegisteredAgentHost(options), /invalid_registered_host_options/);
+  }
+  for (const executionReports of [null, 0, true, "", "v2", {}, []]) {
+    assert.throws(() => createRegisteredAgentHost({ ...valid(), executionReports }), /invalid_registered_host_options/);
   }
   assert.throws(() => createRegisteredAgentHost({ ...valid(), onSource: "not a callback" }));
   assert.throws(() => createRegisteredAgentHost(null));
@@ -518,4 +532,200 @@ test("detailed verification shares Boolean consumption and preserves callback li
     assert.equal(f.host.verify(wire, plan, signal()), false);
     assert.equal(f.active, null);
   }
+});
+
+test("optional binding revisions are captured once and must be nonnegative safe integers", async () => {
+  for (const invalid of [undefined, null, false, "0", -1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    const f = fixture({ bindings: true }); await f.ready();
+    f.hooks.bindingRevision = () => invalid;
+    await assert.rejects(f.host.execute(plan, signal()), /invalid_registered_binding_revision/);
+    assert.equal(f.starts.length, 0);
+    assert.equal(f.bridges.length, 0);
+  }
+  const f = fixture({ bindings: true }); await f.ready();
+  f.application.bindingRevision = () => { throw new Error("replacement method must not run"); };
+  const wire = await complete(f);
+  assert.deepEqual(f.host.verifyDetailed(wire, plan, signal()), { verified: true });
+  assert.ok(f.bindingReads > 0, "the originally captured method is used");
+});
+
+test("binding changes in initial observations, attachment or source callbacks never start transport", async () => {
+  for (const callback of ["observe", "attach", "source"]) {
+    const f = fixture({ bindings: true }); await f.ready();
+    f.hooks[callback] = () => { f.bindingRevision++; };
+    await assert.rejects(f.host.execute(plan, signal()), /application_bindings_changed/);
+    assert.equal(f.starts.length, 0, callback);
+    assert.equal(f.writes, 0, callback);
+    assert.equal(f.active, null, callback);
+    assert.ok(f.bridges.every((bridge) => bridge.closed));
+  }
+});
+
+test("binding changes stop request dispatch and suppress a completed stale reply", async () => {
+  for (const phase of ["before_request", "after_action"]) {
+    const f = fixture({ bindings: true }); await f.ready();
+    f.hooks.cancel = (scope) => f.starts.find((start) => start.run.scope.session === scope.session)
+      ?.reject(new Error("transport cancelled"));
+    const execution = f.host.execute(plan, signal());
+    const failed = assert.rejects(execution, /application_bindings_changed/);
+    const start = f.starts[0];
+    if (phase === "before_request") f.bindingRevision++;
+    else f.hooks.afterAction = () => { f.bindingRevision++; };
+    start.run.onRequest(f.request(start, "gui.click", { target: { name: "save", generation: 1 }, expected_revision: 0 }));
+    await failed; await tick();
+    assert.equal(f.writes, phase === "before_request" ? 0 : 1);
+    assert.equal(f.cancellations.length, 1);
+    assert.equal(f.bridges[0].closed, true);
+    assert.equal(f.active, null);
+    assert.equal(f.replies.filter((reply) => reply.status === "ok").length, 0, "no stale success reaches the carrier");
+    assert.equal(f.host.verifyDetailed("{}", plan, signal()).diagnostic.code, "completion_unavailable");
+  }
+});
+
+test("same-value remounts, ABA and teardown changes invalidate exactly one completed report", async () => {
+  for (const phase of ["after_return", "aba", "detach", "verify_observe", "verify_observe_throw", "invalid_revision"]) {
+    const f = fixture({ bindings: true }); await f.ready();
+    if (phase === "detach") f.hooks.detach = () => { f.bindingRevision++; };
+    const wire = await complete(f);
+    let reads = 0;
+    f.hooks.observe = () => {
+      reads++;
+      if (phase.startsWith("verify_observe")) f.bindingRevision++;
+      if (phase === "verify_observe_throw") throw new Error("reader was replaced");
+    };
+    if (phase === "after_return") f.bindingRevision++;
+    if (phase === "aba") f.bindingRevision += 2;
+    if (phase === "invalid_revision") f.hooks.bindingRevision = () => NaN;
+    assert.deepEqual(f.host.verifyDetailed(wire, plan, signal()),
+      { verified: false, diagnostic: { code: "application_bindings_changed" } }, phase);
+    assert.equal(reads, phase.startsWith("verify_observe") ? 1 : 0);
+    assert.deepEqual(f.host.verifyDetailed(wire, plan, signal()),
+      { verified: false, diagnostic: { code: "completion_unavailable" } }, phase);
+  }
+});
+
+test("binding diagnostics remain correlated and cancellation still has precedence", async () => {
+  for (const phase of ["plan", "report", "abort", "close_in_revision"]) {
+    const f = fixture({ bindings: true }); await f.ready();
+    const controller = new AbortController();
+    const wire = await complete(f, evidence(), plan, controller.signal);
+    f.bindingRevision++;
+    if (phase === "abort") controller.abort();
+    if (phase === "close_in_revision") f.hooks.bindingRevision = () => { f.host.close(); return f.bindingRevision; };
+    const result = f.host.verifyDetailed(phase === "report" ? wire + " " : wire,
+      phase === "plan" ? { ...plan, arguments: { text: "changed" } } : plan, signal());
+    assert.equal(result.diagnostic.code, phase === "plan" ? "plan_mismatch"
+      : phase === "report" ? "report_mismatch" : "verification_interrupted", phase);
+  }
+});
+
+test("late requests from a retired binding attempt cannot inspect or retire a replacement session", async () => {
+  const f = fixture({ bindings: true }); await f.ready();
+  f.hooks.cancel = (scope) => f.starts.find((start) => start.run.scope.session === scope.session)
+    ?.reject(new Error("transport cancelled"));
+  const execution = f.host.execute(plan, signal());
+  const failed = assert.rejects(execution, /application_bindings_changed/);
+  const old = f.starts[0];
+  f.bindingRevision++;
+  old.run.onRequest(f.request(old));
+  await failed; await tick();
+  await f.ready();
+  const replacement = f.host.execute(plan, signal());
+  const start = f.starts[1];
+  const reads = f.bindingReads;
+  old.run.onRequest(f.request(old, "gui.click", { target: { name: "save", generation: 1 }, expected_revision: 0 }));
+  await tick();
+  assert.equal(f.bindingReads, reads, "old delivery does not call current application revision hooks");
+  assert.equal(f.cancellations.length, 1);
+  assert.equal(f.bridges[1].closed, false);
+  assert.equal((await f.call(start, "gui.list")).status, "ok");
+  f.visible = evidence().native_after;
+  const wire = JSON.stringify(evidence()); start.resolve(wire);
+  assert.equal(await replacement, wire);
+  assert.deepEqual(f.host.verifyDetailed(wire, plan, signal()), { verified: true });
+});
+
+function failedExecution(code = "execution_object_unavailable") {
+  return { schema_version: 1, profile: "tauri.typescript", kind: "tauri_task_run",
+    status: code === "execution_cancelled" ? "cancelled" : "failed",
+    error: "private host error", possible_partial_effects: true, execution_failure: { code } };
+}
+
+test("registered hosts expose only an explicitly selected immutable report policy captured once", async () => {
+  const legacy = fixture();
+  assert.equal(Object.hasOwn(legacy.host, "executionReports"), false);
+  const f = fixture();
+  let reads = 0, selected = "v1";
+  f.host = createRegisteredAgentHost({ window: "configured", epoch: "fresh",
+    application: f.application, transport: f.transport,
+    observations: { before: "native_before", after: "native_after" },
+    get executionReports() { reads++; return selected; },
+  });
+  assert.equal(reads, 1);
+  selected = undefined;
+  assert.equal(f.host.executionReports, "v1");
+  assert.throws(() => { f.host.executionReports = undefined; }, TypeError);
+  assert.throws(() => { delete f.host.executionReports; }, TypeError);
+  await f.ready();
+  const pending = f.host.execute(plan, signal()), wire = JSON.stringify(failedExecution());
+  f.starts[0].resolve(wire);
+  assert.equal(await pending, wire);
+  assert.deepEqual(f.host.verifyDetailed(wire, plan, signal()),
+    { verified: false, diagnostic: { code: "execution_object_unavailable" } });
+  assert.equal(reads, 1, "description, execution and verification use the captured policy");
+});
+
+test("explicit execution failures preserve exact completion evidence and prior application mutations", async () => {
+  const f = fixture({ executionReports: "v1" }); await f.ready();
+  const pending = f.host.execute(plan, signal()), start = f.starts[0];
+  const input = (await f.call(start, "gui.find", { name: "input" })).value;
+  const observed = (await f.call(start, "gui.observe", { target: input })).value;
+  assert.equal((await f.call(start, "gui.set_text", { target: input, expected_revision: observed.revision,
+    text: plan.arguments.text })).status, "ok");
+  const wire = JSON.stringify(failedExecution());
+  start.resolve(wire);
+  assert.equal(await pending, wire, "transport evidence is preserved byte-for-byte");
+  let observedAgain = 0;
+  f.hooks.observe = () => { observedAgain++; };
+  assert.deepEqual(f.host.verifyDetailed(wire, plan, signal()),
+    { verified: false, diagnostic: { code: "execution_object_unavailable" } });
+  assert.equal(observedAgain, 0, "a terminal failed report does not seek missing success snapshots");
+  assert.equal(f.writes, 1);
+  assert.equal(f.visible.find((row) => row.identifier === "input").value, plan.arguments.text);
+  assert.equal(f.visible.find((row) => row.identifier === "save").clicks, 0);
+  assert.deepEqual(f.host.verifyDetailed(wire, plan, signal()),
+    { verified: false, diagnostic: { code: "completion_unavailable" } });
+  assert.equal(f.cancellations.length, 0, "diagnosis does not retry or manufacture cancellation");
+});
+
+test("failure reasons remain subordinate to exact completion identity, binding lifetime and cancellation", async () => {
+  for (const mode of ["plan", "report", "bindings", "abort", "closed", "foreign_identity"]) {
+    const f = fixture({ executionReports: "v1", bindings: true }); await f.ready();
+    const controller = new AbortController();
+    const pending = f.host.execute(plan, controller.signal);
+    const failure = failedExecution();
+    if (mode === "foreign_identity") failure.profile = "other.app";
+    const wire = JSON.stringify(failure); f.starts[0].resolve(wire); await pending;
+    if (mode === "bindings") f.bindingRevision++;
+    if (mode === "abort") controller.abort();
+    if (mode === "closed") f.host.close();
+    const result = f.host.verifyDetailed(mode === "report" ? wire + " " : wire,
+      mode === "plan" ? { ...plan, arguments: { text: "different" } } : plan, signal());
+    assert.deepEqual(result, { verified: false, diagnostic: { code: {
+      plan: "plan_mismatch", report: "report_mismatch", bindings: "application_bindings_changed",
+      abort: "verification_interrupted", closed: "verification_interrupted", foreign_identity: "report_identity_mismatch",
+    }[mode] } }, mode);
+  }
+});
+
+test("unconfigured registered hosts preserve legacy status fields and minimal failure diagnostics", async () => {
+  const legacy = fixture(); await legacy.ready();
+  const successWithMetadata = { ...evidence(), status: "application-defined",
+    execution_failure: { code: "business-state", extra: true } };
+  const success = await complete(legacy, successWithMetadata);
+  assert.equal(legacy.host.verify(success, plan, signal()), true);
+  const pending = legacy.host.execute(plan, signal()), failure = JSON.stringify(failedExecution());
+  legacy.starts.at(-1).resolve(failure); await pending;
+  assert.deepEqual(legacy.host.verifyDetailed(failure, plan, signal()),
+    { verified: false, diagnostic: { code: "report_budget_mismatch" } });
 });

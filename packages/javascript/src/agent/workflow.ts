@@ -104,6 +104,7 @@ export class AgentWorkflowSession {
   readonly #provider: AgentWorkflowProvider;
   readonly #host: AgentHost;
   readonly #onEvent?: (state: AgentWorkflowState) => void;
+  readonly #executionReports?: "v1";
   #active: Task | null = null;
   #lastId = 0;
   #state: AgentWorkflowState = Object.freeze({
@@ -111,13 +112,16 @@ export class AgentWorkflowSession {
   });
 
   constructor(options: AgentWorkflowSessionOptions) {
+    const executionReports = options.host?.executionReports;
     if (typeof options.provider?.plan !== "function"
       || [options.host?.describe, options.host?.execute, options.host?.verify].some((fn) => typeof fn !== "function")
       || (options.host?.verifyDetailed !== undefined && typeof options.host.verifyDetailed !== "function")
+      || (executionReports !== undefined && executionReports !== "v1")
       || (options.onEvent !== undefined && typeof options.onEvent !== "function")) fault("invalid_agent_adapter");
     this.#provider = options.provider;
     this.#host = options.host;
     this.#onEvent = options.onEvent;
+    this.#executionReports = executionReports;
   }
 
   get busy(): boolean { return this.#active !== null; }
@@ -173,7 +177,7 @@ export class AgentWorkflowSession {
       this.#check(task);
       const owned = json(described, "catalog", CATALOG_LIMIT);
       const snapshot = JSON.stringify(owned);
-      const catalog = prepareSemanticCatalog(owned);
+      const catalog = prepareSemanticCatalog(owned, this.#executionReports ? { executionReports: this.#executionReports } : undefined);
       this.#emit(task, "planning");
       this.#check(task);
       const planned = await this.#provider.plan(Object.freeze({ taskId: task.id, message, catalog: owned }), signal);
@@ -198,6 +202,7 @@ export class AgentWorkflowSession {
           return concrete;
         } },
         host: {
+          ...(this.#executionReports ? { executionReports: this.#executionReports } : {}),
           describe: async (childSignal): Promise<AgentJson> => {
             this.#check(task);
             const fresh = await this.#host.describe(childSignal);

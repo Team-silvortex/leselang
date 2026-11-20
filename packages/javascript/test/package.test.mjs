@@ -30,6 +30,7 @@ test("packed public ESM and declarations work in an external JavaScript/TypeScri
       "dist/agent/workflow-bindings.d.ts", "dist/agent/workflow-bindings.js", "dist/agent/workflow.d.ts", "dist/agent/workflow.js",
       "dist/bridge.d.ts", "dist/bridge.js",
       "dist/index.d.ts", "dist/index.js",
+      "dist/dom/index.d.ts", "dist/dom/index.js", "dist/dom/controls.d.ts", "dist/dom/controls.js",
       "dist/verification.d.ts", "dist/verification.js",
       "dist/node/index.d.ts", "dist/node/index.js", "dist/node/transport.d.ts", "dist/node/transport.js",
       "dist/providers/model.d.ts", "dist/providers/model.js", "dist/providers/semantic.d.ts", "dist/providers/semantic.js",
@@ -52,8 +53,14 @@ test("packed public ESM and declarations work in an external JavaScript/TypeScri
     await writeFile(join(directory, "consumer.mjs"), `
 import assert from "node:assert/strict";
 import { createNodeAgentTransport } from "@leselang/bridge/node";
-import { Bridge, AgentSession, AgentWorkflowSession, createRegisteredApplication, defineSemanticCatalog, prepareSemanticCatalog, createSemanticProvider, createModelProvider, createModelWorkflowProvider, prepareSemanticWorkflow } from "@leselang/bridge";
+import { createDomButtonControl, createDomTextControl } from "@leselang/bridge/dom";
+import { Bridge, AgentSession, AgentWorkflowSession, createRegisteredApplication, createDynamicRegisteredApplication, defineSemanticCatalog, prepareSemanticCatalog, createSemanticProvider, createModelProvider, createModelWorkflowProvider, prepareSemanticWorkflow } from "@leselang/bridge";
 assert.equal(typeof createNodeAgentTransport, "function");
+assert.equal(typeof createDomButtonControl, "function");
+assert.equal(typeof createDomTextControl, "function");
+assert.equal(typeof globalThis.document, "undefined", "the optional DOM entry can be imported during server rendering");
+assert.equal(Object.hasOwn(await import("@leselang/bridge"), "createDomButtonControl"), false);
+await assert.rejects(import("@leselang/bridge/dist/dom/controls.js"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
 assert.throws(() => createNodeAgentTransport({ executable: "relative-worker", catalog: (base) => base }), /node_worker_invalid_options/);
 assert.equal(typeof AgentWorkflowSession, "function");
 assert.equal(typeof prepareSemanticWorkflow, "function");
@@ -87,6 +94,17 @@ await assert.rejects(import("@leselang/bridge/src/index.js"), { code: "ERR_PACKA
 application.detach(bridge);
 assert.equal(bridge.closed, true);
 assert.equal((await call("gui.list")).status, "rejected");
+const dynamic = createDynamicRegisteredApplication({ counter: null });
+assert.deepEqual(dynamic.observe(), []);
+assert.equal(dynamic.bindingRevision(), 0);
+dynamic.mount("counter", { read: () => state });
+const beforeReplacement = dynamic.observe();
+dynamic.replace("counter", { read: () => ({ ...state }) });
+assert.deepEqual(dynamic.observe(), beforeReplacement);
+assert.equal(dynamic.bindingRevision(), 2);
+dynamic.unmount("counter");
+assert.deepEqual(dynamic.observe(), []);
+assert.equal(Object.hasOwn(application, "bindingRevision"), false, "the old static factory keeps its shape");
 const session = new AgentSession({
   provider: { async plan({ message }) { return { summary: "Save", source: "fn main(text: string) = true", arguments: { text: message } }; } },
   host: {
@@ -126,6 +144,16 @@ for (const value of ["first value", "second value"]) {
   assert.deepEqual(failure, { verified: false, diagnostic: { code: "result_evidence_mismatch" } });
   assert.ok(Object.isFrozen(failure) && Object.isFrozen(failure.diagnostic));
 }
+const configured = prepareSemanticCatalog(observedCatalog, { executionReports: "v1" }).prepare("read_current", {});
+assert.deepEqual(configured.plan, observed.plan);
+const executionFailure = { schema_version: 1, profile: "external.observed", kind: "external_report",
+  status: "failed", error: "Host object is unavailable", possible_partial_effects: true,
+  execution_failure: { code: "execution_object_unavailable" } };
+assert.deepEqual(configured.verifyDetailed(JSON.stringify(executionFailure)),
+  { verified: false, diagnostic: { code: "execution_object_unavailable" } });
+assert.deepEqual(observed.verifyDetailed(JSON.stringify(executionFailure)),
+  { verified: false, diagnostic: { code: "report_budget_mismatch" } });
+assert.equal(configured.verify(executionFailure), false);
 for (const actual of ["expected", "changed"]) {
   let executions = 0;
   const guarded = new AgentWorkflowSession({
@@ -224,7 +252,9 @@ const transport = {
   close(endpoint) { assert.deepEqual(endpoint, { window: "external", epoch: "fresh-instance" }); },
 };
 const host = createRegisteredAgentHost({ window: "external", epoch: "fresh-instance", application, transport,
+  executionReports: "v1",
   observations: { before: "objects_before", after: "objects_after" }, onSource(source) { sources.push(source); } });
+assert.equal(host.executionReports, "v1");
 const session = new AgentSession({ host, provider: createSemanticProvider() });
 for (const id of ["review", "archive"]) {
   const outcome = await session.submit("task complete_" + id);
@@ -252,12 +282,12 @@ await assert.rejects(host.describe(new AbortController().signal));
 import { Bridge, AgentSession, type Scope, type Adapter, type ActionContext, type Reply,
   type AgentProvider, type AgentHost, type AgentOutcome, type WorkflowPlan,
   prepareSemanticCatalog, createSemanticProvider, type SemanticCatalog, type SemanticTaskInfo,
-  type PreparedSemanticTask, type SemanticProviderOptions, createModelProvider,
+  type PreparedSemanticTask, type SemanticProviderOptions, type SemanticReportOptions, createModelProvider,
   type ModelProviderOptions, type ModelRequest, AgentWorkflowSession, createModelWorkflowProvider,
   type AgentWorkflowProvider, type AgentWorkflowPlan, type AgentWorkflowOutcome, type AgentWorkflowState, type AgentWorkflowSessionOptions, prepareSemanticWorkflow, type SemanticWorkflowStep,
   type WorkflowResultReference, type WorkflowResultFormat, type AgentWorkflowBinding, type ModelWorkflowProviderOptions,
   type WorkflowResultRequirement, type AgentWorkflowRequirement, type AgentWorkflowRequirementOutcome,
-  createRegisteredAgentHost, createRegisteredApplication, type RegisteredApplication,
+  createRegisteredAgentHost, createRegisteredApplication, createDynamicRegisteredApplication, type RegisteredApplication, type DynamicRegisteredApplication,
   type RegisteredControl, type RegisteredActionContext, type RegisteredApplicationConnection, type RegisteredAgentTransport,
   type RegisteredAgentRun, type RegisteredAgentEndpoint, type RegisteredAgentHostOptions, type RegisteredAgentHost } from "@leselang/bridge";
 import { createNodeAgentTransport, type NodeAgentTransportOptions } from "@leselang/bridge/node";
@@ -265,6 +295,34 @@ import { defineSemanticCatalog, defineRegisteredTask, defineRegisteredTaskV3, ty
   type SemanticDescription, type SemanticDescriptionV1, type SemanticDescriptionV2, type SemanticDescriptionV3,
   type SemanticTaskDescriptionV1, type SemanticTaskDescriptionV2, type SemanticLiteral,
   type SemanticTerm, type SemanticReportPredicate, type SemanticObservedResult } from "@leselang/bridge";
+import { createDomButtonControl, createDomTextControl } from "@leselang/bridge/dom";
+const domButtonElement = document.createElement("button");
+domButtonElement.type = "button";
+const domButton = createDomButtonControl({
+  element: domButtonElement,
+  read: () => ({ role: "button", title: "Save", value: "", enabled: true, editable: false, clicks: 0 }),
+  changed: (...names: string[]) => { void names; },
+  async onClick(context) { await Promise.resolve(); context.commit(() => context.changed("save")); },
+  beforeCommit() {}, onError(error, origin) { const source: "agent" | "manual" = origin; void error; void source; },
+});
+const domText = createDomTextControl({
+  element: document.createElement("textarea"),
+  read: () => ({ role: "text_field", title: "Draft", value: "", enabled: true, editable: true, clicks: 0 }),
+  changed: (...names: string[]) => { void names; },
+  validateText(text) { if (text.includes("\\0")) throw new Error("invalid text"); },
+  onInput(text, context) {
+    context.changed("draft", "save"); void text; void context.signal;
+    // @ts-expect-error text handlers already run inside a commit and cannot nest one
+    context.commit(() => undefined);
+  },
+});
+const domApplication = createRegisteredApplication({ draft: domText.control, save: domButton.control });
+domButton.dispose(); domText.dispose(); void domApplication;
+// @ts-expect-error DOM builders are opt-in, not root exports
+import { createDomButtonControl as RootDom } from "@leselang/bridge";
+// @ts-expect-error a button binding requires a button element
+const wrongDomElement: Parameters<typeof createDomButtonControl>[0]["element"] = document.createElement("textarea");
+void RootDom; void wrongDomElement;
 const exactLiteral: SemanticLiteral = { kind: "integer", value: 18_446_744_073_709_551_615n };
 const exactTerm: SemanticTerm = { kind: "literal", value: exactLiteral };
 const predicate: SemanticReportPredicate = { id: "same", left: { kind: "length", path: [{ kind: "field", name: "before" }] },
@@ -318,17 +376,21 @@ v1.tasks.push(fixedTask);
 void invalidV1; void invalidInteger; void invalidObserved;
 const nodeOptions: NodeAgentTransportOptions = {
   executable: "/trusted/agent_worker", args: [], timeoutMs: 15_000,
+  executionReports: "v1",
   catalog(base: string): string { return base; }, onStderr(chunk: string): void { void chunk; },
 };
 const nodeTransport: RegisteredAgentTransport = createNodeAgentTransport(nodeOptions);
 void nodeTransport;
 // @ts-expect-error the catalog callback must return raw JSON synchronously
 const asyncNodeOptions: NodeAgentTransportOptions = { executable: "/trusted/agent_worker", catalog: async () => "{}" };
+// @ts-expect-error execution reports require the explicit supported dialect
+const invalidNodeReports: NodeAgentTransportOptions = { executable: "/trusted/agent_worker", catalog: (base) => base, executionReports: "v2" };
 // @ts-expect-error Node APIs are available only through the explicit node subpath
 import { createNodeAgentTransport as BrowserTransport } from "@leselang/bridge";
-void asyncNodeOptions; void BrowserTransport;
+void asyncNodeOptions; void invalidNodeReports; void BrowserTransport;
 const connectRegistered = (application: RegisteredApplicationConnection, transport: RegisteredAgentTransport): RegisteredAgentHost => {
   const options: RegisteredAgentHostOptions = { window: "worker", epoch: "fresh-instance", application, transport,
+    executionReports: "v1",
     observations: { before: "objects_before", after: "objects_after" } };
   return createRegisteredAgentHost(options);
 };
@@ -378,11 +440,22 @@ void invalidReference; void invalidArgument;
 const semanticOptions: SemanticProviderOptions = { aliases: { save: "publish" } };
 const semanticProvider: AgentProvider = createSemanticProvider(semanticOptions);
 const compileCatalog: (data: unknown) => SemanticCatalog = prepareSemanticCatalog;
+const reportOptions: SemanticReportOptions = { executionReports: "v1" };
+const compileConfiguredCatalog: (data: unknown, options?: SemanticReportOptions) => SemanticCatalog = prepareSemanticCatalog;
+// @ts-expect-error report policy is a trusted readonly declaration
+reportOptions.executionReports = undefined;
+// @ts-expect-error unknown execution report versions require a new explicit contract
+const wrongReportOptions: SemanticReportOptions = { executionReports: "v2" };
+void reportOptions; void compileConfiguredCatalog; void wrongReportOptions;
 const describeTask = (task: SemanticTaskInfo): string => task.id;
 const candidate = (task: PreparedSemanticTask): WorkflowPlan => task.plan;
 const detailed = (task: PreparedSemanticTask, report: unknown): import("@leselang/bridge").VerificationResult => task.verifyDetailed(report);
 const failureCode: import("@leselang/bridge").VerificationFailureCode = "predicate_failed";
 const diagnostic: import("@leselang/bridge").VerificationDiagnostic = { code: failureCode, predicate: "saved_title" };
+const executionDiagnostic: import("@leselang/bridge").VerificationDiagnostic = { code: "execution_object_unavailable" };
+// @ts-expect-error execution diagnostics retain the bounded code-only shape
+const rawFailureText: import("@leselang/bridge").VerificationDiagnostic = { code: "execution_failed", error: "exception text" };
+void executionDiagnostic; void rawFailureText;
 // @ts-expect-error diagnostics use a closed set of machine-readable codes
 const invalidDiagnostic: import("@leselang/bridge").VerificationDiagnostic = { code: "arbitrary message" };
 // @ts-expect-error a failed result requires its diagnostic
@@ -401,6 +474,17 @@ const control: RegisteredControl = {
 };
 const application: RegisteredApplication = createRegisteredApplication({ control });
 const connection: RegisteredApplicationConnection = application;
+const dynamicApplication: DynamicRegisteredApplication = createDynamicRegisteredApplication({ counter: null });
+dynamicApplication.mount("counter", control);
+dynamicApplication.replace("counter", control);
+dynamicApplication.unmount("counter");
+const bindingRevision: number = dynamicApplication.bindingRevision();
+const dynamicConnection: RegisteredApplicationConnection = dynamicApplication;
+// @ts-expect-error the static factory does not expose structural mutation methods
+application.mount("counter", control);
+// @ts-expect-error binding identity is a numeric stamp, not a serialized token
+const wrongRevision: RegisteredApplicationConnection = { ...connection, bindingRevision: () => "0" };
+void bindingRevision; void dynamicConnection; void wrongRevision;
 application.changed("control");
 void closed; void connection;
 // @ts-expect-error action mutation remains an explicit synchronous callback
@@ -419,6 +503,12 @@ const provider: AgentProvider = { async plan({ message }) {
   return { summary: "Save", source: "fn main(text: string) = true", arguments: { text: message } };
 } };
 const host: AgentHost = { async describe() { return {}; }, async execute(plan) { return { saved: plan.arguments.text }; }, verify() { return true; } };
+const configuredHost: AgentHost = { ...host, executionReports: "v1" };
+// @ts-expect-error applications cannot select an unknown execution report contract
+const wrongConfiguredHost: AgentHost = { ...host, executionReports: "v2" };
+// @ts-expect-error execution report declarations are readonly
+configuredHost.executionReports = undefined;
+void configuredHost; void wrongConfiguredHost;
 const session = new AgentSession({ provider, host });
 const outcome: Promise<AgentOutcome> = session.submit("task");
 void outcome;

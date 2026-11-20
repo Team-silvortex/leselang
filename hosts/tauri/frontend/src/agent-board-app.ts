@@ -17,3 +17,4 @@ createAgentChat({
   offlineExample: "task read_review_status",
   modelExample: "读取报告任务状态，只有它仍是 pending 时才完成，再核对任务板",
 });
+window.addEventListener("pagehide", () => board.dispose(), { once: true });

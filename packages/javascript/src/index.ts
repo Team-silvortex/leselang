@@ -2,9 +2,10 @@
 export type { VerificationFailureCode, VerificationDiagnostic, VerificationResult } from "./verification.js";
 export { AgentSession } from "./agent/session.js";
 export { createRegisteredAgentHost } from "./agent/registered-host.js";
-export { createRegisteredApplication } from "./agent/registered-application.js";
+export { createRegisteredApplication, createDynamicRegisteredApplication } from "./agent/registered-application.js";
 export type {
   RegisteredActionContext, RegisteredControl, RegisteredApplicationObservation, RegisteredApplication,
+  DynamicRegisteredApplication,
 } from "./agent/registered-application.js";
 export type {
   RegisteredApplicationConnection, RegisteredAgentTransport, RegisteredAgentRun,
@@ -21,7 +22,7 @@ export type {
   WorkflowResultRequirement, AgentWorkflowRequirement, AgentWorkflowRequirementOutcome,
 } from "./agent/workflow-bindings.js";
 export { prepareSemanticCatalog } from "./semantics/index.js";
-export type { SemanticCatalog, SemanticTaskInfo, PreparedSemanticTask } from "./semantics/index.js";
+export type { SemanticCatalog, SemanticTaskInfo, PreparedSemanticTask, SemanticReportOptions } from "./semantics/index.js";
 export { defineSemanticCatalog } from "./semantics/authoring.js";
 export { defineRegisteredTask, defineRegisteredTaskV3 } from "./semantics/registered-task.js";
 export type {

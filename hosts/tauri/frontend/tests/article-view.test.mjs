@@ -4,7 +4,11 @@ import { createArticleView } from "../dist/article/view.js";
 import { Bridge } from "../dist/bridge.js";
 
 class Element extends EventTarget {
-  constructor(id) { super(); this.id = id; }
+  constructor(id) {
+    super(); this.id = id;
+    this.tagName = ["title", "content"].includes(id) ? "TEXTAREA" : ["publish", "other"].includes(id) ? "BUTTON" : "SPAN";
+  }
+  type = "button";
   isConnected = true;
   disabled = false;
   readOnly = false;
@@ -12,10 +16,14 @@ class Element extends EventTarget {
   value = "";
   dataset = {};
   afterClick;
+  dispatchEvent(event) {
+    const result = super.dispatchEvent(event);
+    if (event.type === "click") this.afterClick?.();
+    return result;
+  }
   click() {
     if (this.disabled) return;
     this.dispatchEvent(new Event("click"));
-    this.afterClick?.();
   }
 }
 
@@ -46,12 +54,27 @@ async function withArticle(run, options = {}) {
   elements.contentLabel.textContent = "Article content";
   elements.publish.textContent = "Publish article";
   elements.other.textContent = "Unrelated action";
-  globalThis.document = { getElementById(id) { return nodes.get(id); } };
+  globalThis.document = { defaultView: { Event }, getElementById(id) { return nodes.get(id); } };
+  for (const element of nodes.values()) element.ownerDocument = globalThis.document;
   const view = createArticleView(elements, options), { bridge, call } = connection();
   const observed = (identifier) => view.observe().find((row) => row.identifier === identifier);
   const input = (field, text) => { elements[field].value = text; elements[field].dispatchEvent(new Event("input")); };
-  try { await run({ view, elements, nodes, bridge, call, observed, input }); }
-  finally { view.detach(bridge); globalThis.document = previous; }
+  const freshEditor = () => {
+    const next = {};
+    for (const key of ["title", "content", "titleLabel", "contentLabel", "publish", "other"]) {
+      const old = elements[key];
+      old.isConnected = false;
+      const node = new Element(old.id);
+      node.ownerDocument = globalThis.document;
+      node.textContent = old.textContent;
+      nodes.set(node.id, node);
+      elements[key] = node;
+      next[key] = node;
+    }
+    return next;
+  };
+  try { await run({ view, elements, nodes, bridge, call, observed, input, freshEditor }); }
+  finally { view.detach(bridge); view.dispose(); globalThis.document = previous; }
 }
 
 async function target(call, name) {
@@ -217,5 +240,99 @@ test("a failure after publication keeps real saved evidence without a hidden ret
     assert.equal(observed("publish").value, "committed content");
     assert.equal(observed("publish").clicks, 1);
     assert.equal(observed("other").clicks, 0);
+  });
+});
+
+test("preview unmounts the actual controls and remounts new instances without changing article state", async () => {
+  await withArticle(async ({ view, elements, bridge, call, observed, input, freshEditor }) => {
+    input("title", "retained title"); input("content", "retained content");
+    elements.publish.click(); await tick();
+    const before = view.observe(), oldPublish = elements.publish, oldTitle = elements.title;
+    const draft = view.draft(), initialBinding = view.bindingRevision();
+    view.attach(bridge);
+    const previous = await target(call, "publish");
+    view.unmountEditor();
+    assert.equal(view.bindingRevision(), initialBinding + 4);
+    assert.deepEqual(view.observe(), []);
+    assert.deepEqual((await call("gui.list")).value, []);
+    assert.equal((await call("gui.click", previous)).status, "rejected");
+    assert.deepEqual(view.draft(), draft);
+    oldPublish.click();
+    oldTitle.value = "detached edit"; oldTitle.dispatchEvent(new Event("input"));
+    await tick();
+    assert.deepEqual(view.draft(), draft, "disposed listeners cannot change the retained draft");
+    view.mountEditor(freshEditor());
+    assert.equal(view.bindingRevision(), initialBinding + 8);
+    assert.notEqual(elements.publish, oldPublish);
+    assert.deepEqual(view.observe(), before, "same values do not imply the same binding identity");
+    assert.equal(elements.title.value, draft.title);
+    assert.equal(elements.content.value, draft.content);
+    assert.equal((await call("gui.click", previous)).status, "rejected");
+    const current = await target(call, "publish");
+    assert.notEqual(current.target.generation, previous.target.generation);
+    assert.equal((await call("gui.click", current)).status, "ok");
+    assert.equal(observed("publish").clicks, 2);
+    assert.equal(observed("other").clicks, 0);
+  });
+});
+
+for (const origin of ["agent", "manual"]) test(`preview fences an awaited ${origin} publication from a later editor`, async () => {
+  const entered = deferred(), release = deferred();
+  await withArticle(async ({ view, elements, bridge, call, observed, input, freshEditor }) => {
+    input("title", "pending title"); input("content", "pending content");
+    view.attach(bridge);
+    let pending;
+    if (origin === "agent") pending = call("gui.click", await target(call, "publish"));
+    else elements.publish.click();
+    await entered.promise;
+    const oldButton = elements.publish;
+    view.unmountEditor();
+    view.detach(bridge);
+    view.mountEditor(freshEditor());
+    const next = connection("continued-editor");
+    try {
+      view.attach(next.bridge);
+      const after = await target(next.call, "other");
+      release.resolve(); await tick(); await tick();
+      if (pending) assert.notEqual((await pending).status, "ok");
+      assert.equal(observed("publish").clicks, 0);
+      assert.equal(observed("publish").value, "");
+      assert.equal(observed("title").value, "pending title");
+      assert.equal(observed("content").value, "pending content");
+      assert.equal((await next.call("gui.observe", { target: after.target })).value.revision, after.expected_revision);
+      oldButton.click(); await tick();
+      assert.equal(observed("publish").clicks, 0);
+      assert.equal(elements.status.dataset.failed, "false", "an old rejection cannot replace the new editor's status");
+      assert.equal((await next.call("gui.click", await target(next.call, "publish"))).status, "ok");
+      assert.equal(observed("publish").clicks, 1);
+    } finally { view.detach(next.bridge); }
+  }, { async beforePublish() { entered.resolve(); await release.promise; } });
+});
+
+test("failed editor creation disposes its partial DOM bindings and preserves publication evidence", async () => {
+  await withArticle(async ({ view, elements, input, freshEditor }) => {
+    input("title", "draft"); input("content", "body");
+    elements.publish.click(); await tick();
+    view.unmountEditor();
+    const editor = freshEditor();
+    editor.publish.type = "submit";
+    assert.throws(() => view.mountEditor(editor), /invalid_dom_control_element/u);
+    assert.deepEqual(view.observe(), []);
+    assert.deepEqual(view.draft(), { title: "draft", content: "body" });
+    assert.equal(elements.savedTitle.textContent, "draft");
+    assert.equal(elements.publishCount.textContent, "1");
+    editor.publish.type = "button";
+    view.mountEditor(editor);
+    assert.equal(view.observe().find((row) => row.identifier === "publish").clicks, 1);
+  });
+});
+
+test("disposing a previewed view is idempotent and cannot recreate controls", async () => {
+  await withArticle(async ({ view, freshEditor }) => {
+    view.unmountEditor();
+    view.dispose(); view.dispose();
+    assert.deepEqual(view.observe(), []);
+    assert.throws(() => view.mountEditor(freshEditor()), /disposed/u);
+    assert.throws(() => view.draft(), /disposed/u);
   });
 });

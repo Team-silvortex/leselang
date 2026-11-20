@@ -12,13 +12,15 @@ export const defaultWorker = fileURLToPath(new URL("../../../target/lean/leselan
 export function createPublicationAgent({
   application = createPublicationApplication(), executable = defaultWorker,
   provider = createSemanticProvider(), onStderr, timeoutMs = 15_000,
+  executionReports,
 } = {}) {
   const transport = createNodeAgentTransport({
-    executable, catalog: createPublicationAgentCatalog, timeoutMs, onStderr,
+    executable, catalog: createPublicationAgentCatalog, timeoutMs, onStderr, executionReports,
   });
   const host = createRegisteredAgentHost({
     window: "node-agent", epoch: randomUUID(), application, transport,
     observations: { before: "objects_before", after: "objects_after" },
+    executionReports,
   });
   const session = new AgentSession({ host, provider });
   return { application, transport, host, session,

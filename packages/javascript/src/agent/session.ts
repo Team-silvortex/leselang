@@ -28,6 +28,8 @@ export interface AgentProvider {
 }
 
 export interface AgentHost {
+  /** Trusted opt-in for semantic execution-failure reports; never selected by a provider. */
+  readonly executionReports?: "v1";
   describe(signal: AbortSignal): Promise<unknown>;
   /** Own compilation, grants, explicit VM driving and transport cancellation. */
   execute(plan: WorkflowPlan, signal: AbortSignal): Promise<unknown>;

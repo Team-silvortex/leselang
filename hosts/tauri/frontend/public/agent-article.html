@@ -45,14 +45,26 @@
         </details>
       </section>
       <section class="card article-editor" aria-labelledby="article-title">
-        <h2 id="article-title">文章草稿</h2>
-        <label id="title-label" for="title">Article title</label>
-        <textarea id="title" rows="2" maxlength="4096" spellcheck="false"></textarea>
-        <label id="content-label" for="content">Article content</label>
-        <textarea id="content" rows="6" maxlength="4096" spellcheck="false"></textarea>
-        <div class="actions">
-          <button id="publish" type="button">Publish article</button>
-          <button id="other" class="secondary" type="button">Unrelated action</button>
+        <div class="result-heading">
+          <h2 id="article-title">文章草稿</h2>
+          <button id="editor-toggle" class="secondary" type="button">预览草稿</button>
+        </div>
+        <div id="editor-fields">
+          <label id="title-label" for="title">Article title</label>
+          <textarea id="title" rows="2" maxlength="4096" spellcheck="false"></textarea>
+          <label id="content-label" for="content">Article content</label>
+          <textarea id="content" rows="6" maxlength="4096" spellcheck="false"></textarea>
+          <div class="actions">
+            <button id="publish" type="button">Publish article</button>
+            <button id="other" class="secondary" type="button">Unrelated action</button>
+          </div>
+        </div>
+        <div id="draft-preview" class="article-draft-preview" hidden>
+          <h3>标题</h3>
+          <pre id="draft-preview-title" aria-label="Draft preview title"></pre>
+          <h3>正文</h3>
+          <pre id="draft-preview-content" aria-label="Draft preview content"></pre>
+          <p class="quiet">预览不会发布文章。继续编辑后可再次修改或交给助手处理。</p>
         </div>
         <p id="status" role="status" aria-live="polite">可手动编辑，也可交给助手。</p>
       </section>

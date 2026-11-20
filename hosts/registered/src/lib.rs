@@ -1,11 +1,16 @@
 //! Portable Rust ownership of registered-object execution, independent of GUI frameworks.
 mod catalog;
+mod failure;
 pub mod gateway;
 pub mod host;
 mod task;
 mod worker;
 
-pub use task::{PreparedTask, prepare_named_task, prepare_task, run_prepared_registered_task};
+pub use failure::{ExecutionFailure, ExecutionFailureCode};
+pub use task::{
+    PreparedTask, prepare_named_task, prepare_task, run_prepared_registered_task,
+    run_prepared_registered_task_detailed,
+};
 pub use worker::main as worker_main;
 
 use leselang_vm::native::{
@@ -113,7 +118,7 @@ pub fn execute_boolean(
                 host::STACK.effects.pure.max_bindings,
             )
             .map_err(|e| e.to_string())?;
-            drive(host, scope, &program, arguments)
+            drive(host, scope, &program, arguments).map_err(|error| error.to_string())
         })
         .map_err(|e| e.to_string())??;
     match value {
@@ -129,7 +134,7 @@ fn drive(
     scope: LocalExecutionScope,
     program: &CompiledCatalogProgram<host::Node, host::NativeType>,
     arguments: Vec<(String, ScalarValue)>,
-) -> Result<(ScalarValue, u64, u64), String> {
+) -> Result<(ScalarValue, u64, u64), ExecutionFailure> {
     let bindings = program
         .entry_parameters
         .iter()
@@ -147,26 +152,27 @@ fn drive(
     loop {
         match vm
             .poll(host)
-            .map_err(|e| format!("language execution failed: {e:?}"))?
+            .map_err(|e| ExecutionFailure::from(format!("language execution failed: {e:?}")))?
         {
             EffectSessionPoll::Request(work) => {
                 effects += 1;
                 eprintln!("poll -> authorize -> dispatch: {}", work.operation());
-                host.authorize(work.identity()).map_err(|e| e.to_string())?;
+                host.authorize(work.identity())
+                    .map_err(ExecutionFailure::from)?;
                 let receipt = vm
                     .with_metered_host_outcome(work, |work, fuel| host.dispatch(work, fuel))
                     .map_err(|_| "dispatch boundary")?
-                    .map_err(|e| e.to_string())?;
+                    .map_err(ExecutionFailure::from)?;
                 let receipt = if matches!(receipt.reply, host::Reply::Submitted(true)) {
                     eprintln!("explicit pump -> TypeScript action -> Promise reply");
                     vm.with_metered_host_outcome(receipt, |receipt, fuel| host.pump(receipt, fuel))
                         .map_err(|_| "pump boundary")?
-                        .map_err(|e| e.to_string())?
+                        .map_err(ExecutionFailure::from)?
                 } else {
                     receipt
                 };
                 vm.try_accept(&receipt.identity, receipt.reply, host)
-                    .map_err(|e| e.error.to_string())?;
+                    .map_err(|e| ExecutionFailure::from(e.error.to_string()))?;
                 eprintln!("accept");
             }
             EffectSessionPoll::Value(PureValue::Scalar(value)) => {

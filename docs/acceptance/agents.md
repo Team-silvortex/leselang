@@ -939,3 +939,288 @@ presentation tests. It does not claim a new native GUI interaction session or a
 live model-service call. Language/transport versions, generated programs and the
 explicit poll → authorize → dispatch → accept protocol remain unchanged.
 
+## Shared DOM Control Bindings
+
+Source guide: [application DOM controls](../dom-controls.md).
+
+On 2026-11-20, the optional `@leselang/bridge/dom` entry added
+`createDomTextControl` and `createDomButtonControl`. The form, task board and
+article views now use these helpers for their shared manual/agent handlers.
+Application readers, semantic catalogs and domain checks remain application
+declarations. The helpers replace repeated event-context, Promise and error
+slots with exact event identity and per-invocation completion. Text assignment
+and input handling share one synchronous commit; asynchronous button work still
+reenters an explicit commit gate. Views dispose their bindings on page exit.
+
+Eighteen focused SDK tests cover duplicate bindings, synchronous nested and
+cross-control events, callbacks after completion/disposal, manual interaction
+during an agent await, earlier-listener cancellation, reader replacement,
+validation-hook reentry and asynchronous misuse, missing handlers, ABA and
+retained partial effects. Import/packed-declaration checks confirm that DOM
+support remains an optional public entry without Node or third-party runtime
+dependencies; importing it without browser globals is supported.
+
+An independent Node Consumer uses an explicitly labelled EventTarget fixture
+with the public helpers and a real Rust worker. It reads both fields, binds their
+verified results into publication and checks the inventory in seventeen Effects.
+It also covers cancellation, revocation, late callbacks, post-commit exceptions
+and replacement of the pending button. The same application module runs from an
+installed npm tarball in a fresh external directory. These fixture tests establish
+event routing and VM behavior, without claiming to emulate browser rendering.
+
+A dedicated native `LeseLang Article.app` then exercised the rebuilt WebView.
+Manual title and multiline content input followed by a manual publication
+produced one publication. Through the actual conversation UI, four separate
+offline commands then read the title, published distinct named inputs, read the
+new content and checked the inventory. All four commands verified successfully,
+with `[2, 12, 2, 1]` Effects. The publication report showed 9016 remaining Fuel.
+The final title was `Agent DOM 标题 ✓`; the content was `Agent 正文` followed by
+a newline and `通过通用 DOM 绑定发布。`. Both draft controls and the published
+preview matched, publication count was two and the unrelated count remained zero.
+
+Pasting 1366 copies of `文` into the real content control tested a manual input
+that fits the HTML character limit but exceeds the application's 4096-byte bound.
+The application rejected it, restored the previous draft and retained the
+published content/count. A subsequent agent inventory check still verified.
+The native trace contains exactly seventeen dispatches and seventeen accepts:
+five finds, eight observations, two text updates, one publication click and one
+inventory read. Manual actions are not counted as VM Effects.
+
+Checks passed: SDK 280, frontend/provider 104, independent Node Consumer 51,
+retained native Node carrier six, complete independent Rust Consumer/catalog
+agent 848, portable Tauri 41 and desktop Tauri 76. Desktop build, Rust formatting
+and strict Clippy passed. The first desktop run exposed a race in the existing
+local HTTP test server: a request read could return `WouldBlock`. Accepted test
+connections now explicitly use blocking reads with their existing deadline;
+the final desktop run passed. Production model transport was unchanged.
+
+All 32 pre-existing catalog/source fixtures are byte-for-byte unchanged. Local
+evidence is under `target/verification/dom-adapter.xwvemq/`, including both the
+initial failed and final passing desktop logs, native trace, bundle hash,
+UI observation summary, fixture comparison and final summary. Accessibility
+truncates long report text, so UI evidence records observed snippets rather than
+claiming full raw-report exports. A final screenshot also showed matching draft
+and published values. The dedicated app was quit and its process was confirmed
+absent; no model service or credits were used. Existing user windows were not
+used for these interactions.
+
+## Dynamic Registered Controls And Remounted Article Editor
+
+Source guide: [dynamic application controls](../dynamic-controls.md).
+
+On 2026-11-20, `createDynamicRegisteredApplication` added fixed logical control
+slots with explicit `mount`, `replace`, `unmount` and `bindingRevision`. Empty
+slots are absent from discovery and observation; successful structural changes
+advance a local application revision, including same-value replacement and ABA.
+The static factory retains its original four-method object shape. Both factories
+share one lifecycle engine and the existing Bridge registration/generation path.
+
+The registered host optionally captures that identity before execution and
+checks it at request/reply boundaries and around independent verification.
+Same-value replacement after a complete report now yields
+`application_bindings_changed` verification detail, retaining the original report
+and already committed effects while stopping subsequent workflow steps. Changes
+detected during execution stop that attempt without inventing a report. These
+boundary checks do not atomically retract an already dispatched Effect; partial
+effects remain possible and no retry or scheduler was added.
+
+Fifteen SDK lifecycle tests cover fixed slots and capacity, same-value replacement,
+empty-slot dependencies, stale contexts, reader reentry, failure retirement and
+fresh attachment. Host tests exercise invalid revisions, preflight and request
+changes, teardown and verification-reader changes, precise report/plan correlation,
+cancellation priority and old-scope isolation. Five Article view tests cover
+remount, old targets, manual and agent continuations, failed binding creation
+recovery and disposal while in preview.
+
+Six independent real-worker Consumer cases exercise the dynamic DOM EventTarget
+fixture, including the seventeen-Effect bound workflow, unchanged canonical
+programs, same-value and ABA changes after a valid report, mid-handler replacement,
+and a change before the first request. One case starts a fresh worker task while
+the old handler remains suspended, then releases that old handler: it cannot
+publish or invalidate the new task, which subsequently publishes exactly once.
+The installed npm tarball Consumer independently verifies dynamic success,
+same-value replacement during verification and a subsequent read. The fixture
+does not claim browser rendering; native GUI acceptance is separate below.
+
+The rebuilt dedicated native `LeseLang Article.app` added “预览草稿 / 继续编辑”.
+Manual input set title `重挂载草稿 ✓` and multiline content. Preview removed all
+four editor controls from the accessibility tree while displaying the preserved
+draft. An offline `task read_title` while absent failed with the original report
+error `unknown registered object`, made no publication and stopped. Its current
+generic failure report omits normal budget fields, so the existing detailed
+verifier displayed `report_budget_mismatch`; this is a known diagnostic-precision
+limit, not successful lookup or a new missing-control diagnostic.
+
+Returning to editing created fresh controls with the original draft. Through the
+same conversation entry, four successful offline submissions read the title,
+published new named inputs, read the content and checked the inventory. Between
+publication and the final two tasks, preview/continue recreated the editor again
+and retained the published values and count. The publication report visibly
+contained twelve Effects and 9070 remaining Fuel. The final draft and published
+title were `动态控件发布 ✓`, with content `新实例上的正文` followed by a newline
+and `保持统一 Lese 流程。`; publication count was one and unrelated count zero.
+A screenshot showed matching values and the final verified status.
+
+One accidentally concatenated command during UI input was refused by the offline
+planner before application execution; after clearing the field, the valid command
+above succeeded. This refusal is retained in the observation summary. Across the
+session the native trace records eighteen dispatches and seventeen accepts: the
+absent-control lookup was dispatched but not accepted, and the four successful
+tasks account for `[2, 12, 2, 1]` accepted Effects. There were three explicit action
+pumps (two text writes and one publication); preview navigation used manual
+application handlers.
+
+Checks passed: SDK 302, frontend/provider 110, independent Node Consumer 57,
+retained native Node carrier six, complete independent Rust Consumer/catalog
+agent 848, portable Tauri 41 and desktop Tauri 76. Rust formatting, strict Clippy
+and the native build passed. All 32 pre-existing catalog/source fixtures are
+byte-for-byte unchanged. Logs, bundle hash, trace counts, UI observations and
+summary are under `target/verification/dynamic-controls.MSRpcR/`.
+Long AX report text was truncated, so the GUI evidence contains observed report
+snippets and state summaries, not full raw-report exports. The dedicated app was
+quit and its process confirmed absent. No model service or credits were used.
+
+## Explicit Execution Failure Reports
+
+Source guide: [execution failure reports](../execution-reports.md).
+
+On 2026-11-20, the registered Rust host added an optional detailed task entry
+that retains `ExecutionFailure` before errors become strings. The existing
+string-error API delegates to the same driver, keeps its original text and
+produces identical successful reports and Fuel. The public `Error` enum remains
+unchanged. Tests distinguish a native missing-object error from a transport
+message containing the exact same text; only the former gets the native category.
+An independent Cargo Consumer exercises the new public entry and continues to
+exhaustively match the old enum. Node worker error frames were not extended.
+
+The JS SDK added the explicit `executionReports: "v1"` configuration on semantic
+report preparation and registered hosts. Workflow sessions capture this trusted
+host choice for their own referenced-source checks. Without it, existing generic
+reports retain their own `status` business-field meaning. With it, a bounded
+failed/cancelled report is refused after identity checks and before successful
+budget/result checks, even if all successful fields are present. Six fixed codes
+cover general failure, unavailable objects, identified host Fuel errors,
+execution deadline, closed scope and remote cancellation. Raw error text does
+not select a category or become display instructions. A remote cancelled report
+does not replace the local cancellation signal.
+
+Tauri explicitly enables this contract and emits `execution_failure: {code}`
+from typed native errors and existing lifecycle flags. Empty error text receives
+a fixed explanation; overlong text is truncated on a UTF-8 boundary with an
+explicit suffix, keeping the report field within 4096 bytes. This report bound
+does not change the legacy Rust error string. Native tests cover error bounds,
+exact failure identity, cancellation/deadline/retirement priority and subsequent
+session admission.
+
+Thirteen new SDK tests and frontend integration/display tests cover strict
+configuration, all semantic versions, malformed and unknown markers, contradictory
+cancellation, complete-success-field disguise, correlation and structural identity,
+old generic reports, and failed sources used by both bindings and requirements.
+Installed npm tarball acceptance uses the public option and refuses a terminal
+failure before propagating a source value. Independent JS tests explicitly
+decorate real worker reports with injected failure markers to verify admission
+and retained publications; these are not claimed as native cause-classification
+tests. A separate uninjected real-worker test removes the publication slot,
+retains two earlier text edits, fails lookup through the unchanged Node error
+channel, then succeeds once after an explicit remount and new submission.
+
+The dedicated native Article app reproduced the previous milestone's missing
+control case. Manual draft title was `失败诊断回归 ✓`, with multiline content.
+After preview removed the editor controls, `task read_title` failed and the UI
+displayed “目标控件当前不存在或尚未挂载”. The complete short failure report was
+visible in AX, including `execution_failure.code: execution_object_unavailable`;
+the separate verification diagnostic carried the same code. The old budget
+mismatch explanation no longer appeared. Publication and unrelated counts
+remained zero.
+
+After returning to edit, four explicit offline submissions read the preserved
+title, published new title/content, read the resulting content and checked the
+inventory. All four verified. The final draft and published title were
+`失败后新任务 ✓`; content was `原因已明确` followed by a newline and
+`本次只发布一次。`. Publication count was one and unrelated count zero. The
+publication report showed twelve Effects and 9094 remaining Fuel. The native
+trace recorded eighteen dispatches and seventeen accepts: one failed lookup
+followed by `[2, 12, 2, 1]` successful Effects. No action was retried automatically.
+
+Checks passed: SDK 315, frontend/provider 115, independent Node Consumer 60,
+retained native Node carrier six, complete independent Rust Consumer/catalog
+agent 848, registered host 16 plus its external Cargo Consumer, portable Tauri 42
+and desktop Tauri 79. Format checks, strict Clippy and desktop build passed;
+all 32 existing catalog/source fixtures remained byte-for-byte unchanged.
+The initial full Consumer run encountered an existing process-capture deadline
+test failure: its expected stdout prefix was empty. That unchanged test passed
+in isolation, and the complete Consumer group subsequently passed. Both logs
+are retained rather than treating the first run as successful.
+
+Evidence is under `target/verification/execution-failures.h4llr1az/`, including
+test logs, native trace, observed failure JSON, UI observations, bundle hash and
+final summary. The short failed report was fully visible; long successful reports
+remain AX snippets rather than full raw exports. Screenshots showed the precise
+failure and final matching draft/publication. The dedicated app was quit and its
+process confirmed absent. No model service or credits were used.
+
+## Node Execution Failure Reports
+
+Source guides: [Node embedding](../node-agent-host.md) and
+[execution failure reports](../execution-reports.md).
+
+On 2026-11-20, the optional Node transport added `executionReports: "v1"`.
+Together with the same explicit registered-host setting, it carries typed
+execution failures from the standalone Rust worker into the shared agent
+verification path. Worker protocol v3 requires a separate `input_mode` field;
+single-string and named-string plans retain their respective input bounds.
+Default protocol v1/v2 frames, argument rules and exception behavior remain
+unchanged. The option is captured once and no downgrade or retry is attempted.
+
+Only an admitted execution with a live stdio connection can produce a failed
+report. Startup rejection, broken outer framing or correlation, deadlines and
+process failure retain their exception paths. A correlated reply with invalid
+inner application data may instead yield a generic execution failure. Successful
+reports stay unchanged, and failed reports do not invent a result, Effect count,
+Fuel balance or final observation. The carrier requires clean child closure
+before delivering either kind of report; report/plan correlation, one-use
+completion and host verification remain required.
+
+Real-worker tests remove an Article publication control before execution. The
+first read verifies; the publication task commits both draft edits, fails lookup
+with `execution_object_unavailable`, and prevents the final read from starting.
+The original failed report is retained. After an explicit remount and separate
+submission, publication verifies once with twelve Effects. A separate test
+commits publication before the callback fails: the publication remains, the
+workflow stops, and a new read observes it without publishing again.
+
+Misleading valid Bridge error codes and malformed error prose both remain
+`execution_failed`; neither can impersonate the typed missing-object cause.
+Further real-worker checks cover raw-report correlation, one-use verification,
+single/no-input composition, cancellation, revocation, late commits and admission
+failure followed by a fresh process. The installed npm tarball Consumer exercises
+the same missing-control fault through both default and opted-in transports,
+preserving the old exception and checking the new report respectively.
+
+The offline reference CLI now opts in explicitly and records each raw report
+and diagnostic. Its successful four-step workflow completed `[2, 9, 2, 1]`
+Effects and published once. With `--fault-after-commit`, its first read verified,
+publication failed with `execution_failed`, the committed publication remained
+at one, and the two later steps did not run. The command exited with status one,
+while the worker had cleanly delivered its failed execution report.
+
+Checks passed: SDK 320, frontend/provider 115, independent Node Consumer 68,
+retained native Node carrier six, complete independent Rust Consumer/catalog
+agent 848, registered host 22 plus its external Cargo Consumer, and portable
+Tauri 42. Formatting, strict Clippy and worker/portable builds passed. Worker
+tests compare an identical two-Effect successful report and Fuel across all
+three protocol versions. All 32 existing catalog/source fixtures are unchanged.
+
+The first Node check exposed an incorrect expectation in a new test: prose
+containing spaces was already rejected by the existing inner error-code grammar,
+so its report correctly said `invalid wire outcome`. The test was corrected to
+cover both valid misleading codes and invalid prose separately; no production
+validation was weakened. The complete Node group then passed.
+
+Evidence is under `target/verification/node-execution-reports.khkl9s8x/`, including
+initial and final check logs, original CLI JSON reports, CLI trace and summary,
+fixture hashes and a final check summary. This acceptance used real worker
+processes and independent JavaScript applications; its DOM fixture is an
+EventTarget test fixture, not a native GUI run. All planning and execution were
+offline, without a model service or credits.
+

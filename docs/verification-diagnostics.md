@@ -73,7 +73,9 @@ session 将这些情况归为 `invalid_verification_result` 并停止。
 ## 错误码分组
 
 语义报告核对按报告解码、身份、资源记录、宿主核对标记、返回值、返回值证据和声明检查
-的顺序进行，返回首先遇到的失败。它不会一次收集所有失败，也不会猜测缺失的报告内容。
+的顺序进行，返回首先遇到的失败。显式启用 `executionReports: "v1"` 时，身份检查
+后先接纳终止失败报告，再处理成功预算和结果。缺省行为不为应用自有的 `status`
+字段增加含义，见[执行失败报告](execution-reports.md)。
 
 | 报告身份与基础记录 | 含义 |
 | --- | --- |
@@ -81,6 +83,15 @@ session 将这些情况归为 `invalid_verification_result` 并停止。
 | `report_identity_mismatch` | 报告 schema、profile 或 kind 与接纳的任务不符 |
 | `report_budget_mismatch` | 报告的 Effects 或剩余 Fuel 不符合声明 |
 | `host_verification_missing` | 声明要求宿主核对标记，但报告未给出严格的 `verified: true` |
+
+| 显式启用的执行失败报告 | 含义 |
+| --- | --- |
+| `execution_failed` | 宿主报告执行失败，未提供更具体的已知类别 |
+| `execution_object_unavailable` | 请求的对象不在当前注册清单中 |
+| `execution_fuel_exhausted` | 宿主识别到 Fuel 耗尽 |
+| `execution_deadline_exceeded` | 宿主执行期限已到 |
+| `execution_scope_closed` | 当前页面或执行连接已失效 |
+| `execution_cancelled` | 远端执行已终止；不代替本地取消信号 |
 
 | 返回值与声明检查 | 含义 |
 | --- | --- |
@@ -90,14 +101,16 @@ session 将这些情况归为 `invalid_verification_result` 并停止。
 | `predicate_evidence_invalid` | 无法读取或计算某个声明检查的证据；携带该检查的 `predicate` ID |
 | `predicate_failed` | 声明检查已完成比较，但条件不满足；携带该检查的 `predicate` ID |
 
-registered host 先确认完成凭据与本次计划、原始报告对应，再使用已经计算的语义结果，
-最后核对独立应用观察。报告相关性和执行后再次读取的状态是不同检查：
+registered host 先确认完成凭据与本次计划、原始报告对应，再核对可选的控件结构版本、
+已经计算的语义结果和独立应用观察。重新观察后还会再次检查结构版本。
+报告相关性、控件身份和执行后再次读取的可见状态是不同检查：
 
 | 本次执行与独立观察 | 含义 |
 | --- | --- |
 | `completion_unavailable` | 当前没有可消费的完成凭据，例如尚未完成或凭据已被使用 |
 | `plan_mismatch` | 待核对计划与该完成凭据所属计划不符 |
 | `report_mismatch` | 待核对的原始报告与本次执行返回的报告不符 |
+| `application_bindings_changed` | 提供结构版本的应用在执行至验证期间挂载、替换或卸载控件，即使可见值完全相同 |
 | `observation_invalid` | 无法取得或规范化独立应用观察，或报告观察记录无效 |
 | `before_observation_mismatch` | 报告中的执行前记录与宿主执行前独立读取的状态不一致 |
 | `after_observation_mismatch` | 报告中的执行后记录与验证时再次读取的应用状态不一致 |
@@ -111,6 +124,11 @@ registered host 先确认完成凭据与本次计划、原始报告对应，再�
 `content_saved` 检查未通过。诊断只说明这一检查的结果，不包含正文或其期望值。
 `after_observation_mismatch` 表示报告与验证时的当前状态不同；即使报告内部的
 声明检查全部通过，应用仍不能将该次执行标记为已验证。
+
+`application_bindings_changed` 检查来自应用可选的 `bindingRevision()`，并不改变
+报告或观察格式。它也可能作为执行错误出现：若结构变化在请求/回复边界被发现，宿主
+停止本次执行，没有完整报告时不附加验证诊断。已有完整报告时保留报告，并按上述
+详细验证路径拒绝成功。两种情况都保留可能已发生的效果，见[动态控件](dynamic-controls.md)。
 
 ## 单次完成凭据与停止行为
 

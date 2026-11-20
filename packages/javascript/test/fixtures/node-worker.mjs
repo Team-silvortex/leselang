@@ -1,7 +1,10 @@
 // Hostile/slow child-process fixtures for the Node-owned carrier, never a VM.
-const mode = process.argv[2];
+const selected = process.argv[2];
+const mode = selected.startsWith("failure_") ? selected.slice("failure_".length) : selected;
 const command = process.argv.at(-1);
-const report = '{"integer":18446744073709551615}';
+const report = selected.startsWith("failure_")
+  ? '{ "schema_version":1,"profile":"javascript.registered","kind":"javascript_task_run","status":"failed","error":"fixture missing object","possible_partial_effects":true,"execution_failure":{"code":"execution_object_unavailable"} }'
+  : '{"integer":18446744073709551615}';
 let version = 1;
 const envelope = (kind, fields) => ({ agent_worker_version: version, kind, ...fields });
 const line = (value) => `${JSON.stringify(value)}\n`;
@@ -31,14 +34,24 @@ if (command === "--describe") {
   else finish('{"schema_version":1,"profile":"javascript.registered"}');
 } else {
   const start = await readLine();
-  version = mode === "downgrade" ? 1 : mode === "upgrade" ? 2 : start.agent_worker_version;
-  if (![1, 2].includes(start.agent_worker_version)) throw new Error("unsupported fixture start");
+  version = mode === "downgrade" ? 1 : mode === "upgrade" || mode === "downgrade_two" ? 2
+    : mode === "upgrade_three" ? 3 : start.agent_worker_version;
+  if (![1, 2, 3].includes(start.agent_worker_version)) throw new Error("unsupported fixture start");
+  const expectedFields = ["agent_worker_version", "kind", "scope", "source", "arguments"];
+  if (start.agent_worker_version === 3) {
+    expectedFields.push("input_mode");
+    if (!["single_string", "named_strings"].includes(start.input_mode)) throw new Error("invalid fixture input mode");
+  }
+  if (Object.keys(start).length !== expectedFields.length || expectedFields.some((name) => !Object.hasOwn(start, name))) {
+    throw new Error("invalid fixture start fields");
+  }
   const request = { transport_version: 1, ...start.scope, request_id: 1, budget_ms: 1000,
     operation: "gui.list", arguments: {} };
   const challenge = "f".repeat(64);
   const requestFrame = envelope("request", { challenge, request });
   const terminal = envelope("report", { report_json: mode === "echo_arguments"
-    ? JSON.stringify({ version, source: start.source, arguments: start.arguments }) : report });
+    ? JSON.stringify({ version, source: start.source, arguments: start.arguments,
+      input_mode: start.input_mode, start_keys: Object.keys(start) }) : report });
   if (mode === "ignore_term") {
     process.on("SIGTERM", () => {});
     process.stderr.write(`ready:${process.pid}\n`);

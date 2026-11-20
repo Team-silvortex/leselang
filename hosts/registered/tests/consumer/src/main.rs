@@ -1,6 +1,8 @@
 //! An independent Cargo workspace consumes only the registered host's public API.
 use leselang_registered_host::{
-    PreparedTask, Scope, Transport, describe_registered, prepare_task, run_prepared_registered_task,
+    Error, ExecutionFailure, ExecutionFailureCode, PreparedTask, Scope, Transport,
+    describe_registered, prepare_task, run_prepared_registered_task,
+    run_prepared_registered_task_detailed,
 };
 use serde_json::{Value, json};
 
@@ -63,6 +65,42 @@ fn main() {
         application.requests, 3,
         "bootstrap plus two explicit VM Effects"
     );
+
+    let mut detailed_application = EmptyApplication {
+        live: true,
+        requests: 0,
+    };
+    let detailed = run_prepared_registered_task_detailed(
+        &mut detailed_application,
+        scope(),
+        prepare_task(TWO_EFFECTS, vec![]).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(detailed, report);
+    let missing = "fn main() = bind(target: gui.find(name: \"missing\"), body: true)";
+    let failure: ExecutionFailure = run_prepared_registered_task_detailed(
+        &mut detailed_application,
+        scope(),
+        prepare_task(missing, vec![]).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(failure.code(), ExecutionFailureCode::ObjectUnavailable);
+    assert_eq!(failure.code().as_str(), "execution_object_unavailable");
+    let legacy_error: String = run_prepared_registered_task(
+        &mut detailed_application,
+        scope(),
+        prepare_task(missing, vec![]).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(legacy_error, failure.to_string());
+    // Existing downstream exhaustive matches remain source-compatible.
+    let original = match Error::Fuel {
+        Error::Native(message) => message.to_owned(),
+        Error::Fuel => "host fuel exhausted".to_owned(),
+        Error::Object(error) => error.to_string(),
+        Error::Transport(message) => message,
+    };
+    assert_eq!(original, "host fuel exhausted");
 
     application.live = false;
     let prepared = prepare_task(TWO_EFFECTS, vec![]).unwrap();

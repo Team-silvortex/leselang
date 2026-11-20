@@ -62,6 +62,19 @@ test("binding failures show actionable text without displaying internal validati
   }
 });
 
+test("control replacement during execution explains the stop and retains partial effects", () => {
+  const display = describeWorkflowOutcome({ taskId: 15, status: "failed", possiblePartialEffects: true,
+    error: "application_bindings_changed", plan, stoppedStep: 1,
+    steps: [step("verified", "integer", 3), { taskId: 2, status: "failed", possiblePartialEffects: true,
+      error: "application_bindings_changed" }] });
+  assert.match(display.outcome, /应用控件已重新挂载或移除.*请重新观察当前应用/u);
+  assert.match(display.outcome, /已发生的操作会保留.*不会自动重试/u);
+  assert.match(display.steps[1], /未完成，后续步骤已停止/u);
+  assert.match(display.steps[2], /未开始/u);
+  assert.doesNotMatch(display.outcome, /application_bindings_changed/u);
+  assert.doesNotMatch(display.reports, /验证诊断/u, "a stopped execution cannot invent a verification report");
+});
+
 const requirement = { step: 1, fromStep: 0, format: "string", equals: "expected ✓" };
 const requiredPlan = { ...plan, requirements: [requirement] };
 
@@ -124,6 +137,12 @@ test("verification causes explain both the failed step and overall result withou
   const explanations = [
     ["invalid_report", "执行报告无法读取"],
     ["report_identity_mismatch", "执行报告与本次任务不对应"],
+    ["execution_failed", "宿主报告本次执行失败"],
+    ["execution_object_unavailable", "目标控件当前不存在或尚未挂载"],
+    ["execution_fuel_exhausted", "计算预算已耗尽"],
+    ["execution_deadline_exceeded", "本次执行超过宿主时限"],
+    ["execution_scope_closed", "应用连接已关闭"],
+    ["execution_cancelled", "宿主报告本次执行已取消"],
     ["report_budget_mismatch", "资源限制与应用声明不一致"],
     ["host_verification_missing", "未包含宿主核对结果"],
     ["result_mismatch", "返回结果不符合应用声明"],
@@ -135,6 +154,7 @@ test("verification causes explain both the failed step and overall result withou
     ["observation_invalid", "应用状态记录无效"],
     ["before_observation_mismatch", "执行前的应用状态与报告记录不一致"],
     ["after_observation_mismatch", "执行后再次读取的应用状态与报告记录不一致"],
+    ["application_bindings_changed", "应用控件已重新挂载或移除"],
     ["verification_interrupted", "应用核对被中断"],
     ["invalid_verification_result", "宿主未返回有效的核对结论"],
   ];
@@ -154,6 +174,25 @@ test("verification causes explain both the failed step and overall result withou
     assert.ok(display.reports.includes(result.steps[1].report));
     assert.ok(display.reports.includes(`验证诊断：${JSON.stringify(diagnostic)}`));
   }
+});
+
+test("execution failure presentation preserves raw evidence without interpreting error text", () => {
+  const verificationFailure = { code: "execution_object_unavailable" };
+  const raw = JSON.stringify({ schema_version: 1, kind: "tauri_task_run", profile: "tauri.article",
+    status: "failed", error: "arbitrary private failure text", possible_partial_effects: true,
+    execution_failure: verificationFailure });
+  const result = diagnosticOutcome(verificationFailure);
+  result.steps[1].report = raw;
+  const display = describeWorkflowOutcome(result);
+  assert.match(display.outcome, /应用执行未完成.*目标控件当前不存在或尚未挂载/u);
+  assert.doesNotMatch(display.outcome, /资源限制|应用结果未通过核对|arbitrary private failure text/u);
+  assert.doesNotMatch(display.steps[1], /arbitrary private failure text|已验证/u);
+  assert.match(display.steps[2], /未开始/u);
+  assert.ok(display.reports.includes(raw), "original error belongs only in the raw evidence");
+
+  const remoteCancelled = describeWorkflowOutcome(diagnosticOutcome({ code: "execution_cancelled" }));
+  assert.match(remoteCancelled.outcome, /工作流未完成.*宿主报告本次执行已取消/u);
+  assert.doesNotMatch(remoteCancelled.outcome, /工作流已取消/u, "a report cannot assert local cancellation");
 });
 
 test("declared check failures name only the predicate and retain a separate diagnostic record", () => {

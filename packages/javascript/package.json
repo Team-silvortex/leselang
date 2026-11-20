@@ -14,6 +14,10 @@
     "./node": {
       "types": "./dist/node/index.d.ts",
       "import": "./dist/node/index.js"
+    },
+    "./dom": {
+      "types": "./dist/dom/index.d.ts",
+      "import": "./dist/dom/index.js"
     }
   },
   "files": [
@@ -27,6 +31,7 @@
     "dist/providers/",
     "dist/semantics/",
     "dist/node/",
+    "dist/dom/",
     "README.md",
     "LICENSE"
   ],

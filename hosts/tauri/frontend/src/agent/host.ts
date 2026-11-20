@@ -11,6 +11,7 @@ export function createAgentHost(api: TauriApi, application: ApplicationConnectio
 }): RegisteredAgentHost {
   return createRegisteredAgentHost({
     window: "main", epoch: options.epoch, application, onSource: options.onSource,
+    executionReports: "v1",
     observations: { before: "native_before", after: "native_after" },
     transport: {
       describe: () => api.core.invoke("agent_describe", { raw: true, taskCatalog: true, observedResults: true }),

@@ -4,16 +4,21 @@ import { createBoardView } from "../dist/board/view.js";
 import { Bridge } from "../dist/bridge.js";
 
 class Element extends EventTarget {
-  constructor(id) { super(); this.id = id; }
+  constructor(id) { super(); this.id = id; this.tagName = id.endsWith("-complete") ? "BUTTON" : "SPAN"; }
+  type = "button";
   isConnected = true;
   disabled = false;
   textContent = "";
   dataset = {};
   afterClick;
+  dispatchEvent(event) {
+    const result = super.dispatchEvent(event);
+    if (event.type === "click") this.afterClick?.();
+    return result;
+  }
   click() {
     if (this.disabled) return;
     this.dispatchEvent(new Event("click"));
-    this.afterClick?.();
   }
 }
 
@@ -24,7 +29,8 @@ async function withBoard(run) {
   const task = (id) => ({ title: node(`${id}-title`), button: node(`${id}-complete`),
     status: node(`${id}-state`), completions: node(`${id}-count`) });
   const elements = { review: task("review"), archive: task("archive"), status: node("status") };
-  globalThis.document = { getElementById(id) { return nodes.get(id); } };
+  globalThis.document = { defaultView: { Event }, getElementById(id) { return nodes.get(id); } };
+  for (const element of nodes.values()) element.ownerDocument = globalThis.document;
   const view = createBoardView(elements);
   const scope = { window: "main", epoch: "board-page", session: "board-task" };
   const bridge = new Bridge(scope);
@@ -32,7 +38,7 @@ async function withBoard(run) {
   const call = (operation, arguments_ = {}) => bridge.handle({ transport_version: 1,
     ...scope, request_id: ++request, budget_ms: 1000, operation, arguments: arguments_ });
   try { await run({ view, elements, nodes, bridge, call }); }
-  finally { bridge.close(); globalThis.document = previous; }
+  finally { bridge.close(); view.dispose(); globalThis.document = previous; }
 }
 
 test("manual board buttons and bridge actions share the real completion handler", async () => {

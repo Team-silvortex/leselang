@@ -2,7 +2,7 @@
 //! Tauri transports JSON; each blocking worker exclusively owns its LocalVm.
 use super::model;
 use super::wire::*;
-use leselang_tauri_host::{AgentApplication, Scope};
+use leselang_tauri_host::{AgentApplication, ExecutionFailure, ExecutionFailureCode, Scope};
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
@@ -183,7 +183,7 @@ impl Registry {
         run.reply(reply)
     }
 
-    fn finish(&mut self, run: &Arc<Run>, result: Result<Value, String>) -> Value {
+    fn finish(&mut self, run: &Arc<Run>, result: Result<Value, ExecutionFailure>) -> Value {
         let current = self
             .active
             .as_ref()
@@ -194,6 +194,7 @@ impl Registry {
                 run.report_kind,
                 "cancelled",
                 "workflow cancelled; earlier effects may remain",
+                ExecutionFailureCode::Cancelled,
             )
         } else if run.expired.load(Ordering::Acquire) {
             failure(
@@ -201,6 +202,7 @@ impl Registry {
                 run.report_kind,
                 "failed",
                 "workflow execution deadline exceeded",
+                ExecutionFailureCode::DeadlineExceeded,
             )
         } else if self.retired || !current {
             failure(
@@ -208,6 +210,7 @@ impl Registry {
                 run.report_kind,
                 "failed",
                 "application page lifetime has been retired",
+                ExecutionFailureCode::ScopeClosed,
             )
         } else if !run.live.load(Ordering::Acquire) {
             failure(
@@ -215,6 +218,7 @@ impl Registry {
                 run.report_kind,
                 "failed",
                 "workflow bridge retired before final acceptance",
+                ExecutionFailureCode::ScopeClosed,
             )
         } else {
             match result {
@@ -228,6 +232,7 @@ impl Registry {
                             run.report_kind,
                             "failed",
                             "worker report belongs to another application",
+                            ExecutionFailureCode::Failed,
                         )
                     } else if let Some(fields) = report.as_object_mut() {
                         fields.insert("profile".into(), json!(run.application.profile()));
@@ -238,10 +243,17 @@ impl Registry {
                             run.report_kind,
                             "failed",
                             "worker report is not an object",
+                            ExecutionFailureCode::Failed,
                         )
                     }
                 }
-                Err(error) => failure(run.application, run.report_kind, "failed", &error),
+                Err(error) => failure(
+                    run.application,
+                    run.report_kind,
+                    "failed",
+                    &error.to_string(),
+                    error.code(),
+                ),
             }
         };
         // Retirement precedes admission of a later workflow and IPC completion.
@@ -255,6 +267,7 @@ impl Registry {
                 run.report_kind,
                 "failed",
                 "workflow report exceeded 128 KiB",
+                ExecutionFailureCode::Failed,
             )
         } else {
             report
@@ -304,9 +317,40 @@ impl Registry {
 #[derive(Default)]
 struct Shared(Mutex<Registry>);
 
-fn failure(application: AgentApplication, kind: &str, status: &str, error: &str) -> Value {
+fn failure_text(error: &str) -> std::borrow::Cow<'_, str> {
+    const LIMIT: usize = 4096;
+    const TRUNCATED: &str = "… [truncated]";
+    if error.is_empty() {
+        return "workflow execution failed".into();
+    }
+    if error.len() <= LIMIT {
+        return error.into();
+    }
+    let mut end = LIMIT - TRUNCATED.len();
+    while !error.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{TRUNCATED}", &error[..end]).into()
+}
+
+fn failure(
+    application: AgentApplication,
+    kind: &str,
+    status: &str,
+    error: &str,
+    code: ExecutionFailureCode,
+) -> Value {
+    // Cancellation is selected by this run's live flag, never by worker text
+    // or a late typed worker outcome claiming cancellation on its own.
+    let code = if status != "cancelled" && code == ExecutionFailureCode::Cancelled {
+        ExecutionFailureCode::Failed
+    } else {
+        code
+    };
+    // Report admission bounds its text independently of the legacy Rust error.
+    let error = failure_text(error);
     json!({"schema_version":1,"kind":kind,"profile":application.profile(),"status":status,"error":error,
-        "possible_partial_effects":true})
+        "possible_partial_effects":true,"execution_failure":{"code":code.as_str()}})
 }
 
 fn local_asset_for(application: AgentApplication, url: &tauri::Url) -> bool {
@@ -488,6 +532,7 @@ async fn agent_start(
     complete(&shared, run, move || {
         let scope = endpoint.scope.clone();
         leselang_tauri_host::run(&mut endpoint, scope, &source, &text)
+            .map_err(ExecutionFailure::from)
     })
     .await
 }
@@ -604,7 +649,7 @@ async fn start_prepared_task(
         .start_task(epoch, session, &source, on_request)?;
     let report = complete(shared, run, move || {
         let scope = endpoint.scope.clone();
-        leselang_tauri_host::run_prepared_task_for_application(
+        leselang_tauri_host::run_prepared_task_for_application_detailed(
             &mut endpoint,
             scope,
             task,
@@ -618,7 +663,7 @@ async fn start_prepared_task(
 async fn complete(
     shared: &Shared,
     run: Arc<Run>,
-    work: impl FnOnce() -> Result<Value, String> + Send + 'static,
+    work: impl FnOnce() -> Result<Value, ExecutionFailure> + Send + 'static,
 ) -> Result<Value, String> {
     let (done, completion) = sync_channel(1);
     let deadline_run = run.clone();
@@ -637,7 +682,7 @@ async fn complete(
         result
     })
     .await
-    .unwrap_or_else(|error| Err(format!("workflow worker failed: {error}")));
+    .unwrap_or_else(|error| Err(format!("workflow worker failed: {error}").into()));
     let mut registry = match shared.0.lock() {
         Ok(registry) => registry,
         Err(_) => {
