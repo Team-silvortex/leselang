@@ -226,7 +226,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    const CATALOG: &[u8] = include_bytes!("fixtures/calculator-v1.json");
+    const CATALOG: &[u8] = include_bytes!("../../../fixtures/host-semantics/calculator-v1.json");
     fn bytes(value: &Value) -> Vec<u8> {
         serde_json::to_vec(value).unwrap()
     }
@@ -258,7 +258,10 @@ mod tests {
         let source = super::super::generate(CATALOG).unwrap();
         // The host's deterministic backend executes this same artifact, without
         // linking this consumer or a GUI framework into either other's crate.
-        assert_eq!(source, include_str!("fixtures/calculator.lese"));
+        assert_eq!(
+            source,
+            include_str!("../../../fixtures/host-semantics/calculator.lese")
+        );
         assert!(source.len() < 16 * 1024);
         let parsed = leselang_syntax::parse(&source);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);

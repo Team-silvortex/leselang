@@ -328,8 +328,7 @@ mod tests {
         // The Consumer planner checks its generated source against this fixture.
         // This host test executes that actual output without depending on the
         // Consumer or granting a test access to a desktop application.
-        let source =
-            include_str!("../../../consumer/examples/catalog_agent/fixtures/calculator.lese");
+        let source = include_str!("../../../fixtures/host-semantics/calculator.lese");
         let fake = Fake::new();
         let report = run(&fake, source).unwrap();
         assert!(report.verified());
@@ -348,9 +347,7 @@ mod tests {
     fn metadata_planned_program_keeps_fuel_guards_and_partial_native_effects() {
         // This is the generic Consumer planner's actual output, tied to its
         // published host-metadata fixture by the Consumer's golden source test.
-        let source = include_str!(
-            "../../../consumer/examples/catalog_agent/fixtures/calculator-semantics.lese"
-        );
+        let source = include_str!("../../../fixtures/host-semantics/calculator-semantics.lese");
         let success = Fake::new();
         let report = run(&success, source).unwrap();
         let json = record(&report);

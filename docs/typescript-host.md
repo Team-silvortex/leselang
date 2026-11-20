@@ -43,8 +43,13 @@ target/lean/leselang-tauri-host --text 'TypeScript ✓' --report-json --hold
 
 The first command installs the host's pinned TypeScript build tool. The build
 emits browser JavaScript and copies the HTML and CSS into `frontend/dist`.
+TypeScript source lives in `frontend/src/`, pages and styles in
+`frontend/public/`, and application tests in `frontend/tests/`. The build copies
+the public SDK's complete compiled module tree into `frontend/dist/sdk/`.
 These generated assets and `node_modules` are host build outputs, not language
 dependencies. Rust output continues to use the shared repository `target/`.
+See the [host source map](../hosts/tauri/README.md) for portable and desktop
+module responsibilities.
 
 `--describe` emits the registered `tauri.typescript` catalog without creating a
 window, WebView, session or frontend bridge. It uses the shared
@@ -111,9 +116,9 @@ report with `verified: false` remains failure evidence; the CLI exits nonzero.
 
 The [`@leselang/bridge` source](../packages/javascript/src/index.ts) supplies
 `Bridge` and the `Adapter` / `ActionContext` interfaces. The frontend's
-[`bridge.ts`](../hosts/tauri/frontend/bridge.ts) is a compatibility re-export.
+[`bridge.ts`](../hosts/tauri/frontend/src/bridge.ts) is a compatibility re-export.
 The
-[real form](../hosts/tauri/frontend/app.ts) registers `input`, `save` and `other`.
+[real form](../hosts/tauri/frontend/src/app.ts) registers `input`, `save` and `other`.
 An adapter provides:
 
 - `read()`: public scalar state such as role, title, value, enabled state,
@@ -130,7 +135,7 @@ is a contract for trusted application adapters, not a JavaScript sandbox.
 
 The form's text adapter dispatches a real DOM `input` event. Its Save adapter
 dispatches the real button `click`; that listener invokes the shared
-[`FormModel`](../hosts/tauri/frontend/form.ts), awaits a microtask and commits
+[`FormModel`](../hosts/tauri/frontend/src/form.ts), awaits a microtask and commits
 the saved value and callback count. Those actions are implemented in TypeScript.
 The Rust gateway does not duplicate the application's save logic.
 

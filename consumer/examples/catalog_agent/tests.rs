@@ -165,7 +165,10 @@ printf 'fixture trace\n' >&2
 exit "$(cat "$0.exit")"
 "##,
             );
-            fixture.write("host.catalog", include_bytes!("fixtures/appkit-v1.json"));
+            fixture.write(
+                "host.catalog",
+                include_bytes!("../../../fixtures/host-semantics/appkit-v1.json"),
+            );
             fixture.write("host.exit", b"0");
             fixture
         }
@@ -276,8 +279,10 @@ exit "$(cat "$0.exit")"
     fn typescript_host_uses_the_selected_profile_cli_and_independent_state_checks() {
         let fixture = Fixture::new();
         fixture.report("TypeScript ✓");
-        let mut catalog: serde_json::Value =
-            serde_json::from_slice(include_bytes!("fixtures/appkit-v1.json")).unwrap();
+        let mut catalog: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../fixtures/host-semantics/appkit-v1.json"
+        ))
+        .unwrap();
         catalog["profile"] = json!("tauri.typescript");
         fixture.write("host.catalog", &serde_json::to_vec(&catalog).unwrap());
         let mut report: serde_json::Value =
@@ -329,7 +334,7 @@ exit "$(cat "$0.exit")"
         );
         fixture.write(
             "host.catalog",
-            include_bytes!("fixtures/calculator-v1.json"),
+            include_bytes!("../../../fixtures/host-semantics/calculator-v1.json"),
         );
         let before = json!([{"identifier":"calculator","role":"AXWindow","display":"0","last_expression":null,
             "buttons":[{"name":"one","enabled":true},{"name":"add","enabled":true},{"name":"two","enabled":true},{"name":"equals","enabled":true}]}]);
@@ -476,8 +481,10 @@ exit "$(cat "$0.exit")"
 
     fn declared_note_fixture(text: &str) -> Fixture {
         let fixture = Fixture::new();
-        let mut catalog: serde_json::Value =
-            serde_json::from_slice(include_bytes!("fixtures/appkit-semantics-v1.json")).unwrap();
+        let mut catalog: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../fixtures/host-semantics/appkit-semantics-v1.json"
+        ))
+        .unwrap();
         rename_note_values(&mut catalog);
         fixture.write("host.catalog", &serde_json::to_vec(&catalog).unwrap());
         fixture.report(text);
@@ -531,8 +538,10 @@ exit "$(cat "$0.exit")"
     fn malformed_present_semantics_never_falls_back_to_a_known_profile() {
         for extension in [serde_json::Value::Null, json!({"version":999})] {
             let fixture = Fixture::new();
-            let mut catalog: serde_json::Value =
-                serde_json::from_slice(include_bytes!("fixtures/appkit-v1.json")).unwrap();
+            let mut catalog: serde_json::Value = serde_json::from_slice(include_bytes!(
+                "../../../fixtures/host-semantics/appkit-v1.json"
+            ))
+            .unwrap();
             catalog["semantics"] = extension;
             fixture.write("host.catalog", &serde_json::to_vec(&catalog).unwrap());
             assert!(run(fixture.options(true, "x")).is_err());
@@ -585,8 +594,10 @@ exit "$(cat "$0.exit")"
     #[test]
     fn incompatible_catalog_stops_before_source_or_execution() {
         let fixture = Fixture::new();
-        let mut catalog: serde_json::Value =
-            serde_json::from_slice(include_bytes!("fixtures/appkit-v1.json")).unwrap();
+        let mut catalog: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../fixtures/host-semantics/appkit-v1.json"
+        ))
+        .unwrap();
         catalog["profile"] = json!("unreviewed.gui");
         fixture.write("host.catalog", &serde_json::to_vec(&catalog).unwrap());
         assert!(run(fixture.options(true, "x")).is_err());

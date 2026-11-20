@@ -238,15 +238,11 @@ mod tests {
         description.validate(&catalog).unwrap();
         assert_eq!(
             catalog.to_json_with_semantics(&description).unwrap(),
-            include_str!(
-                "../../../consumer/examples/catalog_agent/fixtures/tauri-agent-semantics-v1.json"
-            )
+            include_str!("../../../fixtures/host-semantics/tauri-agent-semantics-v1.json")
         );
         assert_eq!(
             crate::describe().unwrap(),
-            include_str!(
-                "../../../consumer/examples/catalog_agent/fixtures/tauri-semantics-v1.json"
-            )
+            include_str!("../../../fixtures/host-semantics/tauri-semantics-v1.json")
         );
     }
 }

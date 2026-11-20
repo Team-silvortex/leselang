@@ -6,7 +6,7 @@ mod catalog;
 pub mod gui;
 #[cfg(target_os = "macos")]
 pub mod host;
-#[path = "../../reference_semantics.rs"]
+#[path = "../../shared/semantics.rs"]
 mod reference_semantics;
 
 /// Inspect the real host catalog without creating a GUI, querying permissions,

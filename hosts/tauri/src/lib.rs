@@ -3,7 +3,7 @@ mod agent_semantics;
 mod catalog;
 pub mod gateway;
 pub mod host;
-#[path = "../../reference_semantics.rs"]
+#[path = "../../shared/semantics.rs"]
 mod reference_semantics;
 mod task;
 

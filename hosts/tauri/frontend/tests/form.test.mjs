@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FormModel } from "./dist/form.js";
-import { Bridge } from "./dist/bridge.js";
+import { FormModel } from "../dist/form.js";
+import { Bridge } from "../dist/bridge.js";
 
 const direct = {
   signal: new AbortController().signal,

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createSemanticProvider, prepareSemanticCatalog } from "@leselang/bridge";
 
-const fixture = (name) => readFileSync(new URL(`../../../consumer/examples/catalog_agent/fixtures/${name}`, import.meta.url), "utf8");
+const fixture = (name) => readFileSync(new URL(`../../../fixtures/host-semantics/${name}`, import.meta.url), "utf8");
 const raw = fixture("tauri-agent-semantics-v1.json");
 const text = 'message "引号" \\ 路径\nsecond line ✓';
 

@@ -123,9 +123,7 @@ fn cli_emits_only_the_same_single_json_record_for_every_profile() {
         if *profile == Profile::Calculator {
             assert_eq!(
                 output.stdout,
-                include_bytes!(
-                    "../../../consumer/examples/catalog_agent/fixtures/calculator-semantics-v1.json"
-                )
+                include_bytes!("../../../fixtures/host-semantics/calculator-semantics-v1.json")
             );
             let semantics = semantics.unwrap();
             assert_eq!(semantics["version"], 1);

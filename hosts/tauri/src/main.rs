@@ -6,11 +6,7 @@ use std::{
 };
 
 #[cfg(all(target_os = "macos", feature = "desktop"))]
-mod agent_transport;
-#[cfg(all(target_os = "macos", feature = "desktop"))]
-mod transport;
-#[cfg(all(target_os = "macos", feature = "desktop"))]
-mod transport_core;
+mod desktop;
 
 const HELP: &str = "LeseLang TypeScript/Tauri host
   --describe                 Print the offline registered capability catalog
@@ -143,7 +139,7 @@ fn execute(options: Options) -> Result<(), String> {
         }
         Options::Agent => {
             #[cfg(all(target_os = "macos", feature = "desktop"))]
-            return agent_transport::launch();
+            return desktop::launch_agent();
             #[cfg(not(all(target_os = "macos", feature = "desktop")))]
             Err("agent application requires macOS and the desktop feature".into())
         }
@@ -155,7 +151,7 @@ fn execute(options: Options) -> Result<(), String> {
         } => {
             let source = source(path)?;
             #[cfg(all(target_os = "macos", feature = "desktop"))]
-            return transport::launch(source, text, hold, report_json);
+            return desktop::launch_form(source, text, hold, report_json);
             #[cfg(not(all(target_os = "macos", feature = "desktop")))]
             {
                 let _ = (source, text, hold, report_json);

@@ -17,6 +17,7 @@ h2 { margin: 0 0 16px; font-size: 16px; }
 label { display: block; margin-bottom: 8px; color: #536572; font-size: 13px; }
 textarea { width: 100%; resize: vertical; min-height: 88px; padding: 12px; border: 1px solid #bdcbd1; border-radius: 7px; color: inherit; background: #fbfcfd; font: inherit; line-height: 1.5; }
 textarea:focus { border-color: #317b83; outline: 3px solid #317b8326; }
+select { max-width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid #bdcbd1; border-radius: 7px; background: #fbfcfd; color: inherit; font: inherit; font-size: 13px; }
 .actions { display: flex; gap: 10px; margin-top: 14px; }
 button { min-height: 38px; padding: 8px 18px; border: 1px solid #25656d; border-radius: 7px; color: #fff; background: #25656d; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 button.secondary { border-color: #d4dde1; color: #536572; background: #f7f9fa; }
@@ -41,6 +42,8 @@ pre:empty::before { content: "Nothing saved yet"; color: #829396; }
 .conversation .plan-summary { color: #5a7179; margin-top: 5px; }
 .conversation .task-outcome { color: #23686d; margin-top: 7px; }
 .conversation li[data-outcome="failed"] .task-outcome { color: #a13a32; }
+.workflow-steps { padding: 0; margin: 8px 0; list-style: none; }
+.conversation .workflow-steps li { padding: 4px 0; border: 0; background: transparent; font-size: 12px; line-height: 1.6; }
 #task-status { color: #426b70; font-size: 13px; min-height: 20px; }
 #task-status[data-failed="true"] { color: #a13a32; }
 details { margin-top: 16px; font-size: 13px; }

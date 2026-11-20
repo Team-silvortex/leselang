@@ -11,6 +11,9 @@ fn main() {
             "agent_reply",
             "agent_cancel",
             "agent_closed",
+            "agent_model_info",
+            "agent_model_complete",
+            "agent_model_cancel",
         ]),
     ))
     .expect("Tauri bridge permission configuration must be valid");

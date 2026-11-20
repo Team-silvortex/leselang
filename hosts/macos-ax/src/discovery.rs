@@ -7,7 +7,7 @@ use crate::{
     widgets::WidgetSnapshot,
 };
 use leselang_vm::native::core::discovery::CatalogDescription;
-#[path = "../../reference_semantics.rs"]
+#[path = "../../shared/semantics.rs"]
 mod reference_semantics;
 
 /// Explicit catalog choices; selecting metadata grants no access to an application.

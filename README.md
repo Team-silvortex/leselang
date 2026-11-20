@@ -26,6 +26,23 @@ input handling, asynchronous Save behavior and application state live in TypeScr
 No Gewyvern, Leserpent, SQLite,
 Node.js, Python or shell runtime is required by this workspace.
 
+## Repository Map
+
+| Location | Responsibility |
+| --- | --- |
+| [`crates/`](crates) | The five language crates: syntax, runtime contracts, HIR and VM |
+| [`packages/javascript/`](packages/javascript/README.md) | Framework-independent JavaScript bridge, agent session and semantic planner |
+| [`hosts/`](hosts/README.md) | Independent AppKit, macOS Accessibility and Tauri reference adapters |
+| [`consumer/`](consumer/README.md) | Independent Rust and JavaScript applications exercising public APIs |
+| [`fixtures/host-semantics/`](fixtures/host-semantics/README.md) | Shared cross-language catalog and generated-program compatibility fixtures |
+| [`examples/`](examples) | Small LeseLang programs for the CLI |
+| [`docs/`](docs/README.md) | Language, embedding, host and protocol guides |
+
+Start with the [documentation index](docs/README.md), the
+[architecture and module boundaries](docs/architecture.md), or the
+[contributor checks](CONTRIBUTING.md). Cargo workspaces remain separate and
+share only the ignored `target/` build cache.
+
 ## Try It
 
 Install Rust through rustup. The repository pins Rust 1.98.0 and its formatting

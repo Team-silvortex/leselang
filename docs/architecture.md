@@ -25,6 +25,43 @@ implement alternative evaluators or serialize values merely to cross crate
 boundaries. The consumer workspace sits outside the package workspace and tests
 the same public types with distinct host representations.
 
+## Repository Organization
+
+The [repository map](../README.md#repository-map) and
+[documentation index](README.md) provide the entry points. Source ownership
+follows the dependency boundaries:
+
+| Location | Boundary |
+| --- | --- |
+| `crates/` | Language libraries and their Rust CLI; no GUI framework or product dependency |
+| `packages/javascript/` | Reusable bridge, task session and semantic planning; no Tauri dependency |
+| `hosts/` | Independent reference adapters, application contracts and native transports |
+| `consumer/` | Independent applications and public API acceptance suites |
+| `fixtures/host-semantics/` | Shared, versioned catalog bytes and generated source; test data rather than runtime dependencies |
+| `examples/` | Small user-facing language examples |
+| `target/` and package-local `dist/` | Ignored build outputs; never source ownership boundaries |
+
+`hosts/shared/semantics.rs` holds source-only reference application declarations.
+Each host includes it privately; it is not an additional language crate or a
+shared runtime service. The cross-language golden fixtures live outside any
+one Consumer or host so their shared compatibility role is explicit.
+
+The JavaScript package's `src/index.ts` is the stable public export boundary.
+`bridge.ts` owns the registered-object protocol, `agent.ts` owns task lifetimes,
+and `semantic-provider.ts` selects declared tasks. `semantics.ts` assembles the
+public semantic API from private JSON, catalog, source-generation and report
+modules. Consumers import the package entry, not those internal module paths.
+
+Within Tauri, `src/desktop/` contains the optional framework-specific shell:
+`agent.rs` handles conversation IPC, `form.rs` handles the original one-shot
+page, and `wire.rs` shares delivery and correlation. The executable reaches them
+through one conditional `desktop` module. The library's catalog, gateway, host
+and task execution remain portable. `frontend/src/`, `frontend/public/` and
+`frontend/tests/` separate TypeScript code, static pages and tests;
+`frontend/dist/` remains the generated asset path consumed by Tauri.
+
+## Language Integration
+
 The `leselang` executable lives in `leselang-vm` and consumes its public
 `embedding` API as a reference host. It supplies `std.print`, file/stdin ingress,
 CLI permissions and diagnostics. `std.print` is a host registration, not a new
@@ -152,9 +189,9 @@ page/session/object lifetime checks; it does not serialize local `ObjectRef`,
 leases or receipts. The TypeScript application owns DOM handlers and Promise
 completion, and gates every deferred mutation with the current bridge context.
 Its Node/TypeScript build tools and Tauri dependencies remain outside the five
-language crates and the separate Consumer. The existing catalog agent selects
-this known form strategy by exact profile and contract, then independently
-checks the host's public DOM/model evidence.
+language crates and the separate Consumer. The catalog agent validates the
+host's semantic declarations and independently checks its public DOM/model
+evidence; older catalogs retain their known-form compatibility strategy.
 
 The [in-app agent entry](agent-entry.md) adds an application-owned planning
 boundary above that host. `AgentSession` reads the host catalog, admits a

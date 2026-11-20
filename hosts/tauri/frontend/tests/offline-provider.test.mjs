@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { offlineProvider } from "./dist/offline-provider.js";
+import { offlineProvider } from "../dist/offline-provider.js";
 
-const catalog = await readFile(new URL("../../../consumer/examples/catalog_agent/fixtures/tauri-semantics-v1.json", import.meta.url), "utf8");
+const catalog = await readFile(new URL("../../../../fixtures/host-semantics/tauri-semantics-v1.json", import.meta.url), "utf8");
 const signal = () => new AbortController().signal;
 const plan = (message, input = catalog, abort = signal()) => offlineProvider.plan({ taskId: 1, message, catalog: input }, abort);
 

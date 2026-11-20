@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { createAgentHost } from "./dist/agent-host.js";
-import { prepareSemanticCatalog } from "./dist/bridge.js";
+import { createAgentHost } from "../dist/agent-host.js";
+import { prepareSemanticCatalog, AgentWorkflowSession } from "../dist/bridge.js";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 function deferred() {
@@ -10,7 +10,7 @@ function deferred() {
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
-const catalog = await readFile(new URL("../../../consumer/examples/catalog_agent/fixtures/tauri-agent-semantics-v1.json", import.meta.url), "utf8");
+const catalog = await readFile(new URL("../../../../fixtures/host-semantics/tauri-agent-semantics-v1.json", import.meta.url), "utf8");
 const plan = prepareSemanticCatalog(catalog).prepare("fill_and_save", { text: "quote \" \\ \n保存" }).plan;
 function evidence(text, beforeClicks = 0) {
   const object = (identifier, role, value, clicks, editable, title) => ({ identifier, role, value, clicks, editable, title, enabled: true });
@@ -369,4 +369,63 @@ test("execution cancellation after settlement fences later verification with a d
   // evidence must still retain the original execution's cancellation fence.
   controller.abort();
   assert.equal(f.host.verify(JSON.stringify(report), plan, new AbortController().signal), false);
+});
+
+test("workflow composition uses fresh application evidence and stops after a later failed verification", async () => {
+  const semantic = prepareSemanticCatalog(catalog);
+  const plans = [semantic.prepare("fill_and_save", { text: "workflow ✓" }).plan,
+    semantic.prepare("inspect_controls", {}).plan, semantic.prepare("check_controls", {}).plan];
+  for (const failedSecond of [false, true]) {
+    const f = await fixture();
+    const session = new AgentWorkflowSession({ provider: { plan: async () => ({ steps: plans }) }, host: f.host });
+    const pending = session.submit("save, inspect, check");
+    let previous;
+    const count = failedSecond ? 2 : 3;
+    for (let index = 0; index < count; index++) {
+      for (let turn = 0; !f.starts[index] && turn < 20; turn++) await tick();
+      assert.ok(f.starts[index], "next execution is admitted after prior verification");
+      assert.equal(f.starts[index].args.source, plans[index].source);
+      const report = index === 0 ? evidence("workflow ✓") : {
+        ...previous, effects: 3, native_before: previous.native_after, native_after: previous.native_after,
+        result: index === 1 ? { type: "integer", value: failedSecond ? 999 : 3 } : { type: "none", value: null },
+      };
+      f.form.visible = structuredClone(report.native_after);
+      f.starts[index].resolve(JSON.stringify(report));
+      previous = report;
+    }
+    const outcome = await pending;
+    assert.equal(outcome.status, failedSecond ? "failed" : "verified");
+    assert.equal(outcome.possiblePartialEffects, failedSecond);
+    assert.equal(outcome.steps.length, count);
+    assert.equal(outcome.steps[0].status, "verified");
+    assert.equal(f.starts.length, count, "a failed verification does not start the remaining task");
+    assert.equal(new Set(f.starts.map((start) => start.args.session)).size, count);
+    assert.equal(f.form.visible.find((row) => row.identifier === "save").clicks, 1);
+    assert.equal(f.form.visible.find((row) => row.identifier === "save").value, "workflow ✓");
+    assert.equal(f.form.active, null);
+  }
+});
+
+test("workflow cancellation at a verified application boundary keeps the save and never attaches another bridge", async () => {
+  const f = await fixture();
+  const semantic = prepareSemanticCatalog(catalog);
+  let session;
+  session = new AgentWorkflowSession({
+    provider: { plan: async () => ({ steps: [plan, semantic.prepare("inspect_controls", {}).plan] }) },
+    host: f.host,
+    onEvent: (state) => { if (state.completedSteps === 1) session.cancel(); },
+  });
+  const pending = session.submit("save then inspect");
+  for (let turn = 0; !f.starts[0] && turn < 20; turn++) await tick();
+  const report = evidence(plan.arguments.text);
+  f.form.visible = report.native_after;
+  f.starts[0].resolve(JSON.stringify(report));
+  const outcome = await pending;
+  assert.equal(outcome.status, "cancelled");
+  assert.equal(outcome.possiblePartialEffects, true);
+  assert.equal(outcome.steps[0].status, "verified");
+  assert.equal(f.starts.length, 1);
+  assert.equal(f.form.attached.length, 1);
+  assert.equal(f.form.visible.find((row) => row.identifier === "save").clicks, 1);
+  assert.equal(f.form.active, null);
 });

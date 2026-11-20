@@ -4,14 +4,18 @@ An application can expose a conversation entry where a user requests work,
 an agent provider proposes a LeseLang workflow, and the application executes
 and verifies it through its registered operations. The application owns the
 provider, its credentials and conversation context. LeseLang supplies the typed
-execution boundary; the JavaScript SDK coordinates one explicit task at a time.
+execution boundary; the JavaScript SDK coordinates one explicit submission at a time.
 
 The [Tauri reference application](typescript-host.md) demonstrates this entry
-with a clearly labelled offline planner backed by the host's `semantics v1`
-catalog. The shared `createSemanticProvider` accepts `task TASK:input` (or
+with selectable model and offline planners backed by the host's `semantics v1`
+catalog. The [model provider](model-provider.md) accepts natural language through
+an application-configured service, then generates source for one or more selected
+declarations. The page uses the bounded [workflow session](agent-workflows.md)
+to execute and verify them in order. Without model configuration, the reference uses the clearly
+labelled offline provider. The shared `createSemanticProvider` accepts `task TASK:input` (or
 `任务 TASK：input`), and `task TASK` for a task with no input. The reference app
 adds `保存：…` and `save:…` as local aliases for its declared `fill_and_save`
-task. It makes no model call and does not interpret unrestricted natural language.
+task. This offline provider makes no model call and does not interpret unrestricted natural language.
 Application-specific operation names, control names, guards and verification
 predicates come from the catalog rather than from the provider.
 
@@ -45,9 +49,10 @@ provider's summary or a successful Promise alone is insufficient evidence.
 ## SDK Contract
 
 The public `@leselang/bridge` entry exports `AgentSession`, `AgentProvider`,
-`WorkflowPlan`, `createSemanticProvider`, `prepareSemanticCatalog` and the
+`WorkflowPlan`, `createSemanticProvider`, `createModelProvider`, `prepareSemanticCatalog` and the
 associated host and outcome types. Construct a session
-with an application-selected provider, host and optional event listener:
+with an application-selected provider, host and optional event listener. This
+single-task interface remains compatible:
 
 ```ts
 import { AgentSession, createSemanticProvider } from "@leselang/bridge";
@@ -57,8 +62,10 @@ const session = new AgentSession({ provider, host, onEvent });
 const outcome = await session.submit("保存：新的消息");
 ```
 
-Here `host` and `onEvent` are application implementations; a custom provider
-can replace the shared offline provider:
+Here `host` and `onEvent` are application implementations. To interpret natural
+language, use `createModelProvider({ complete })` with an application-owned
+transport; see its [request contract and Tauri configuration](model-provider.md).
+A custom provider can also implement the same interface:
 
 - `provider.plan({taskId, message, catalog}, signal)` returns a candidate plan.
 - `host.describe(signal)` supplies the current capability catalog.
@@ -80,8 +87,12 @@ The SDK does not install a VM scheduler or automatically retry or replan tasks.
 
 The provider may maintain conversation context in an application-owned class
 or closure. The SDK does not currently inject chat history into `AgentContext`.
-The offline reference handles each command independently, while the application
-model and visible conversation persist between tasks.
+Both reference providers handle each submission independently, while the
+application state and visible conversation persist between tasks. Model planning
+through `createModelProvider` selects one declared task with zero or one named
+string input. The additive `createModelWorkflowProvider` selects up to eight
+declared tasks for `AgentWorkflowSession`; see [sequential workflows](agent-workflows.md).
+Neither provider invents new tasks or uses earlier turns as implicit arguments.
 
 ## Semantic Planning And Host Verification
 
@@ -172,8 +183,10 @@ it cannot be combined with the existing one-shot source, text or report options.
 The original form runner, catalog description, independent agent workflow and
 Node consumer remain available.
 
-The page contains a conversation panel and the real application form. The same
-provider selects each of these declared tasks:
+The page contains a conversation panel, an explicit provider selector and the
+real application form. The same semantic catalog supplies these tasks. The
+following commands use offline mode; configured model mode can select them from
+natural-language requests:
 
 | Command | Input | Verified result | Application work |
 | --- | --- | --- | --- |
@@ -187,23 +200,36 @@ Effects, and save tasks use nine; bootstrap and final host observations remain
 separate. Unsupported tasks and wrong input shapes are rejected by the offline
 planner without executing application operations. Available tasks and summaries
 come from the host catalog. The page displays the plan, verified return type
-and value, and offers cancellation while work is active.
+and value for each step, and offers cancellation while work is active. Model
+mode may plan several of these declared tasks in one request; all steps are
+admitted before execution and verified in order. Offline commands remain one-step
+submissions. Model failure does not
+switch providers or retry a task. See [model planning](model-provider.md) for
+service configuration, data transmission and its separate acceptance scope.
 
 ## Task And Application Lifetimes
 
 The application stays open between tasks. Every execution creates a fresh
 Bridge and Rust VM session under the page's fixed epoch. The model and DOM
 persist, but request identities, object owners, permission leases and Fuel do
-not cross between workflows. Each new workflow has its own 10,000-Fuel budget.
+not cross between task executions. Each new task execution, including each step
+in a multi-step workflow, has its own 10,000-Fuel budget.
 
 The Tauri integration exposes separate description, start, reply, cancellation
 and page-closure commands restricted to the bundled agent page. Its channel
 carries only SDK requests; the start command resolves with the worker's final
 report. Rust independently prevents concurrent starts and reused sessions.
-The reference page admits at most 64 workflow sessions; reopen the application
+The reference page admits at most 64 execution sessions, counting individual
+workflow steps; reopen the application
 for a fresh page lifetime after that bound is reached.
 The frontend keeps the old task active until its worker has settled before
 allowing another submission.
+
+A multi-step submission stops when a step fails or is cancelled. Earlier
+verified steps and their reports remain in the aggregate outcome; they are not
+rolled back. Every step receives a fresh description that must match the
+workflow's pinned catalog, including its verification metadata. For admission,
+progress, evidence and cancellation details, see [sequential workflows](agent-workflows.md).
 
 Cancellation closes the frontend bridge and retires the matching Rust
 transport. These are separate events across runtimes. Deferred JavaScript work

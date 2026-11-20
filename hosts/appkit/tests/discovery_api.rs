@@ -36,9 +36,7 @@ fn public_discovery_and_cli_work_without_a_main_thread_gui() {
     assert!(output.stderr.is_empty());
     assert_eq!(
         output.stdout,
-        include_bytes!(
-            "../../../consumer/examples/catalog_agent/fixtures/appkit-semantics-v1.json"
-        )
+        include_bytes!("../../../fixtures/host-semantics/appkit-semantics-v1.json")
     );
     assert_eq!(
         output.stdout,

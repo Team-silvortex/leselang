@@ -6,6 +6,25 @@ Do not add a GUI toolkit, account service, product DTO or persistence policy to
 the language crates. Existing native APIs and tests are the executable contract;
 historical extraction notes do not override current code.
 
+## Source Organization
+
+Use the [repository map](README.md#repository-map) and
+[architecture](docs/architecture.md#repository-organization) to choose the
+owning layer. Shared catalog/source goldens belong in
+[`fixtures/host-semantics/`](fixtures/host-semantics/README.md); application
+declarations remain in `hosts/`, and single-application test data remains beside
+its tests. Preserve golden bytes during a structural move. Update all Rust
+`include_str!` paths, JavaScript fixture URLs and documentation links together.
+
+Keep public package and module entry points stable when moving private code.
+For the JavaScript SDK, verify the actual packed artifact and an external
+Consumer, including declarations and private relative imports. The Tauri build
+must copy the compiled SDK module tree recursively. Edit TypeScript under
+`frontend/src/` and pages under `frontend/public/`; tests live in
+`frontend/tests/`, and `frontend/dist/` is generated. Desktop-only Rust code
+belongs in `hosts/tauri/src/desktop/`; portable host APIs must continue to build
+with `--no-default-features`.
+
 ## Verification
 
 Fetch the pinned dependencies once, then validate the language and consumer
@@ -347,6 +366,25 @@ process. Revocation must fence dispatch, queued delivery and reply acceptance
 without undoing delivered effects. Discovery must not grant approval or query
 an unapproved helper's other windows. Native callback storage must outlive the
 connection and remain confined to the owning thread.
+
+The optional [model provider](docs/model-provider.md) uses an application-owned
+transport and returns declared task data; canonical source and verification
+remain catalog-owned. Keep credentials in the native backend, preserve exact
+catalog integers, and reject malformed or undeclared model output before VM
+execution. Test HTTP errors, bounded responses, cancellation before admission,
+page retirement and late completion without retry or planner fallback. Native
+loopback tests need permission to bind a local socket. A protocol fixture and
+real WebView check do not establish live-model inference; report that distinction
+explicitly. Model integration must preserve the no-desktop build and independent
+Consumers.
+
+For [sequential agent workflows](docs/agent-workflows.md), admit every step before
+executing any, pin the complete lossless catalog including verification metadata,
+and verify each ordinary host session before continuing. Cover invalid later
+steps with zero executions, changed catalogs, failed later verification, and
+cancellation before dispatch, during work and between completed steps. Preserve
+prior reports and possible side effects. Each step retains its own Fuel and
+authority; a workflow is not an atomic transaction and must not silently retry.
 
 ## Build Output And Cleanup
 

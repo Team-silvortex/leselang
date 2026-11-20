@@ -16,9 +16,14 @@
       <section class="card assistant-panel" aria-labelledby="assistant-title">
         <div class="result-heading">
           <h2 id="assistant-title">任务对话</h2>
-          <span class="count">离线参考规划器</span>
+          <span id="provider-label" class="count">正在读取规划器配置…</span>
         </div>
-        <p class="assistant-note">使用下方任务命令，每条指令单独执行，不读取前文。本应用也支持“保存：文本”或“save:文本”。</p>
+        <label for="provider-mode">规划方式</label>
+        <select id="provider-mode">
+          <option value="offline">离线任务命令</option>
+          <option id="model-option" value="model" disabled>模型 · 自然语言</option>
+        </select>
+        <p id="provider-note" class="assistant-note">正在读取宿主的模型配置。</p>
         <ul id="available-tasks" class="assistant-note" aria-label="应用声明的可用任务"></ul>
         <ol id="conversation" class="conversation" aria-label="任务记录" aria-live="polite"></ol>
         <form id="task-form">

@@ -55,7 +55,7 @@ In particular, `submission` is not evidence that the requested application
 state has been reached. A task should follow it with observation and guards.
 
 The descriptions for the reference applications live in
-[`hosts/reference_semantics.rs`](../hosts/reference_semantics.rs), outside the
+[`hosts/shared/semantics.rs`](../hosts/shared/semantics.rs), outside the
 language crates. AppKit, Tauri and Calculator publish them through their JSON
 discovery entry points. The generic JavaScript registered-controls catalog
 does not claim that the reference form's controls or task exist.

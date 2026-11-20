@@ -3,8 +3,8 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { createSemanticProvider } from "../dist/index.js";
 
-const original = await readFile(new URL("../../../consumer/examples/catalog_agent/fixtures/tauri-semantics-v1.json", import.meta.url), "utf8");
-const calculator = await readFile(new URL("../../../consumer/examples/catalog_agent/fixtures/calculator-semantics-v1.json", import.meta.url), "utf8");
+const original = await readFile(new URL("../../../fixtures/host-semantics/tauri-semantics-v1.json", import.meta.url), "utf8");
+const calculator = await readFile(new URL("../../../fixtures/host-semantics/calculator-semantics-v1.json", import.meta.url), "utf8");
 const context = (message, catalog = original) => ({ taskId: 1, message, catalog });
 const signal = () => new AbortController().signal;
 

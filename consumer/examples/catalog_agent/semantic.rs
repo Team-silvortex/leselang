@@ -617,21 +617,24 @@ mod tests {
     fn three_actual_host_semantic_tasks_fit_the_original_typed_compiler_limits() {
         for (catalog, task, result, parameters, effects) in [
             (
-                include_bytes!("fixtures/appkit-semantics-v1.json").as_slice(),
+                include_bytes!("../../../fixtures/host-semantics/appkit-semantics-v1.json")
+                    .as_slice(),
                 "fill_and_save",
                 ScalarType::Boolean,
                 &["text"][..],
                 9,
             ),
             (
-                include_bytes!("fixtures/tauri-semantics-v1.json").as_slice(),
+                include_bytes!("../../../fixtures/host-semantics/tauri-semantics-v1.json")
+                    .as_slice(),
                 "fill_and_save",
                 ScalarType::Boolean,
                 &["text"][..],
                 9,
             ),
             (
-                include_bytes!("fixtures/calculator-semantics-v1.json").as_slice(),
+                include_bytes!("../../../fixtures/host-semantics/calculator-semantics-v1.json")
+                    .as_slice(),
                 "calculate_one_plus_two",
                 ScalarType::String,
                 &[][..],
@@ -642,9 +645,9 @@ mod tests {
             assert!(plan.semantic);
             assert_eq!(plan.expected_effects, effects);
             let golden = if parameters.is_empty() {
-                include_str!("fixtures/calculator-semantics.lese")
+                include_str!("../../../fixtures/host-semantics/calculator-semantics.lese")
             } else {
-                include_str!("fixtures/form-semantics.lese")
+                include_str!("../../../fixtures/host-semantics/form-semantics.lese")
             };
             assert_eq!(plan.source, golden);
             super::super::tests::assert_source_program_types(

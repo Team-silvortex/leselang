@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { prepareSemanticCatalog } from "@leselang/bridge";
 
-const fixture = (name) => readFileSync(new URL(`../../../consumer/examples/catalog_agent/fixtures/${name}`, import.meta.url), "utf8");
+const fixture = (name) => readFileSync(new URL(`../../../fixtures/host-semantics/${name}`, import.meta.url), "utf8");
 const form = fixture("tauri-semantics-v1.json");
 const calculator = fixture("calculator-semantics-v1.json");
 const safeForm = () => JSON.parse(form.replaceAll("9223372036854775807", "4294967295"));

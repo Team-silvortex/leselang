@@ -748,7 +748,7 @@ mod tests {
     use super::*;
     use serde_json::{Value, json};
 
-    const CATALOG: &[u8] = include_bytes!("fixtures/appkit-v1.json");
+    const CATALOG: &[u8] = include_bytes!("../../../fixtures/host-semantics/appkit-v1.json");
 
     fn catalog() -> Value {
         serde_json::from_slice(CATALOG).unwrap()
@@ -1026,7 +1026,7 @@ mod tests {
         tauri["profile"] = json!("tauri.typescript");
         assert_generated_program_types(&bytes(&tauri), ScalarType::Boolean, &["text"]);
         assert_generated_program_types(
-            include_bytes!("fixtures/calculator-v1.json"),
+            include_bytes!("../../../fixtures/host-semantics/calculator-v1.json"),
             ScalarType::String,
             &[],
         );

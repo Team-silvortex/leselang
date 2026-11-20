@@ -219,8 +219,7 @@ fn real_source_crosses_the_wire_and_compares_distinct_local_and_remote_revisions
 
 #[test]
 fn metadata_planned_form_runs_the_real_vm_and_refuses_disabled_input() {
-    let source =
-        include_str!("../../../consumer/examples/catalog_agent/fixtures/form-semantics.lese");
+    let source = include_str!("../../../fixtures/host-semantics/form-semantics.lese");
     let (mut transport, model) = Fake::new();
     let text = "语义 ✓";
     let report = leselang_tauri_host::run(&mut transport, scope(), source, text).unwrap();
@@ -705,8 +704,7 @@ fn renamed_task_arguments_are_literal_and_match_the_legacy_runtime_fuel() {
         assert_eq!(report["effects"], 0);
         assert_eq!(report["native_before"], report["native_after"]);
     }
-    let source =
-        include_str!("../../../consumer/examples/catalog_agent/fixtures/form-semantics.lese");
+    let source = include_str!("../../../fixtures/host-semantics/form-semantics.lese");
     let (mut old_transport, _) = Fake::new();
     let legacy =
         leselang_tauri_host::run(&mut old_transport, scope(), source, "same input ✓").unwrap();
@@ -766,8 +764,7 @@ fn task_source_signature_and_argument_failures_precede_every_transport_request()
 
 #[test]
 fn admitted_tasks_preserve_committed_mutation_when_cancelled_or_given_a_late_reply() {
-    let source =
-        include_str!("../../../consumer/examples/catalog_agent/fixtures/form-semantics.lese");
+    let source = include_str!("../../../fixtures/host-semantics/form-semantics.lese");
     for corruption in [
         Corrupt::Uncertain,
         Corrupt::CloseBeforeReply,
@@ -808,27 +805,21 @@ fn admitted_tasks_preserve_committed_mutation_when_cancelled_or_given_a_late_rep
 fn semantic_provider_sources_cross_the_real_vm_with_renamed_and_no_input_tasks() {
     for (source, arguments, result, effects, writes) in [
         (
-            include_str!(
-                "../../../consumer/examples/catalog_agent/fixtures/tauri-save-message.lese"
-            ),
+            include_str!("../../../fixtures/host-semantics/tauri-save-message.lese"),
             vec![("message".into(), "语义入口 \"✓\" \\\nsecond line".into())],
             json!({"type":"string","value":"saved"}),
             9,
             2,
         ),
         (
-            include_str!(
-                "../../../consumer/examples/catalog_agent/fixtures/tauri-inspect-controls.lese"
-            ),
+            include_str!("../../../fixtures/host-semantics/tauri-inspect-controls.lese"),
             vec![],
             json!({"type":"integer","value":3}),
             3,
             0,
         ),
         (
-            include_str!(
-                "../../../consumer/examples/catalog_agent/fixtures/tauri-check-controls.lese"
-            ),
+            include_str!("../../../fixtures/host-semantics/tauri-check-controls.lese"),
             vec![],
             json!({"type":"none","value":null}),
             3,

@@ -12,6 +12,9 @@
     "allow-agent-start-task",
     "allow-agent-reply",
     "allow-agent-cancel",
-    "allow-agent-closed"
+    "allow-agent-closed",
+    "allow-agent-model-info",
+    "allow-agent-model-complete",
+    "allow-agent-model-cancel"
   ]
 }

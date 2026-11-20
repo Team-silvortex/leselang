@@ -259,9 +259,7 @@ mod tests {
             serde_json::from_str(&crate::describe().unwrap()).unwrap();
         assert_eq!(
             crate::describe().unwrap().as_bytes(),
-            include_bytes!(
-                "../../../consumer/examples/catalog_agent/fixtures/tauri-semantics-v1.json"
-            )
+            include_bytes!("../../../fixtures/host-semantics/tauri-semantics-v1.json")
         );
         let mut registered_json: serde_json::Value =
             serde_json::from_str(&crate::describe_registered().unwrap()).unwrap();
