@@ -1,0 +1,559 @@
+{
+  "schema_version": 1,
+  "cells": [
+    {
+      "id": "runtime/leselang-runtime-core/value-model",
+      "architecture": "runtime",
+      "module": "leselang-runtime-core",
+      "function": "value-model",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Define six bounded scalar types and their wire representations, preserving absent optional strings, empty strings, string lists and unsigned integers.",
+      "dependencies": [],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/value.rs",
+          "anchor": "pub enum ScalarValue {"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-runtime-core/tests/values.rs",
+          "anchor": "fn every_legacy_scalar_wire_is_byte_exact_and_round_trips()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-runtime-core/tests/values.rs",
+          "anchor": "fn list_wire_bounds_share_count_and_utf8_aggregate_budget_without_truncation()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/task_inputs.rs",
+          "anchor": "fn every_scalar_kind_is_supplied_as_data_and_can_reuse_a_compiled_task()"
+        }
+      ],
+      "next_action": "Recheck byte-exact values, oversize payload refusal and all six entry types on encoding changes.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Scalar wire and public input conformance cases.",
+      "acceptance_criteria": [
+        "Accepted wire values round-trip exactly and oversized string lists fail without truncation."
+      ]
+    },
+    {
+      "id": "runtime/leselang-runtime-core/fuel-accounting",
+      "architecture": "runtime",
+      "module": "leselang-runtime-core",
+      "function": "fuel-accounting",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Charge an explicit unsigned budget and retain the remaining amount over host work and resumed execution.",
+      "dependencies": [],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/fuel.rs",
+          "anchor": "pub fn charge(&mut self, cost: u64)"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-runtime-core/tests/fuel.rs",
+          "anchor": "fn rejected_debits_leave_the_original_counter_unchanged()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/native_vm_embedding.rs",
+          "anchor": "fn native_facade_fuel_exhaustion_is_terminal_without_hidden_refill_or_dispatch()"
+        }
+      ],
+      "next_action": "Recheck exact and insufficient debits and session re-entry on any metering change.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Fuel accounting and no-refill Consumer regressions.",
+      "acceptance_criteria": [
+        "A refused debit preserves the original counter and a terminal VM never grants fresh Fuel."
+      ]
+    },
+    {
+      "id": "runtime/leselang-vm/execution-session",
+      "architecture": "runtime",
+      "module": "leselang-vm",
+      "function": "execution-session",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Start admitted HIR on a caller-owned Fuel budget, yield explicit pending requests, accept typed replies and resume only on a later poll.",
+      "dependencies": [
+        "runtime/leselang-runtime-core/fuel-accounting",
+        "semantics/leselang-hir-core/host-effect-typing",
+        "semantics/leselang-hir-core/capture-continuation"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-vm/src/native.rs",
+          "anchor": "pub use leselang_hir::effect_stack_session::StackedControlSession as Vm;"
+        },
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/effect_stack_session.rs",
+          "anchor": "pub struct StackedControlSession"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn two_effects_require_every_explicit_step_and_reuse_the_original_session()"
+        }
+      ],
+      "next_action": "Exercise the two-Effect Consumer and verify each pending-to-ready boundary on lifecycle changes.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "A public Consumer trace with two requests answered on the original session.",
+      "acceptance_criteria": [
+        "Accepting a receipt does not dispatch or execute the tail until the next poll."
+      ]
+    },
+    {
+      "id": "runtime/leselang-vm/local-vm-ownership",
+      "architecture": "runtime",
+      "module": "leselang-vm",
+      "function": "local-vm-ownership",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Opt in to a local owner that revokes leases on close, drop or unwind before cleanup of pending native data.",
+      "dependencies": [
+        "runtime/leselang-vm/execution-session",
+        "runtime/leselang-runtime-core/scope-revocation"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-vm/src/native.rs",
+          "anchor": "pub use leselang_hir::local_effect_session::LocalStackedControlSession as LocalVm;"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/native_vm_embedding.rs",
+          "anchor": "fn native_local_vm_revokes_before_initial_value_cleanup_and_keeps_cancel_sticky_on_unwind()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/native_vm_embedding.rs",
+          "anchor": "fn opt_in_local_vm_does_not_remove_send_from_the_original_generic_vm()"
+        }
+      ],
+      "next_action": "Run drop-order and unwind cases on local lifecycle edits and check the unwrapped VM auto traits.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "LocalVm owner-drop, cancellation and independent generic VM tests.",
+      "acceptance_criteria": [
+        "Local cleanup sees a revoked lease and unwrapped generic VM configurations retain their existing Send behavior."
+      ]
+    },
+    {
+      "id": "runtime/leselang-vm/effect-dispatch",
+      "architecture": "runtime",
+      "module": "leselang-vm",
+      "function": "effect-dispatch",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Dispatch one authorized pending request to its own registered callback under an explicit host step.",
+      "dependencies": [
+        "runtime/leselang-vm/execution-session",
+        "runtime/leselang-runtime-core/authority-validation"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-vm/src/embedding.rs",
+          "anchor": "pub fn dispatch(&mut self, authorized: AuthorizedRequest)"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn dispatch_refuses_an_authorized_request_from_another_session()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn two_effects_require_every_explicit_step_and_reuse_the_original_session()"
+        }
+      ],
+      "next_action": "Drive each request boundary and inject a foreign authorized request when changing dispatch.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "Independent explicit-dispatch and cross-session refusal cases.",
+      "acceptance_criteria": [
+        "Each admitted dispatch reaches one callback and cross-session requests never reach a callback."
+      ]
+    },
+    {
+      "id": "runtime/leselang-runtime-core/reply-validation",
+      "architecture": "runtime",
+      "module": "leselang-runtime-core",
+      "function": "reply-validation",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Correlate a reply to the pending owner and generation and check live authority, type and domain before moving its saved frame.",
+      "dependencies": [
+        "runtime/leselang-runtime-core/value-model",
+        "runtime/leselang-runtime-core/authority-validation"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/reply.rs",
+          "anchor": "pub struct PendingReply"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-runtime-core/tests/reply.rs",
+          "anchor": "fn mismatched_owner_or_generation_never_enters_authority_or_reply_queries()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/native_vm_embedding.rs",
+          "anchor": "fn native_facade_rejected_receipts_retain_owned_buffers_and_original_pending_request()"
+        }
+      ],
+      "next_action": "Exercise identity and domain refusal before any change to reply admission.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Reply validation tests covering wrong identity, live policy and returned native buffers.",
+      "acceptance_criteria": [
+        "An ordinary refusal returns the original receipt and cannot re-enter or replace another pending request."
+      ]
+    },
+    {
+      "id": "runtime/leselang-runtime-core/authority-validation",
+      "architecture": "runtime",
+      "module": "leselang-runtime-core",
+      "function": "authority-validation",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Check current host authority at receipt admission; the public session also rechecks grants before dispatch and re-entry.",
+      "dependencies": [
+        "semantics/leselang-hir-core/host-effect-typing"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/reply.rs",
+          "anchor": "pub trait ReplyAuthority<Identity>"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-runtime-core/tests/reply.rs",
+          "anchor": "fn live_authority_rejection_retains_frame_and_original_typed_error_without_retry()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn revocation_after_authorization_is_rechecked_immediately_before_dispatch()"
+        }
+      ],
+      "next_action": "Revoke grants separately before dispatch, acceptance and re-entry when editing policy checks.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "Live-authority denial cases at the original Effect boundaries.",
+      "acceptance_criteria": [
+        "Revoking authority stops the next affected boundary and does not replay previously committed work."
+      ]
+    },
+    {
+      "id": "runtime/leselang-vm/cancellation",
+      "architecture": "runtime",
+      "module": "leselang-vm",
+      "function": "cancellation",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Terminate an explicitly cancelled session, reject its late receipts and preserve external mutations the host already committed.",
+      "dependencies": [
+        "runtime/leselang-vm/execution-session",
+        "runtime/leselang-runtime-core/scope-revocation"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-vm/src/embedding.rs",
+          "anchor": "pub fn cancel(&mut self) -> bool"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn cancellation_at_each_boundary_retains_only_already_committed_effects()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn cancelled_authorization_never_dispatches_and_late_receipt_retains_committed_value()"
+        }
+      ],
+      "next_action": "Cancel before dispatch, while pending and after acceptance whenever session state changes.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "Consumer cancellation cases with retained committed values and fenced late replies.",
+      "acceptance_criteria": [
+        "Cancelled work never runs its tail and a late reply never rolls back a completed mutation."
+      ]
+    },
+    {
+      "id": "runtime/leselang-runtime-core/scope-revocation",
+      "architecture": "runtime",
+      "module": "leselang-runtime-core",
+      "function": "scope-revocation",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Issue non-owning local execution leases and invalidate every lease from a closed or dropped owner.",
+      "dependencies": [],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/local_execution.rs",
+          "anchor": "pub struct LocalExecutionLease"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-runtime-core/tests/local_execution.rs",
+          "anchor": "fn owner_close_and_drop_permanently_revoke_non_owning_leases()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/local_execution.rs",
+          "anchor": "fn scope_unwind_revokes_before_cleanup_without_poisoning_a_sibling()"
+        }
+      ],
+      "next_action": "Keep live, closed, dropped and sibling lease cases in the local-scope regression suite.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Local execution lease lifetime tests.",
+      "acceptance_criteria": [
+        "All stale leases remain closed and a sibling scope remains independently usable."
+      ]
+    },
+    {
+      "id": "runtime/leselang-vm/continuation-recovery",
+      "architecture": "runtime",
+      "module": "leselang-vm",
+      "function": "continuation-recovery",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Restore an admitted pending continuation against current host identity, policy and original Fuel. Resume on acceptance and polling.",
+      "dependencies": [
+        "semantics/leselang-hir-core/capture-continuation",
+        "runtime/leselang-runtime-core/reply-validation",
+        "runtime/leselang-vm/execution-session"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/effect_stack_session.rs",
+          "anchor": "pub fn restore_pending_final_in_scope"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/captured_reentry.rs",
+          "anchor": "fn mixed_move_only_saved_schema_enters_actual_body_in_wire_order_with_original_meter()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/saved_parallel.rs",
+          "anchor": "fn two_serialized_host_models_restore_every_partial_mask_without_repreparing_or_redispatching()"
+        }
+      ],
+      "next_action": "Run saved capture and parallel-barrier recovery across every accepted-member mask on re-entry changes.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "Pending continuation and partial parallel recovery tests across two host data models.",
+      "acceptance_criteria": [
+        "Re-entry retains the original budget, ordered results and already accepted work without redispatch."
+      ]
+    },
+    {
+      "id": "runtime/leselang-runtime-core/checkpoint-primitives",
+      "architecture": "runtime",
+      "module": "leselang-runtime-core",
+      "function": "checkpoint-primitives",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Stage host-decoded pending and completed records, validate bounded recovery state and require explicit host finalization before publishing a recovered checkpoint.",
+      "dependencies": [
+        "runtime/leselang-runtime-core/reply-validation",
+        "runtime/leselang-runtime-core/fuel-accounting"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/checkpoint.rs",
+          "anchor": "pub struct CheckpointRecovery"
+        },
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/checkpoint.rs",
+          "anchor": "pub trait CheckpointFinalizer"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/checkpoint_recovery.rs",
+          "anchor": "fn consumer_decode_version_duplicate_and_commit_failures_publish_no_partial_snapshot()"
+        }
+      ],
+      "next_action": "Inject bad versions, duplicate rows and commit failures before changing checkpoint finalization.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "Consumer recovery tests for two host-owned record schemes and atomic finalization failures.",
+      "acceptance_criteria": [
+        "A rejected or failed finalization publishes no partial recovered snapshot."
+      ]
+    },
+    {
+      "id": "runtime/leselang-vm/partial-effects",
+      "architecture": "runtime",
+      "module": "leselang-vm",
+      "function": "partial-effects",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Keep previously committed host mutations observable after a later Fuel, callback or result failure and stop further Effects.",
+      "dependencies": [
+        "runtime/leselang-vm/effect-dispatch",
+        "runtime/leselang-runtime-core/reply-validation",
+        "runtime/leselang-vm/cancellation"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-vm/src/embedding.rs",
+          "anchor": "pub fn dispatch(&mut self, authorized: AuthorizedRequest)"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn classified_host_failures_close_the_session_and_preserve_partial_effects_and_fuel()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn fuel_exhaustion_after_the_first_effect_preserves_its_mutation()"
+        }
+      ],
+      "next_action": "Verify external application state and terminal Fuel after failure between two Effects.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "Two-Effect Consumer failure cases with one retained mutation.",
+      "acceptance_criteria": [
+        "Failure after the first commit cannot roll it back, rerun it, or dispatch the remaining Effect."
+      ]
+    },
+    {
+      "id": "runtime/leselang-vm/durable-runtime",
+      "architecture": "runtime",
+      "module": "leselang-vm",
+      "function": "durable-runtime",
+      "lifecycle": "target",
+      "status": "early",
+      "progress": 0,
+      "priority": "deferred",
+      "confidence": "high",
+      "contract": "Target a production runtime that owns persistent sessions, crash settlement and replay decisions across process restarts. Existing primitives work with host-managed persistence.",
+      "dependencies": [
+        "runtime/leselang-runtime-core/checkpoint-primitives",
+        "runtime/leselang-vm/continuation-recovery",
+        "runtime/leselang-vm/partial-effects"
+      ],
+      "blockers": [
+        "A production persistence and replay contract is still open. Host-owned checkpoint tests exercise a narrower boundary."
+      ],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/architecture.md",
+          "anchor": "Persistence format, atomic settlement and crash recovery"
+        },
+        {
+          "kind": "documentation-contract",
+          "path": "docs/provenance/extraction-baseline.md",
+          "anchor": "or a complete durable owning VM,"
+        }
+      ],
+      "next_action": "Define storage ownership, settlement ordering and duplicate-delivery rules for one crash between dispatch and acknowledgement.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "A reviewed crash-boundary contract and a restart fixture with an external effect counter.",
+      "acceptance_criteria": [
+        "The fixture kills and restarts a real process on both sides of the selected commit boundary and verifies the specified observable outcome."
+      ]
+    },
+    {
+      "id": "runtime/leselang-vm/bytecode-execution",
+      "architecture": "runtime",
+      "module": "leselang-vm",
+      "function": "bytecode-execution",
+      "lifecycle": "target",
+      "status": "early",
+      "progress": 0,
+      "priority": "deferred",
+      "confidence": "high",
+      "contract": "Target an instruction representation and interpreter that can preserve HIR results, Fuel boundaries and explicit Effects. The current native VM executes HIR.",
+      "dependencies": [
+        "semantics/leselang-hir-core/compile-limits",
+        "runtime/leselang-vm/execution-session",
+        "runtime/leselang-vm/partial-effects"
+      ],
+      "blockers": [
+        "There is no admitted bytecode format or interpreter. A parity corpus is required to compare a future implementation against HIR."
+      ],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/development-tensor.md",
+          "anchor": "from a durable VM and bytecode execution."
+        },
+        {
+          "kind": "source",
+          "path": "crates/leselang-vm/src/native.rs",
+          "anchor": "pub use leselang_hir::effect_stack_session::StackedControlSession as Vm;"
+        }
+      ],
+      "next_action": "Specify a minimal instruction format and a differential corpus covering arithmetic, suspension, acceptance and exhausted Fuel before proposing an interpreter.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "A proposed instruction contract and HIR-versus-bytecode parity fixture.",
+      "acceptance_criteria": [
+        "The proposed corpus states the expected value, Effect sequence and Fuel cutoff for every reference program."
+      ]
+    }
+  ]
+}

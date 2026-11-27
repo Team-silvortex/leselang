@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "cells": [
+    {
+      "id": "future/shell/sirius-native-shell",
+      "architecture": "future",
+      "module": "shell",
+      "function": "sirius-native-shell",
+      "lifecycle": "target",
+      "status": "early",
+      "progress": 0,
+      "priority": "deferred",
+      "confidence": "low",
+      "contract": "A proposed Sirius shell would expose one scoped command and its verified result.",
+      "dependencies": [
+        "embedding/catalog/host-discovery"
+      ],
+      "blockers": [
+        "A platform owner and an admitted integration contract are required."
+      ],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/development-tensor.md",
+          "anchor": "Sirius Native Shell"
+        }
+      ],
+      "next_action": "Agree with the shell owner on a single safe read command and the local authority boundary.",
+      "validation_command": "sh scripts/check.sh tensor",
+      "expected_artifact": "Versioned shell adapter contract and read-only smoke program.",
+      "acceptance_criteria": [
+        "A shell-owned result matches an independent observation under an explicit grant."
+      ]
+    },
+    {
+      "id": "future/application/ns-nova-integration",
+      "architecture": "future",
+      "module": "application",
+      "function": "ns-nova-integration",
+      "lifecycle": "target",
+      "status": "early",
+      "progress": 0,
+      "priority": "deferred",
+      "confidence": "low",
+      "contract": "A proposed ns-nova adapter would expose an application-owned operation with a typed result.",
+      "dependencies": [
+        "embedding/catalog/operation-catalog"
+      ],
+      "blockers": [
+        "A platform owner and an admitted integration contract are required."
+      ],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/development-tensor.md",
+          "anchor": "ns-nova integration"
+        }
+      ],
+      "next_action": "Identify one application-owned action and document the data and authorization mapping.",
+      "validation_command": "sh scripts/check.sh tensor",
+      "expected_artifact": "Reviewed application contract and interoperability fixture.",
+      "acceptance_criteria": [
+        "The fixture maps typed arguments and verifies the observed application result."
+      ]
+    },
+    {
+      "id": "future/xr/semantic-control",
+      "architecture": "future",
+      "module": "xr",
+      "function": "semantic-control",
+      "lifecycle": "target",
+      "status": "early",
+      "progress": 0,
+      "priority": "deferred",
+      "confidence": "low",
+      "contract": "A proposed XR adapter would resolve a semantic scene object and verify its state after one action.",
+      "dependencies": [
+        "embedding/objects/object-identity"
+      ],
+      "blockers": [
+        "A platform owner and an admitted integration contract are required."
+      ],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/development-tensor.md",
+          "anchor": "XR semantic control"
+        }
+      ],
+      "next_action": "Define scene identity, lifetime, observation and an explicit user-granted action.",
+      "validation_command": "sh scripts/check.sh tensor",
+      "expected_artifact": "Scoped XR object contract and acceptance scenario.",
+      "acceptance_criteria": [
+        "Stale identities fail and an independent observation confirms a successful transition."
+      ]
+    },
+    {
+      "id": "future/resources/system-resource-control",
+      "architecture": "future",
+      "module": "resources",
+      "function": "system-resource-control",
+      "lifecycle": "target",
+      "status": "early",
+      "progress": 0,
+      "priority": "deferred",
+      "confidence": "low",
+      "contract": "A proposed host would expose a bounded system resource operation under explicit ownership.",
+      "dependencies": [
+        "future/authority/system-level-authority"
+      ],
+      "blockers": [
+        "A platform owner and an admitted integration contract are required."
+      ],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/development-tensor.md",
+          "anchor": "System resource control"
+        }
+      ],
+      "next_action": "Name the resource, its owner and the effect boundary before defining a platform adapter.",
+      "validation_command": "sh scripts/check.sh tensor",
+      "expected_artifact": "Resource grant and cancellation fixture.",
+      "acceptance_criteria": [
+        "The fixture verifies resource ownership before and after a denied, cancelled or accepted action."
+      ]
+    },
+    {
+      "id": "future/authority/system-level-authority",
+      "architecture": "future",
+      "module": "authority",
+      "function": "system-level-authority",
+      "lifecycle": "target",
+      "status": "early",
+      "progress": 0,
+      "priority": "deferred",
+      "confidence": "low",
+      "contract": "A proposed system authority model would link a resource grant to an issuer, scope and revocation domain across process boundaries.",
+      "dependencies": [
+        "runtime/leselang-runtime-core/authority-validation"
+      ],
+      "blockers": [
+        "A platform owner and an admitted integration contract are required."
+      ],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/development-tensor.md",
+          "anchor": "System-level authority model"
+        }
+      ],
+      "next_action": "Specify issuer and propagation rules for one revocable resource grant.",
+      "validation_command": "sh scripts/check.sh tensor",
+      "expected_artifact": "System resource authority specification and denial/revocation cases.",
+      "acceptance_criteria": [
+        "A revoked cross-process grant cannot commit an action, with observable evidence at the resource owner."
+      ]
+    }
+  ]
+}

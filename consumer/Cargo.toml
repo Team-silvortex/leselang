@@ -22,6 +22,10 @@ inherits = "dev"
 debug = 0
 incremental = false
 
+[[example]]
+name = "lost_reply_relay"
+path = "tests/support/lost_reply_relay.rs"
+
 [[test]]
 name = "repository_boundary"
 path = "tests/repository_boundary.rs"
@@ -185,6 +189,10 @@ path = "tests/native_host_pipeline.rs"
 [[test]]
 name = "embedding"
 path = "tests/embedding.rs"
+
+[[test]]
+name = "lost_reply"
+path = "tests/lost_reply.rs"
 
 [[test]]
 name = "embedding_diagnostics"

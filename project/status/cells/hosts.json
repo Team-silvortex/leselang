@@ -1,0 +1,815 @@
+{
+  "schema_version": 1,
+  "cells": [
+    {
+      "id": "hosts/cli/stdio-runner",
+      "architecture": "hosts",
+      "module": "cli",
+      "function": "stdio-runner",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The Rust executable describes, formats, checks and runs source with bounded named string input. Only an explicit stdio capability permits std.print.",
+      "dependencies": [
+        "embedding/rust/native-embedding",
+        "embedding/catalog/host-discovery"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-vm/src/bin/leselang/main.rs",
+          "anchor": "fn execute_source("
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-vm/tests/cli.rs",
+          "anchor": "fn entry_without_main_checks_and_runs_two_effects_from_stdin()"
+        }
+      ],
+      "next_action": "Two granted stdout Effects retain order and unauthorized or invalid input fails before the first host write.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "crates/leselang-vm/tests/cli.rs",
+      "acceptance_criteria": [
+        "Two granted stdout Effects retain order and unauthorized or invalid input fails before the first host write."
+      ]
+    },
+    {
+      "id": "hosts/javascript/registered-sdk",
+      "architecture": "hosts",
+      "module": "javascript",
+      "function": "registered-sdk",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The portable JS/TS SDK connects registered application objects to a scoped bridge. Browser imports remain usable without Node, while packaged declarations can be consumed outside the source tree.",
+      "dependencies": [
+        "embedding/objects/observe-act-verify"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/bridge.ts",
+          "anchor": "export class Bridge"
+        },
+        {
+          "kind": "unit-test",
+          "path": "packages/javascript/test/bridge.test.mjs",
+          "anchor": "named application endpoints have isolated scope without a browser requirement"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/package.test.mjs",
+          "anchor": "an external installed Node SDK consumer runs real workflows, partial failure and cancellation"
+        }
+      ],
+      "next_action": "Pack and install the SDK into an external consumer and verify scoped application updates with an actual worker.",
+      "validation_command": "sh scripts/check.sh node-consumer",
+      "expected_artifact": "consumer/javascript/agent/package.test.mjs",
+      "acceptance_criteria": [
+        "Pack and install the SDK into an external consumer and verify scoped application updates with an actual worker."
+      ]
+    },
+    {
+      "id": "hosts/node/worker-transport",
+      "architecture": "hosts",
+      "module": "node",
+      "function": "worker-transport",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The optional Node transport owns one worker child per task, preserves raw typed report bytes and pins protocol, scope and challenge on each reply. Verified completion requires clean child exit.",
+      "dependencies": [
+        "embedding/registered/object-runtime",
+        "hosts/javascript/registered-sdk"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/node/transport.ts",
+          "anchor": "export function createNodeAgentTransport("
+        },
+        {
+          "kind": "unit-test",
+          "path": "packages/javascript/test/node-transport.test.mjs",
+          "anchor": "a fresh Node-owned worker preserves raw integer report bytes and scoped replies"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "The steps used 2 / 9 / 2 / 1 Effects, with 14 native",
+          "date": "2026-11-20",
+          "version": "Node 24.6.0, installed bridge tarball",
+          "platform": "macOS headless Node and real Rust workers"
+        }
+      ],
+      "next_action": "Verify a real installed-worker task and reject a premature reply, mismatched envelope and nonzero exit.",
+      "validation_command": "sh scripts/check.sh node-consumer",
+      "expected_artifact": "packages/javascript/test/node-transport.test.mjs",
+      "acceptance_criteria": [
+        "Verify a real installed-worker task and reject a premature reply, mismatched envelope and nonzero exit."
+      ]
+    },
+    {
+      "id": "hosts/javascript/scalar-operations",
+      "architecture": "hosts",
+      "module": "javascript",
+      "function": "scalar-operations",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Applications declare 1–32 typed operations and retain ownership of commits and grants. The Node v4 worker supports the original javascript.operations profile and opt-in neutral lese.operations identity.",
+      "dependencies": [
+        "hosts/node/worker-transport",
+        "embedding/rust/native-embedding"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/operations/index.ts",
+          "anchor": "export function createOperationRegistry("
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/operations.test.mjs",
+          "anchor": "an incorrect handler result after commit fails the run and retains the application effect"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "remaining. The real v4 worker reported two Effects and 9,988",
+          "date": "2026-11-27",
+          "version": "Node 24.6.0, worker v4",
+          "platform": "macOS arm64, independent headless Node application"
+        }
+      ],
+      "next_action": "Execute a valid two-operation task and show an invalid response stops the tail while retaining the committed write.",
+      "validation_command": "sh scripts/check.sh node-consumer",
+      "expected_artifact": "consumer/javascript/agent/operations.test.mjs",
+      "acceptance_criteria": [
+        "Execute a valid two-operation task and show an invalid response stops the tail while retaining the committed write."
+      ]
+    },
+    {
+      "id": "hosts/dom/control-bindings",
+      "architecture": "hosts",
+      "module": "dom",
+      "function": "control-bindings",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Optional text and button helpers route manual and agent events to the same handlers. Per-invocation identity, commit checks and view disposal fence pending work in application-owned DOM controls.",
+      "dependencies": [
+        "hosts/javascript/registered-sdk"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/dom/controls.ts",
+          "anchor": "export function createDomTextControl("
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/dom.test.mjs",
+          "anchor": "public DOM helpers route EventTarget handlers through a real seventeen-Effect bound workflow"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "with `[2, 12, 2, 1]` Effects. The publication report showed 9016 remaining Fuel.",
+          "date": "2026-11-20",
+          "version": "Article v3 desktop DOM-binding acceptance",
+          "platform": "macOS desktop, Tauri WebView"
+        }
+      ],
+      "next_action": "Check late-event fencing with the EventTarget fixture and retain the separately dated native Article WebView result.",
+      "validation_command": "sh scripts/check.sh node-consumer",
+      "expected_artifact": "consumer/javascript/agent/dom.test.mjs",
+      "acceptance_criteria": [
+        "Check late-event fencing with the EventTarget fixture and retain the separately dated native Article WebView result."
+      ]
+    },
+    {
+      "id": "hosts/dom/dynamic-lifetime",
+      "architecture": "hosts",
+      "module": "dom",
+      "function": "dynamic-lifetime",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Fixed logical slots can mount, replace and retire registered controls. A delayed action cannot commit to a new control that reused a logical slot.",
+      "dependencies": [
+        "hosts/dom/control-bindings"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/agent/registered-application.ts",
+          "anchor": "createDynamicRegisteredApplication"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/dynamic-dom.test.mjs",
+          "anchor": "replacing an awaited DOM fixture handler fences its old commit and the old task"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "contained twelve Effects and 9070 remaining Fuel.",
+          "date": "2026-11-20",
+          "version": "Article v3 remounted-editor acceptance",
+          "platform": "macOS desktop, Tauri WebView"
+        }
+      ],
+      "next_action": "A replacement produces a distinct identity and a retained late handler leaves the replacement unchanged.",
+      "validation_command": "sh scripts/check.sh node-consumer",
+      "expected_artifact": "consumer/javascript/agent/dynamic-dom.test.mjs",
+      "acceptance_criteria": [
+        "A replacement produces a distinct identity and a retained late handler leaves the replacement unchanged."
+      ]
+    },
+    {
+      "id": "hosts/appkit/owned-form",
+      "architecture": "hosts",
+      "module": "appkit",
+      "function": "owned-form",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The macOS-only AppKit reference controls its own NSButton and NSTextField on the main thread. Snapshot and direct native assertions verify submitted actions. Discovery and model checks can run headlessly.",
+      "dependencies": [
+        "embedding/objects/observe-act-verify",
+        "embedding/catalog/host-discovery"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "hosts/appkit/src/self_test.rs",
+          "anchor": "pub fn run() -> Check"
+        },
+        {
+          "kind": "integration-test",
+          "path": "hosts/appkit/tests/discovery_api.rs",
+          "anchor": "fn public_discovery_and_cli_work_without_a_main_thread_gui()"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/appkit.md",
+          "anchor": "On 2026-11-13, the updated main-thread `--self-test` passed all 16 groups,",
+          "date": "2026-11-13",
+          "version": "typed-helper self-test (16 groups, build revision unrecorded)",
+          "platform": "macOS desktop, real AppKit form"
+        }
+      ],
+      "next_action": "Run the portable appkit group after catalog changes and the desktop self-test after native event or identity changes.",
+      "validation_command": "sh scripts/check.sh appkit",
+      "expected_artifact": "docs/acceptance/appkit.md",
+      "acceptance_criteria": [
+        "On a macOS desktop, rerun the main-thread self-test and compare actual text, Save count and untouched Other state; retain a dated receipt."
+      ]
+    },
+    {
+      "id": "hosts/macos-ax/scoped-controls",
+      "architecture": "hosts",
+      "module": "macos-ax",
+      "function": "scoped-controls",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The macOS Accessibility host pins an admitted application process and window, discovers controls and verifies fresh observations. TextEdit, Calculator and Stickies are evidenced desktop profiles; external snapshots can miss an unseen ABA.",
+      "dependencies": [
+        "embedding/objects/observe-act-verify",
+        "embedding/catalog/host-discovery"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "hosts/macos-ax/src/scope.rs",
+          "anchor": "pub enum WindowSelector"
+        },
+        {
+          "kind": "integration-test",
+          "path": "hosts/macos-ax/tests/scope_api.rs",
+          "anchor": "fn stickies_reference_source_refuses_unexpected_initial_content_without_editing()"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/macos-ax.md",
+          "anchor": "Running the external `controls_stickies.lese` source completed six Effects",
+          "date": "2026-11-13",
+          "version": "Stickies, application/window selection acceptance",
+          "platform": "macOS desktop, real Stickies window under explicit Accessibility access"
+        }
+      ],
+      "next_action": "Admit an exact application and window, edit only the intended controls and verify the observed postconditions in a new native snapshot.",
+      "validation_command": "sh scripts/check.sh macos-ax",
+      "expected_artifact": "docs/acceptance/macos-ax.md",
+      "acceptance_criteria": [
+        "Admit an exact application and window, edit only the intended controls and verify the observed postconditions in a new native snapshot."
+      ]
+    },
+    {
+      "id": "hosts/macos-ax/widgets-and-waits",
+      "architecture": "hosts",
+      "module": "macos-ax",
+      "function": "widgets-and-waits",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The scoped widgets profile exposes menus, checked state, list selections and normalized scrolling. Explicit bounded waits re-observe value or state under the original owner and deadline.",
+      "dependencies": [
+        "hosts/macos-ax/scoped-controls"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "hosts/macos-ax/src/widgets.rs",
+          "anchor": "pub fn run_with_state_waits("
+        },
+        {
+          "kind": "integration-test",
+          "path": "hosts/macos-ax/tests/state_wait_api.rs",
+          "anchor": "fn prior_catalogs_reject_all_state_waits_in_active_and_cold_code()"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/macos-ax.md",
+          "anchor": "The exact row became the sole selected item; scrollbar position changed from 0 to 1,000",
+          "date": "2026-11-13",
+          "version": "Finder 27.0",
+          "platform": "macOS 27.0.1 desktop, Accessibility access"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/macos-ax.md",
+          "anchor": "All four typed waits matched their first",
+          "date": "2026-11-13",
+          "version": "Finder 27.0",
+          "platform": "macOS 27.0.1 desktop, Accessibility access"
+        }
+      ],
+      "next_action": "The bounded Finder workflow observes its selected row and scrollbar position and refuses a mismatched or expired wait.",
+      "validation_command": "sh scripts/check.sh macos-ax",
+      "expected_artifact": "hosts/macos-ax/examples/widgets_finder_wait_selection.lese",
+      "acceptance_criteria": [
+        "The bounded Finder workflow observes its selected row and scrollbar position and refuses a mismatched or expired wait."
+      ]
+    },
+    {
+      "id": "hosts/macos-ax/auxiliary-process-grants",
+      "architecture": "hosts",
+      "module": "macos-ax",
+      "function": "auxiliary-process-grants",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "An explicitly approved auxiliary PID, process start identity and executable may serve a panel under the selected window. Revoke at dispatch, delivery or acceptance to fence further work.",
+      "dependencies": [
+        "hosts/macos-ax/widgets-and-waits"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "hosts/macos-ax/src/scope.rs",
+          "anchor": "pub struct AuxiliaryGrant"
+        },
+        {
+          "kind": "integration-test",
+          "path": "hosts/macos-ax/tests/auxiliary_api.rs",
+          "anchor": "fn auxiliary_revocation_blocks_dispatch_queued_delivery_and_accept_without_undoing_effects()"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/macos-ax.md",
+          "anchor": "Running the repository's `widgets_preview_panel.lese` completed six Effects",
+          "date": "2026-11-13",
+          "version": "Preview 11.0",
+          "platform": "macOS 27.0.1 desktop, Accessibility access"
+        }
+      ],
+      "next_action": "The approved Preview export panel is observable and actionable; revoked or unmatched helper identity blocks subsequent access.",
+      "validation_command": "sh scripts/check.sh macos-ax",
+      "expected_artifact": "hosts/macos-ax/examples/widgets_preview_panel.lese",
+      "acceptance_criteria": [
+        "The approved Preview export panel is observable and actionable; revoked or unmatched helper identity blocks subsequent access."
+      ]
+    },
+    {
+      "id": "hosts/tauri/registered-webview",
+      "architecture": "hosts",
+      "module": "tauri",
+      "function": "registered-webview",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The reference Tauri application links the Rust VM to registered JS objects in its own WebView. The form, task board and multi-input article share the conversation entry with separate catalogs and independent application verification.",
+      "dependencies": [
+        "embedding/registered/object-runtime",
+        "hosts/javascript/registered-sdk"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "hosts/tauri/src/desktop/mod.rs",
+          "anchor": "pub(super) use agent::launch_article as launch_agent_article;"
+        },
+        {
+          "kind": "integration-test",
+          "path": "hosts/tauri/tests/registered_compatibility.rs",
+          "anchor": "fn historical_and_registered_exports_share_types_and_vm_execution()"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "displayed publication report used twelve Effects and 9207 remaining Fuel,",
+          "date": "2026-11-20",
+          "version": "semantic v3 Article desktop acceptance",
+          "platform": "macOS desktop, Tauri WebView"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "Review count became one and its button disabled; archive stayed pending with count zero.",
+          "date": "2026-11-20",
+          "version": "semantic v2 Task Board desktop acceptance",
+          "platform": "macOS desktop, Tauri WebView"
+        }
+      ],
+      "next_action": "Exercise the native macOS WebView for named article input and compare the displayed publication and counts with the verified result.",
+      "validation_command": "sh scripts/check.sh tauri-desktop",
+      "expected_artifact": "docs/acceptance/agents.md",
+      "acceptance_criteria": [
+        "Exercise the native macOS WebView for named article input and compare the displayed publication and counts with the verified result."
+      ]
+    },
+    {
+      "id": "hosts/dotnet/scalar-operations",
+      "architecture": "hosts",
+      "module": "dotnet",
+      "function": "scalar-operations",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The .NET 10 operation host uses lese.operations, one Rust worker per run, six bounded scalar types, live commit checks and typed completion. A project reference is the supported packaging shown here.",
+      "dependencies": [
+        "embedding/rust/native-embedding"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/dotnet/OperationHost.cs",
+          "anchor": "public sealed class OperationHost"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/dotnet/Program.cs",
+          "anchor": "async Task CheckAwaitedWrite(bool cancel)"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "including the exact final integer, two Effects and 9,994 Fuel remaining.",
+          "date": "2026-11-27",
+          "version": ".NET SDK 10.0.201, worker v4",
+          "platform": "macOS arm64, independent C# console application"
+        },
+        {
+          "kind": "ci-receipt",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "45986249213/job/140462507900",
+          "date": "2026-11-27",
+          "version": "34502cb3a9b621f55f760426b28af1673487f9e4",
+          "platform": "Ubuntu hosted runner, native Rust worker and C# console Consumer"
+        },
+        {
+          "kind": "ci-receipt",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "45986249213/job/140462508054",
+          "date": "2026-11-27",
+          "version": "34502cb3a9b621f55f760426b28af1673487f9e4",
+          "platform": "macOS hosted runner, native Rust worker and C# console Consumer"
+        }
+      ],
+      "next_action": "The C# application verifies a two-Effect meter run, six scalar types and fences cancellation/revocation even while a handler awaits work.",
+      "validation_command": "sh scripts/check.sh dotnet-consumer",
+      "expected_artifact": "consumer/dotnet/Program.cs",
+      "acceptance_criteria": [
+        "The C# application verifies a two-Effect meter run, six scalar types and fences cancellation/revocation even while a handler awaits work."
+      ]
+    },
+    {
+      "id": "hosts/dotnet/windows-worker",
+      "architecture": "hosts",
+      "module": "dotnet",
+      "function": "windows-worker",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The native Windows x64 worker supports challenge generation and scoped child replies for the C# console Consumer. The dated Windows Server run builds an MSVC worker and launches both native executables.",
+      "dependencies": [
+        "hosts/dotnet/scalar-operations"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "hosts/registered/src/worker/json_lines.rs",
+          "anchor": "fn BCryptGenRandom("
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/dotnet/ProtocolChecks.cs",
+          "anchor": "public static async Task RunAsync()"
+        },
+        {
+          "kind": "ci-receipt",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "45986249213/job/140462507890",
+          "date": "2026-11-27",
+          "version": "34502cb3a9b621f55f760426b28af1673487f9e4",
+          "platform": "Windows Server 2022 Datacenter x64 build 20348; Rust 1.98.0 MSVC and .NET 10.0.15"
+        }
+      ],
+      "next_action": "Run on Windows x64, verify fresh challenges, stale reply rejection, the exact two-Effect result and retained post-write failure effects.",
+      "validation_command": "sh scripts/check.sh dotnet-consumer",
+      "expected_artifact": "consumer/dotnet/Program.cs",
+      "acceptance_criteria": [
+        "Run on Windows x64, verify fresh challenges, stale reply rejection, the exact two-Effect result and retained post-write failure effects."
+      ]
+    },
+    {
+      "id": "hosts/consumers/independent-applications",
+      "architecture": "hosts",
+      "module": "consumers",
+      "function": "independent-applications",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "External Rust, Node and C# applications consume their public host entry points. The Rust workspace has isolated dependency checks, Node verifies an installed tarball, and the C# app runs as a distinct executable.",
+      "dependencies": [
+        "embedding/rust/native-embedding",
+        "hosts/javascript/scalar-operations",
+        "hosts/dotnet/scalar-operations"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "consumer/dotnet/Meter.cs",
+          "anchor": "class Meter"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/repository_boundary.rs",
+          "anchor": "fn language_consumer_and_gui_hosts_remain_separate_mit_and_repository_local()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/package.test.mjs",
+          "anchor": "an external installed Node SDK consumer runs real workflows, partial failure and cancellation"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/dotnet/Program.cs",
+          "anchor": "var report = await host.ExecuteAsync("
+        }
+      ],
+      "next_action": "Each independent application constructs its own host and checks an observable operation through the public API.",
+      "validation_command": "sh scripts/check.sh consumer && sh scripts/check.sh node-consumer && sh scripts/check.sh dotnet-consumer",
+      "expected_artifact": "consumer/dotnet/Program.cs",
+      "acceptance_criteria": [
+        "Each independent application constructs its own host and checks an observable operation through the public API."
+      ]
+    },
+    {
+      "id": "hosts/conformance/shared-programs",
+      "architecture": "hosts",
+      "module": "conformance",
+      "function": "shared-programs",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Rust, Node and C# execute identical meter and exact-list-selection source against their own handlers. The meter vector fixes the precise integer result, accepted Effect count and remaining Fuel.",
+      "dependencies": [
+        "hosts/consumers/independent-applications"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "compatibility-fixture",
+          "path": "fixtures/application-operations/two-effects.json",
+          "anchor": "\"fuel_remaining\": 9994"
+        },
+        {
+          "kind": "compatibility-fixture",
+          "path": "fixtures/application-operations/list-membership.json",
+          "anchor": "contains(left: options, right: wanted)"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn rust_meter_matches_the_js_and_dotnet_operation_fixture()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/operations-conformance.test.mjs",
+          "anchor": "the Node meter matches the Rust and .NET operation fixture"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/dotnet/Program.cs",
+          "anchor": "async Task CheckFilterSelection()"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "On macOS arm64, independent Rust, Node and C# Consumers ran the same",
+          "date": "2026-11-27",
+          "version": "bounded exact-list-membership acceptance",
+          "platform": "macOS arm64, embedded Rust and independent Node/.NET worker applications"
+        }
+      ],
+      "next_action": "The meter returns 9007199254740993 after two Effects with 9994 Fuel; all five list vectors agree on reads and actual selections.",
+      "validation_command": "sh scripts/check.sh consumer && sh scripts/check.sh node-consumer && sh scripts/check.sh dotnet-consumer",
+      "expected_artifact": "fixtures/application-operations/two-effects.json",
+      "acceptance_criteria": [
+        "The meter returns 9007199254740993 after two Effects with 9994 Fuel; all five list vectors agree on reads and actual selections."
+      ]
+    },
+    {
+      "id": "hosts/conformance/shared-failure-vectors",
+      "architecture": "hosts",
+      "module": "conformance",
+      "function": "shared-failure-vectors",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Rust, Node and C# run the same meter program with a missing write grant or a wrong-typed reply after a commit. Each verifies failure, callback counts, committed writes and the final integer balance.",
+      "dependencies": [
+        "hosts/conformance/shared-programs"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "compatibility-fixture",
+          "path": "fixtures/application-operations/failure-vectors.json",
+          "anchor": "\"id\": \"post-write-invalid-result\""
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn meter_failure_vectors_match_the_node_and_dotnet_consumers()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/operations-conformance.test.mjs",
+          "anchor": "the Node meter matches the shared operation failure vectors"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/dotnet/Program.cs",
+          "anchor": "async Task CheckSharedFailureVectors()"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "All three observations matched each other and the fixture field for field.",
+          "date": "2026-11-27",
+          "version": "failure-vectors.json SHA-256 4c52d3fa08075c329e9466e55f2ff5b928e6d98b5e224f2b97f732f33e7278d4, worker v4",
+          "platform": "macOS 27.0.1 arm64, Rust 1.98.0, Node 24.6.0, .NET 10.0.5"
+        }
+      ],
+      "next_action": "Rerun all three Consumers when changing grants, reply validation or commit handling. Compare the observed failure rows with the shared fixture.",
+      "validation_command": "sh scripts/check.sh consumer && sh scripts/check.sh node-consumer && sh scripts/check.sh dotnet-consumer",
+      "expected_artifact": "fixtures/application-operations/failure-vectors.json",
+      "acceptance_criteria": [
+        "All three Consumers load the same named source, missing-grant case and post-write-invalid-result case from one checked-in fixture.",
+        "On missing authority, each harness records zero callbacks, zero writes and no successful completion.",
+        "On an invalid result after the write, each harness records exactly one committed write, no later read and no successful completion; check state without parsing host-specific error prose."
+      ]
+    },
+    {
+      "id": "hosts/conformance/write-reconciliation",
+      "architecture": "hosts",
+      "module": "conformance",
+      "function": "write-reconciliation",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "While the application stays alive, three independent Consumers reconcile an interrupted write by its business key. For a host operation offering same-key replay, a new session can resubmit a settled write and recover its receipt with one total commit.",
+      "dependencies": ["hosts/conformance/shared-failure-vectors"],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "compatibility-fixture",
+          "path": "fixtures/application-operations/lost-reply.json",
+          "anchor": "\"id\": \"reply-lost\""
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/lost_reply.rs",
+          "anchor": "fn reconcile_a_lost_write_reply_by_key_before_considering_replay()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/lost-reply.test.mjs",
+          "anchor": "Node reconciles a lost worker reply with a read-only receipt lookup"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/dotnet/LostReplyChecks.cs",
+          "anchor": "class LostReplyChecks"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "losing a write request or its successful reply",
+          "date": "2026-11-27",
+          "version": "lost-reply.json SHA-256 528bb63246c6bd713a02da42ed31bab87319905b0d4950c5e94be7861eb83bf8, worker v4",
+          "platform": "macOS 27.0.1 arm64, Rust 1.98.0, Node 24.6.0, .NET 10.0.5"
+        },
+        {
+          "kind": "compatibility-fixture",
+          "path": "fixtures/application-operations/lost-reply.json",
+          "anchor": "\"idempotent_source\":"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/lost_reply.rs",
+          "anchor": "fn same_key_retry_after_either_cut_returns_the_original_receipt_and_commits_once()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/lost-reply.test.mjs",
+          "anchor": "Node retries a settled write once per business key after either cut"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/dotnet/LostReplyChecks.cs",
+          "anchor": "private static async Task CheckIdempotentRetry("
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "same-key retry after an interrupted write",
+          "date": "2026-11-27",
+          "version": "lost-reply.json SHA-256 113349da6422d9937e309db06976a3f37f6bd35ceaf26807a28d7eb9c2ecb2e3, worker v4",
+          "platform": "macOS 27.0.1 arm64, Rust 1.98.0, Node 24.6.0, .NET 10.0.5"
+        }
+      ],
+      "next_action": "Rerun all three Consumers when changing receipt storage, reply delivery or session re-entry. Compare commit counts and returned receipts for the original and second keys with the fixture.",
+      "validation_command": "sh scripts/check.sh consumer && sh scripts/check.sh node-consumer && sh scripts/check.sh dotnet-consumer",
+      "expected_artifact": "fixtures/application-operations/lost-reply.json",
+      "acceptance_criteria": [
+        "Across both cuts, the first run produces no result or tail read. A fresh lookup-only session finds the submitted key exactly when the write committed and misses an unrelated key.",
+        "Blind replay of the ordinary committed write increments the balance twice across two sessions.",
+        "For an operation offering same-key replay, resubmission after either cut yields the receipt for one increment and exactly one committed write in each Consumer."
+      ]
+    }
+  ]
+}

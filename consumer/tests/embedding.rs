@@ -17,6 +17,270 @@ fn main() = bind(first: increment(n: 19), body: increment(n: add(left: first, ri
 const ONE_EFFECT: &str = "fn main() = counter.add(amount: 19)";
 
 #[test]
+fn meter_failure_vectors_match_the_node_and_dotnet_consumers() {
+    use leselang_hir::effect_session::EffectSessionReplyError;
+    use leselang_runtime_core::{HostResultError, ReplyAcceptanceError};
+    use leselang_vm::embedding::diagnostics::{self, DiagnosticKind};
+
+    #[derive(serde::Deserialize)]
+    struct Fixture {
+        source: String,
+        entry: String,
+        initial_balance: String,
+        cases: Vec<Case>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Case {
+        id: String,
+        grants: Vec<String>,
+        write_reply: WriteReply,
+        expected: serde_json::Value,
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    enum WriteReply {
+        Balance,
+        String,
+    }
+
+    let fixture: Fixture = serde_json::from_str(include_str!(
+        "../../fixtures/application-operations/failure-vectors.json"
+    ))
+    .unwrap();
+    let mut names: Vec<_> = fixture.cases.iter().map(|c| c.id.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["missing-grant", "post-write-invalid-result"]);
+
+    for case in &fixture.cases {
+        let balance = Cell::new(fixture.initial_balance.parse::<u64>().unwrap());
+        let add_calls = Cell::new(0);
+        let committed_writes = Cell::new(0);
+        let read_calls = Cell::new(0);
+        let mut builder = HostBuilder::new();
+        builder
+            .register(
+                "meter.add",
+                vec![parameter("amount", ScalarType::Integer)],
+                ScalarType::Integer,
+                "meter.write",
+                |args, _| {
+                    add_calls.set(add_calls.get() + 1);
+                    balance.set(balance.get().checked_add(integer(args, "amount")).unwrap());
+                    committed_writes.set(committed_writes.get() + 1);
+                    Ok(match case.write_reply {
+                        WriteReply::Balance => ScalarValue::Integer(balance.get()),
+                        WriteReply::String => ScalarValue::String("wrong type".into()),
+                    })
+                },
+            )
+            .unwrap();
+        builder
+            .register(
+                "meter.read",
+                vec![],
+                ScalarType::Integer,
+                "meter.read",
+                |_, _| {
+                    read_calls.set(read_calls.get() + 1);
+                    Ok(ScalarValue::Integer(balance.get()))
+                },
+            )
+            .unwrap();
+        let host = builder.build();
+        let grants: Vec<_> = case.grants.iter().map(String::as_str).collect();
+        let compiled = host.compile_task(&fixture.source, &fixture.entry, &grants);
+        match (case.id.as_str(), compiled) {
+            ("missing-grant", Err(error)) => {
+                let notes = diagnostics::compile(&error);
+                assert_eq!(notes.len(), 1);
+                assert_eq!(notes[0].kind, DiagnosticKind::CapabilityDenied);
+            }
+            ("post-write-invalid-result", Ok(program)) => {
+                let mut session = host.start(&program, &grants, Fuel::new(10_000)).unwrap();
+                let work = request(session.poll().unwrap());
+                assert_eq!(work.operation(), "meter.add");
+                let authorized = session.authorize(work).unwrap();
+                let reply = session.dispatch(authorized).unwrap();
+                let rejected = session.accept(reply).unwrap_err();
+                assert!(matches!(rejected.input.value(), ScalarValue::String(_)));
+                assert!(matches!(
+                    rejected.error,
+                    Error::Acceptance(reason) if matches!(*reason,
+                        EffectSessionReplyError::Reply(ReplyAcceptanceError::Result(HostResultError::TypeMismatch)))
+                ));
+                // Rust returns the rejected receipt and keeps the request pending.
+                assert!(matches!(session.poll().unwrap(), Poll::Awaiting));
+                assert!(session.cancel());
+                assert!(matches!(
+                    session.poll().unwrap(),
+                    Poll::Terminal(EffectSessionEnd::Cancelled)
+                ));
+            }
+            (_, Err(error)) => panic!("unexpected compilation failure for {}: {error}", case.id),
+            (_, Ok(_)) => panic!("expected compilation refusal for {}", case.id),
+        }
+        let observed = serde_json::json!({
+            "outcome": "failed",
+            "add_calls": add_calls.get(),
+            "read_calls": read_calls.get(),
+            "committed_writes": committed_writes.get(),
+            "balance": balance.get().to_string()
+        });
+        assert_eq!(observed, case.expected, "{}", case.id);
+        println!("Shared failure {}: {observed}", case.id);
+    }
+}
+
+#[test]
+fn rust_meter_matches_the_js_and_dotnet_operation_fixture() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../fixtures/application-operations/two-effects.json"
+    ))
+    .unwrap();
+    let balance = Cell::new(9_007_199_254_740_992_u64);
+    let mut builder = HostBuilder::new();
+    for op in fixture["operations"].as_array().unwrap() {
+        let name = op["name"].as_str().unwrap();
+        let parameters = op["parameters"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(key, ty)| parameter(key, serde_json::from_value(ty.clone()).unwrap()))
+            .collect();
+        let balance = &balance;
+        builder
+            .register(
+                name,
+                parameters,
+                serde_json::from_value(op["result"].clone()).unwrap(),
+                op["capability"].as_str().unwrap(),
+                move |args, fuel| {
+                    fuel.charge(1)
+                        .map_err(|_| HostFailure::Failed("no fuel".into()))?;
+                    match name {
+                        "meter.add" => {
+                            balance.set(balance.get().checked_add(integer(args, "amount")).unwrap())
+                        }
+                        "meter.read" => {}
+                        _ => panic!("unknown fixture operation"),
+                    }
+                    Ok(ScalarValue::Integer(balance.get()))
+                },
+            )
+            .unwrap();
+    }
+    let host = builder.build();
+    let grants: Vec<_> = fixture["grants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    let program = host
+        .compile_task(fixture["source"].as_str().unwrap(), "main", &grants)
+        .unwrap();
+    let mut session = host.start(&program, &grants, Fuel::new(10_000)).unwrap();
+    let mut effects = 0;
+    loop {
+        match session.poll().unwrap() {
+            Poll::Request(request) => {
+                let authorized = session.authorize(request).unwrap();
+                let receipt = session.dispatch(authorized).unwrap();
+                session.accept(receipt).unwrap();
+                effects += 1;
+            }
+            Poll::Value(ScalarValue::Integer(value)) => {
+                assert_eq!(balance.get(), value);
+                assert_eq!(
+                    serde_json::json!({
+                        "result": {"type": "integer", "value": value.to_string()},
+                        "effects": effects, "fuel_remaining": session.fuel_remaining()
+                    }),
+                    fixture["expected"]
+                );
+                break;
+            }
+            _ => panic!("incomplete meter run"),
+        }
+    }
+}
+
+#[test]
+fn select_only_an_exact_filter_returned_by_the_host() {
+    #[derive(serde::Deserialize)]
+    struct Fixture {
+        source: String,
+        cases: Vec<Case>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Case {
+        options: Vec<String>,
+        wanted: String,
+        matched: bool,
+    }
+    let fixture: Fixture = serde_json::from_str(include_str!(
+        "../../fixtures/application-operations/list-membership.json"
+    ))
+    .unwrap();
+    let grants = ["filters.read", "filters.write"];
+    for case in fixture.cases {
+        let reads = Cell::new(0);
+        let selections = std::cell::RefCell::new(Vec::new());
+        let mut builder = HostBuilder::new();
+        builder
+            .register(
+                "filters.available",
+                vec![],
+                ScalarType::StringList,
+                "filters.read",
+                |_, _| {
+                    reads.set(reads.get() + 1);
+                    Ok(ScalarValue::StringList(
+                        leselang_runtime_core::StringListValue(case.options.clone()),
+                    ))
+                },
+            )
+            .unwrap();
+        builder
+            .register(
+                "filters.select",
+                vec![parameter("value", ScalarType::String)],
+                ScalarType::Boolean,
+                "filters.write",
+                |args, _| {
+                    let Some(ScalarValue::String(value)) = args.get("value") else {
+                        panic!("expected a filter value")
+                    };
+                    selections.borrow_mut().push(value.clone());
+                    Ok(ScalarValue::Boolean(true))
+                },
+            )
+            .unwrap();
+        let host = builder.build();
+        let program = host.compile_task(&fixture.source, "main", &grants).unwrap();
+        let input = vec![("wanted".into(), ScalarValue::String(case.wanted.clone()))];
+        let mut session = host
+            .start_with_arguments(&program, input, &grants, Fuel::new(100))
+            .unwrap();
+        let result = loop {
+            match session.poll().unwrap() {
+                Poll::Request(request) => {
+                    let authorized = session.authorize(request).unwrap();
+                    let reply = session.dispatch(authorized).unwrap();
+                    session.accept(reply).unwrap();
+                }
+                Poll::Value(value) => break value,
+                _ => panic!("incomplete filter selection"),
+            }
+        };
+        assert_eq!(result, ScalarValue::Boolean(case.matched));
+        assert_eq!(reads.get(), 1);
+        let expected: Vec<_> = case.matched.then_some(case.wanted).into_iter().collect();
+        assert_eq!(*selections.borrow(), expected);
+    }
+}
+
+#[test]
 fn host_discovery_uses_the_registered_contract_without_granting_or_invoking_operations() {
     let calls = Cell::new(0);
     let mut builder = HostBuilder::new();

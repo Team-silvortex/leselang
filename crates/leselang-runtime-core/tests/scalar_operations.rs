@@ -188,7 +188,8 @@ fn binary_signatures_and_execution_agree_for_every_scalar_type_pair() {
                     (Concat, (String, String))
                     | (ValueOr, (OptionalString, String))
                     | (Join, (StringList, String)) => Some(String),
-                    (Contains | StartsWith | EndsWith, (String, String)) => Some(Boolean),
+                    (Contains, (String | StringList, String))
+                    | (StartsWith | EndsWith, (String, String)) => Some(Boolean),
                     (CharAt, (String, Integer)) | (ItemAt, (StringList, Integer)) => {
                         Some(OptionalString)
                     }
@@ -327,6 +328,50 @@ fn text_inspection_uses_exact_case_and_unicode_scalar_indices() {
         assert_eq!(
             apply_binary(operator, text(source), text(needle)),
             Ok(ScalarValue::Boolean(expected))
+        );
+    }
+}
+
+#[test]
+fn list_contains_compares_whole_strings_and_validates_both_operands() {
+    use BinaryOperator::Contains;
+
+    let entries = ["saved", "save", "", "save", "e\u{301}"];
+    for (items, needle, expected) in [
+        (entries.as_slice(), "saved", true),
+        (&entries, "sav", false),
+        (&entries, "Save", false),
+        (&entries, "save", true),
+        (&entries, "e\u{301}", true),
+        (&entries, "é", false),
+        (&entries, "", true),
+        (&["a"][..], "", false),
+        (&[][..], "", false),
+    ] {
+        assert_eq!(
+            apply_binary(Contains, list(items), text(needle)),
+            Ok(ScalarValue::Boolean(expected))
+        );
+    }
+
+    let maximum = "x".repeat(4096);
+    assert_eq!(
+        apply_binary(Contains, list(&[&maximum]), text(&maximum)),
+        Ok(ScalarValue::Boolean(true))
+    );
+    let at_limit = [""; 64];
+    assert_eq!(
+        apply_binary(Contains, list(&at_limit), text("")),
+        Ok(ScalarValue::Boolean(true))
+    );
+    for (items, needle) in [
+        (list(&[""; 65]), text("")),
+        (list(&["x", &maximum]), text("x")),
+        (list(&[]), text(&"x".repeat(4097))),
+    ] {
+        assert_eq!(
+            apply_binary(Contains, items, needle),
+            Err(ScalarError::UnboundedOperand)
         );
     }
 }

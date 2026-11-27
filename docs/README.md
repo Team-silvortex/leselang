@@ -6,11 +6,17 @@ application evidence; they are separate from setup instructions.
 
 ## Start Here
 
+Use [project status](../STATUS.md) for current capability state, the
+[tensor protocol](development-tensor.md) for evidence and scoring rules, and the
+[development mainline](development-mainline.md) for a runnable task card.
+
 | Goal | Recommended route |
 | --- | --- |
 | Write and run LeseLang | [Language and CLI](language.md) → [examples](../examples) |
 | Embed the compiler and VM in Rust | [Rust embedding](embedding.md) → [host protocol](host-protocol.md) for native objects |
 | Expose a JS/TS application's objects | [JavaScript SDK](javascript-sdk.md) → [independent Node consumer](../consumer/README.md) or [Tauri host](typescript-host.md) |
+| Give an agent typed application commands and verify their effects | [JS/TS application operations](application-operations.md) → [stock Consumer](../consumer/javascript/agent/operations.mjs) |
+| Connect a C# application to the VM | [.NET host](dotnet-host.md) → [independent C# Consumer](../consumer/dotnet/) |
 | Add an application-owned agent | [Agent entry](agent-entry.md) → [registered application host](registered-agent-host.md) → [JS sequential workflows](agent-workflows.md) → optional [model provider](model-provider.md) |
 | Implement a GUI or CLI adapter | [Host protocol](host-protocol.md) → [catalog discovery](host-discovery.md) → [host semantics](host-semantics.md) → [reference hosts](../hosts/README.md) |
 | Contribute to the repository | [Architecture](architecture.md) → [contributing](../CONTRIBUTING.md) → [check groups](../scripts/README.md) and [regression requirements](testing.md) |

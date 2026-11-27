@@ -33,6 +33,8 @@ test("packed public ESM and declarations work in an external JavaScript/TypeScri
       "dist/dom/index.d.ts", "dist/dom/index.js", "dist/dom/controls.d.ts", "dist/dom/controls.js",
       "dist/verification.d.ts", "dist/verification.js",
       "dist/node/index.d.ts", "dist/node/index.js", "dist/node/transport.d.ts", "dist/node/transport.js",
+      "dist/node/operation-host.d.ts", "dist/node/operation-host.js",
+      "dist/operations/index.d.ts", "dist/operations/index.js",
       "dist/providers/model.d.ts", "dist/providers/model.js", "dist/providers/semantic.d.ts", "dist/providers/semantic.js",
       "dist/semantics/catalog.d.ts", "dist/semantics/catalog.js", "dist/semantics/index.d.ts", "dist/semantics/index.js",
       "dist/semantics/authoring.d.ts", "dist/semantics/authoring.js", "dist/semantics/declarations.d.ts", "dist/semantics/declarations.js",
@@ -290,7 +292,8 @@ import { Bridge, AgentSession, type Scope, type Adapter, type ActionContext, typ
   createRegisteredAgentHost, createRegisteredApplication, createDynamicRegisteredApplication, type RegisteredApplication, type DynamicRegisteredApplication,
   type RegisteredControl, type RegisteredActionContext, type RegisteredApplicationConnection, type RegisteredAgentTransport,
   type RegisteredAgentRun, type RegisteredAgentEndpoint, type RegisteredAgentHostOptions, type RegisteredAgentHost } from "@leselang/bridge";
-import { createNodeAgentTransport, type NodeAgentTransportOptions } from "@leselang/bridge/node";
+import { createNodeAgentTransport, createNodeOperationHost, type NodeAgentTransportOptions, type NodeOperationHostOptions } from "@leselang/bridge/node";
+import type { OperationRegistry } from "@leselang/bridge/operations";
 import { defineSemanticCatalog, defineRegisteredTask, defineRegisteredTaskV3, type RegisteredTaskDefinition, type RegisteredTaskDefinitionV3, type RegisteredTaskStep,
   type SemanticDescription, type SemanticDescriptionV1, type SemanticDescriptionV2, type SemanticDescriptionV3,
   type SemanticTaskDescriptionV1, type SemanticTaskDescriptionV2, type SemanticLiteral,
@@ -381,6 +384,19 @@ const nodeOptions: NodeAgentTransportOptions = {
 };
 const nodeTransport: RegisteredAgentTransport = createNodeAgentTransport(nodeOptions);
 void nodeTransport;
+declare const registry: OperationRegistry;
+const operationOptions = { executable: "/trusted/worker", registry, grants: () => [] };
+createNodeOperationHost({ ...operationOptions, verify({ report }) {
+  const profile: "javascript.operations" = report.profile;
+  return !!profile;
+} });
+const neutralOptions: NodeOperationHostOptions = { ...operationOptions, profile: "lese.operations", verify({ report }) {
+  const profile: "lese.operations" = report.profile;
+  return !!profile;
+} };
+createNodeOperationHost(neutralOptions);
+// @ts-expect-error the worker supports only the two declared operation profiles
+createNodeOperationHost({ ...operationOptions, profile: "other.operations", verify: () => true });
 // @ts-expect-error the catalog callback must return raw JSON synchronously
 const asyncNodeOptions: NodeAgentTransportOptions = { executable: "/trusted/agent_worker", catalog: async () => "{}" };
 // @ts-expect-error execution reports require the explicit supported dialect

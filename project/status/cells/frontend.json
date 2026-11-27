@@ -1,0 +1,340 @@
+{
+  "schema_version": 1,
+  "cells": [
+    {
+      "id": "frontend/leselang-syntax/lexer",
+      "architecture": "frontend",
+      "module": "leselang-syntax",
+      "function": "lexer",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Tokenize bounded UTF-8 source into ordered tokens, including comments, whitespace and a terminal EOF.",
+      "dependencies": [
+        "frontend/leselang-syntax/source-span",
+        "frontend/leselang-syntax/source-bounds"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn lex(source: &str)"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn parser_retains_trivia_and_reconstructs_source()"
+        }
+      ],
+      "next_action": "Run the lossless token reconstruction cases after changing token recognition.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "A reconstructed source string identical to the original token input.",
+      "acceptance_criteria": [
+        "For a source containing comments and whitespace, concatenating token slices reproduces the original bytes."
+      ]
+    },
+    {
+      "id": "frontend/leselang-syntax/parser",
+      "architecture": "frontend",
+      "module": "leselang-syntax",
+      "function": "parser",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Parse literals, references and nested named calls into a lossless tree while reporting malformed call paths.",
+      "dependencies": [
+        "frontend/leselang-syntax/lexer"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "pub fn parse(source: &str)"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-syntax/tests/namespaced_calls.rs",
+          "anchor": "fn incomplete_namespaces_report_the_unexpected_token_without_partial_success()"
+        }
+      ],
+      "next_action": "Recheck complete and truncated dotted calls when expression syntax changes.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Parser tests for complete and incomplete namespace paths.",
+      "acceptance_criteria": [
+        "Complete calls preserve the callee and spans. An incomplete namespace reports the unexpected token."
+      ]
+    },
+    {
+      "id": "frontend/leselang-syntax/source-span",
+      "architecture": "frontend",
+      "module": "leselang-syntax",
+      "function": "source-span",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Represent locations as UTF-8 byte offsets. When deserializing a SyntaxTree, validate its spans against the tree's source and UTF-8 character boundaries.",
+      "dependencies": [],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn validate_span(source: &str, span: Span)"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn unicode_after_escape_reports_a_diagnostic_without_breaking_spans()"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn serialized_tree_rejects_invalid_spans_and_mutation_stays_panic_free()"
+        }
+      ],
+      "next_action": "Check the Unicode escape and malformed serialized-span regressions when span production changes.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "UTF-8 boundary and out-of-range rejection cases in the syntax tests.",
+      "acceptance_criteria": [
+        "Every returned token or diagnostic span slices at valid byte boundaries."
+      ]
+    },
+    {
+      "id": "frontend/leselang-syntax/syntax-tree",
+      "architecture": "frontend",
+      "module": "leselang-syntax",
+      "function": "syntax-tree",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Retain source, ordered tokens and declarations. Validate token coverage, AST spans and EOF on deserialization.",
+      "dependencies": [
+        "frontend/leselang-syntax/parser"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn validate_serialized_shape(&self)"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-syntax/tests/functions.rs",
+          "anchor": "fn serialized_helpers_validate_parameter_spans_and_declaration_counts()"
+        }
+      ],
+      "next_action": "Round-trip an old single-declaration tree and a multi-declaration tree whenever the wire shape changes.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Round-trip tests for the syntax tree and rejected malformed shapes.",
+      "acceptance_criteria": [
+        "Both supported shapes reconstruct their source and malformed parameter spans are rejected."
+      ]
+    },
+    {
+      "id": "frontend/leselang-syntax/diagnostics",
+      "architecture": "frontend",
+      "module": "leselang-syntax",
+      "function": "diagnostics",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Return syntax diagnostic codes, messages and byte spans for malformed source, including lexical and parser errors.",
+      "dependencies": [
+        "frontend/leselang-syntax/parser",
+        "frontend/leselang-syntax/source-span"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "pub struct Diagnostic {"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn malformed_source_reports_stable_spanned_diagnostics()"
+        }
+      ],
+      "next_action": "Verify the parser diagnostic codes and byte ranges for malformed declarations and invalid tokens.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "A parser error sequence with the expected codes and bounded spans.",
+      "acceptance_criteria": [
+        "Malformed source reports LSE codes and no span ends beyond the input."
+      ]
+    },
+    {
+      "id": "frontend/leselang-syntax/source-bounds",
+      "architecture": "frontend",
+      "module": "leselang-syntax",
+      "function": "source-bounds",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The syntax crate checks its 256 KiB source ceiling before lexing and limits call nesting to 16. The CLI independently caps ingress at 16 KiB.",
+      "dependencies": [],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "pub const MAX_SOURCE_BYTES: usize = 256 * 1024;"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn oversized_source_is_rejected_before_lexing()"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn parser_rejects_excessive_nested_calls_before_stack_growth()"
+        },
+        {
+          "kind": "documentation-contract",
+          "path": "docs/language.md",
+          "anchor": "The source limit is 16 KiB."
+        }
+      ],
+      "next_action": "Recheck both syntax limits and the narrower CLI source limit when adjusting ingress.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Oversize-source and excessive-depth rejection tests for the frontends.",
+      "acceptance_criteria": [
+        "Oversized syntax input is rejected before lexing and over-depth calls return a diagnostic."
+      ]
+    },
+    {
+      "id": "frontend/leselang-syntax/function-declaration",
+      "architecture": "frontend",
+      "module": "leselang-syntax",
+      "function": "function-declaration",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Parse ordered functions with typed parameters within the declaration and parameter limits.",
+      "dependencies": [
+        "frontend/leselang-syntax/parser"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn parse_function(&mut self)"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-syntax/tests/functions.rs",
+          "anchor": "fn typed_helpers_preserve_source_order_and_select_main_as_entry()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-syntax/tests/functions.rs",
+          "anchor": "fn function_and_parameter_limits_reject_before_expansion()"
+        }
+      ],
+      "next_action": "Check the declaration count, parameter count and legacy single-entry shape on grammar changes.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Function syntax and legacy encoding cases.",
+      "acceptance_criteria": [
+        "At most 32 declarations and eight parameters per declaration are admitted."
+      ]
+    },
+    {
+      "id": "frontend/leselang-syntax/named-arguments",
+      "architecture": "frontend",
+      "module": "leselang-syntax",
+      "function": "named-arguments",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Preserve argument labels, source order, values and spans before semantic signature binding.",
+      "dependencies": [
+        "frontend/leselang-syntax/parser"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "pub struct NamedArgument {"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn parser_decodes_strings_and_named_arguments()"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-syntax/src/lib.rs",
+          "anchor": "fn parser_retains_declared_all_branch_order()"
+        }
+      ],
+      "next_action": "Reparse reordered labels and escaped literals before changing the call syntax.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Named-argument AST and declared-order regression cases.",
+      "acceptance_criteria": [
+        "Labels and decoded values appear in the same order as the source."
+      ]
+    },
+    {
+      "id": "frontend/leselang-syntax/source-formatting",
+      "architecture": "frontend",
+      "module": "leselang-syntax",
+      "function": "source-formatting",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Format valid source deterministically while preserving comment anchors, literal token bytes and declaration order.",
+      "dependencies": [
+        "frontend/leselang-syntax/syntax-tree",
+        "frontend/leselang-syntax/diagnostics"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-syntax/src/formatter.rs",
+          "anchor": "pub fn format_source("
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-syntax/tests/source_formatting.rs",
+          "anchor": "fn comments_in_every_token_gap_keep_their_exact_anchor_and_are_idempotent()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/source_formatting.rs",
+          "anchor": "fn formatting_keeps_every_original_fuel_cutoff_and_partial_effect_boundary()"
+        }
+      ],
+      "next_action": "Run the comment-placement and independent execution equivalence cases on formatter changes.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Formatter tests covering idempotence and the original partial Effect boundary.",
+      "acceptance_criteria": [
+        "Formatting twice produces identical bytes and formatted programs retain their original Fuel cutoffs."
+      ]
+    }
+  ]
+}

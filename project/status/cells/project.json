@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "cells": [
+    {
+      "id": "project/workspace/dependency-boundaries",
+      "architecture": "project",
+      "module": "workspace",
+      "function": "dependency-boundaries",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Keep the five language crates repository-local and independent of all GUI, product and governance tools.",
+      "dependencies": [],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "Cargo.toml",
+          "anchor": "members = [\"crates/leselang-syntax\""
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/repository_boundary.rs",
+          "anchor": "fn language_consumer_and_gui_hosts_remain_separate_mit_and_repository_local()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "tools/leselang-dev/tests/cli.rs",
+          "anchor": "fn tool_and_language_resolve_independent_cargo_graphs()"
+        }
+      ],
+      "next_action": "Recheck Cargo metadata across the five language crates when dependencies change.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "Independent metadata boundary test.",
+      "acceptance_criteria": [
+        "Every supported crate and dependency resolves to the permitted package set."
+      ]
+    },
+    {
+      "id": "project/packaging/package-identity",
+      "architecture": "project",
+      "module": "packaging",
+      "function": "package-identity",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Check common package version and MIT metadata for the Rust language and reference workspaces at the independent version line.",
+      "dependencies": [
+        "project/workspace/dependency-boundaries"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-vm/Cargo.toml",
+          "anchor": "publish = false"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/repository_boundary.rs",
+          "anchor": "fn rejects_mismatched_and_missing_package_versions()"
+        }
+      ],
+      "next_action": "Run the metadata mismatch and license checks before changing the package version.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "Version and license checks against Cargo metadata.",
+      "acceptance_criteria": [
+        "Missing packages or a mismatched consumer version are rejected."
+      ]
+    },
+    {
+      "id": "project/build/offline-build",
+      "architecture": "project",
+      "module": "build",
+      "function": "offline-build",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Build the pinned Rust toolchain and locked workspace closure with the shared lean profile and target directory.",
+      "dependencies": [],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "rust-toolchain.toml",
+          "anchor": "channel = \"1.98.0\""
+        },
+        {
+          "kind": "source",
+          "path": "scripts/check.sh",
+          "anchor": "--locked --offline --profile lean --target-dir"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/repository_boundary.rs",
+          "anchor": "fn metadata(manifest: &Path)"
+        }
+      ],
+      "next_action": "Verify CLI and embedding binaries against pre-fetched lockfiles.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Locked, offline language build and test log.",
+      "acceptance_criteria": [
+        "Workspace tests and strict Clippy complete using the pinned toolchain."
+      ]
+    },
+    {
+      "id": "project/verification/check-groups",
+      "architecture": "project",
+      "module": "verification",
+      "function": "check-groups",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "CI and contributors invoke named repository checks with platform-specific prerequisites. Historical CI receipts qualify only the job and revision recorded.",
+      "dependencies": [
+        "project/build/offline-build"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": ".github/workflows/ci.yml",
+          "anchor": "run: sh scripts/check.sh language"
+        },
+        {
+          "kind": "source",
+          "path": "scripts/check.sh",
+          "anchor": "check_group()"
+        },
+        {
+          "kind": "ci-receipt",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "https://github.com/Team-silvortex/leselang/actions/runs/45986249213/job/140462507890",
+          "date": "2026-11-27",
+          "version": "34502cb3a9b621f55f760426b28af1673487f9e4",
+          "platform": "Windows Server 2022 Datacenter x64, OS build 20348, MSVC"
+        }
+      ],
+      "next_action": "Inspect the job matrix and run each changed group on its supported platform.",
+      "validation_command": "sh scripts/check.sh --list all",
+      "expected_artifact": "Platform-specific command listing and matching CI steps.",
+      "acceptance_criteria": [
+        "Each named group resolves to executable commands and CI runs the relevant platform groups."
+      ]
+    },
+    {
+      "id": "project/verification/independent-consumers",
+      "architecture": "project",
+      "module": "verification",
+      "function": "independent-consumers",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Exercise public Rust embedding, installed JS package entry points and the separate C# application through the shared operation fixture.",
+      "dependencies": [
+        "project/workspace/dependency-boundaries"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/repository_boundary.rs",
+          "anchor": "fn language_consumer_and_gui_hosts_remain_separate_mit_and_repository_local()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/operations-conformance.test.mjs",
+          "anchor": "two-effects.json"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/dotnet/Program.cs",
+          "anchor": "async Task CheckFilterSelection()"
+        },
+        {
+          "kind": "compatibility-fixture",
+          "path": "fixtures/application-operations/two-effects.json",
+          "anchor": "fuel_remaining"
+        }
+      ],
+      "next_action": "Run the three independent consumer groups after changing a public boundary.",
+      "validation_command": "sh scripts/check.sh consumer && sh scripts/check.sh node-consumer && sh scripts/check.sh dotnet-consumer",
+      "expected_artifact": "Consumer reports for the embedded and worker entry points.",
+      "acceptance_criteria": [
+        "The same shared success fixture yields the expected observable effect count, Fuel and value."
+      ]
+    },
+    {
+      "id": "project/documentation/contracts-and-records",
+      "architecture": "project",
+      "module": "documentation",
+      "function": "contracts-and-records",
+      "lifecycle": "current",
+      "status": "usable",
+      "progress": 75,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Keep normative guides linked to reproducible checks and preserve historical source, platform, version and acceptance conditions.",
+      "dependencies": [],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/README.md",
+          "anchor": "## History And Provenance"
+        },
+        {
+          "kind": "documentation-contract",
+          "path": "docs/acceptance/README.md",
+          "anchor": "Historical test totals"
+        },
+        {
+          "kind": "source",
+          "path": "docs/provenance/bootstrap-verification.json",
+          "anchor": "\"observed_on\": \"2026-10-28\""
+        }
+      ],
+      "next_action": "Add an automated check of local Markdown links in the documentation index and acceptance archive.",
+      "validation_command": "sh scripts/check.sh tensor",
+      "expected_artifact": "A repeatable local-link check for the two indexes.",
+      "acceptance_criteria": [
+        "A fixture with a removed local target causes the documentation check to fail."
+      ],
+      "independent_reason": "Editorial ownership and the preservation of dated records apply even to proposed capabilities before any implementation dependency exists."
+    },
+    {
+      "id": "project/packaging/registry-release",
+      "architecture": "project",
+      "module": "packaging",
+      "function": "registry-release",
+      "lifecycle": "target",
+      "status": "early",
+      "progress": 0,
+      "priority": "deferred",
+      "confidence": "high",
+      "contract": "Prepare a distributable Rust package set with versioned internal dependencies and installation from the release artifacts.",
+      "dependencies": [
+        "project/packaging/package-identity"
+      ],
+      "blockers": [
+        "Registry publication policy and versioned inter-crate dependency policy are undecided."
+      ],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "CONTRIBUTING.md",
+          "anchor": "Crates are not yet registry-publishable"
+        },
+        {
+          "kind": "source",
+          "path": "crates/leselang-vm/Cargo.toml",
+          "anchor": "publish = false"
+        }
+      ],
+      "next_action": "Specify the registry release policy, then verify packaging and offline installation in a clean consumer.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "A release policy and reproducible clean-install verification.",
+      "acceptance_criteria": [
+        "The exact packaged crate set passes dependency resolution and an independent installation smoke test."
+      ]
+    },
+    {
+      "id": "project/packaging/protocol-compatibility",
+      "architecture": "project",
+      "module": "packaging",
+      "function": "protocol-compatibility",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Pin versioned semantic catalog and generated-program bytes across Rust and JS planners and compile representative fixtures through reference hosts.",
+      "dependencies": [
+        "embedding/catalog/host-semantics"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "compatibility-fixture",
+          "path": "fixtures/host-semantics/tauri-check-controls.lese",
+          "anchor": "fn main() = bind(ids: gui.list()"
+        },
+        {
+          "kind": "documentation-contract",
+          "path": "fixtures/host-semantics/README.md",
+          "anchor": "compared byte for byte"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/package.test.mjs",
+          "anchor": "external-node-agent-consumer"
+        }
+      ],
+      "next_action": "Run fixture comparisons and the independent package checks for every intentional contract change.",
+      "validation_command": "sh scripts/check.sh consumer && sh scripts/check.sh javascript",
+      "expected_artifact": "Reviewed catalog and program compatibility fixtures.",
+      "acceptance_criteria": [
+        "Both planners agree with the canonical bytes for the supported versions."
+      ]
+    },
+    {
+      "id": "project/governance/development-tensor",
+      "architecture": "project",
+      "module": "governance",
+      "function": "development-tensor",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The standalone v1 tool validates the eight-domain inventory and derives hierarchy, evidence-backed readiness and dependency-aware task cards.",
+      "dependencies": [
+        "project/build/offline-build"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "tools/leselang-dev/src/planning.rs",
+          "anchor": "pub fn selected("
+        },
+        {
+          "kind": "source",
+          "path": "tools/leselang-dev/src/tree.rs",
+          "anchor": "pub fn check_tree("
+        },
+        {
+          "kind": "integration-test",
+          "path": "tools/leselang-dev/tests/cli.rs",
+          "anchor": "fn repository_tree_and_summary_account_for_every_flat_cell()"
+        },
+        {
+          "kind": "source",
+          "path": ".github/workflows/ci.yml",
+          "anchor": "run: sh scripts/check.sh tensor"
+        }
+      ],
+      "next_action": "Run catalog validation and exercise the query and refusal paths when adding a cell.",
+      "validation_command": "sh scripts/check.sh tensor",
+      "expected_artifact": "Validated catalog plus JSON task card from the Rust tool.",
+      "acceptance_criteria": [
+        "Evidence drift, broken coverage or invalid mainline references fail validation and prevent a Ready card."
+      ]
+    }
+  ]
+}

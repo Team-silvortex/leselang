@@ -131,6 +131,16 @@ elements. The root and Node entries do not import it automatically.
 
 ## Optional Node Worker Transport
 
+Applications exposing their own commands can import `defineOperation` and
+`createOperationRegistry` from `@leselang/bridge/operations`. Each signature
+declares named parameters, a Lese scalar result and a required capability.
+`createNodeOperationHost` from `@leselang/bridge/node` connects that registry
+to an `AgentSession` and a v4 worker. Supply a live `grants` callback and a
+`verify` predicate for the application's state. The optional `observe`
+callback captures the state before execution and again at verification. The
+[application operations guide](../../docs/application-operations.md) includes
+a typed example and an executable two-Effect Consumer.
+
 Node applications can import `createNodeAgentTransport` and
 `NodeAgentTransportOptions` from `@leselang/bridge/node`. This entry owns the
 bounded stdio protocol and child lifecycle for the standalone Rust `leselang-agent-worker`:
@@ -382,8 +392,8 @@ excluding the opt-in Node transport.
 
 ## Source Organization
 
-Within the repository, `src/index.ts`, `src/node/index.ts` and `src/dom/index.ts`
-define the root, optional Node and optional DOM public entries. The
+Within the repository, `src/index.ts`, `src/node/index.ts`, `src/dom/index.ts`
+and `src/operations/index.ts` define the four public entries. The
 [DOM control guide](../../docs/dom-controls.md) shows shared manual/agent handlers
 with scoped commits, Promise completion and view disposal. The implementation modules below are not
 additional package subpaths:

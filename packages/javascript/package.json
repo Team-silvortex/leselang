@@ -18,6 +18,10 @@
     "./dom": {
       "types": "./dist/dom/index.d.ts",
       "import": "./dist/dom/index.js"
+    },
+    "./operations": {
+      "types": "./dist/operations/index.d.ts",
+      "import": "./dist/operations/index.js"
     }
   },
   "files": [
@@ -32,6 +36,7 @@
     "dist/semantics/",
     "dist/node/",
     "dist/dom/",
+    "dist/operations/",
     "README.md",
     "LICENSE"
   ],

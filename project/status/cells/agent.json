@@ -1,0 +1,524 @@
+{
+  "schema_version": 1,
+  "cells": [
+    {
+      "id": "agent/semantics/task-discovery",
+      "architecture": "agent",
+      "module": "semantics",
+      "function": "task-discovery",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "A consumer validates every declared finite task against the actual host catalog, pins the chosen profile and selects by task identity. Describing a task neither opens a GUI nor admits an action.",
+      "dependencies": [
+        "embedding/catalog/host-semantics"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "consumer/examples/catalog_agent/plan.rs",
+          "anchor": "pub fn prepare(catalog_bytes:"
+        },
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/semantics/index.ts",
+          "anchor": "export function prepareSemanticCatalog("
+        },
+        {
+          "kind": "unit-test",
+          "path": "packages/javascript/test/semantics.test.mjs",
+          "anchor": "all unused semantic tasks and their actual typed references are validated"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "448 of the original 1,000 Fuel remaining, and all 36 declared report predicates passed",
+          "date": "2026-11-13",
+          "version": "semantic v1 reference declarations",
+          "platform": "macOS desktop, AppKit and Tauri reference hosts"
+        }
+      ],
+      "next_action": "The same Rust agent admits the declared task on both hosts and rejects an undeclared task before execution.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "consumer/examples/catalog_agent/plan.rs",
+      "acceptance_criteria": [
+        "The same Rust agent admits the declared task on both hosts and rejects an undeclared task before execution."
+      ]
+    },
+    {
+      "id": "agent/semantics/program-generation",
+      "architecture": "agent",
+      "module": "semantics",
+      "function": "program-generation",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Rust and TypeScript independently lower finite task declarations into canonical bounded Lese source and keep user inputs separate from code. Shared versioned catalogs and source bytes pin compatibility.",
+      "dependencies": [
+        "agent/semantics/task-discovery"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "consumer/examples/catalog_agent/semantic/source.rs",
+          "anchor": "pub(in crate::plan) fn generate("
+        },
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/semantics/source.ts",
+          "anchor": "export function generate(catalog:"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/catalog-fixtures.test.mjs",
+          "anchor": "the public registered task builder reproduces the shared publication catalog"
+        },
+        {
+          "kind": "compatibility-fixture",
+          "path": "fixtures/host-semantics/multi-input-save.lese",
+          "anchor": "fn main("
+        }
+      ],
+      "next_action": "Both planners produce the archived source from the v3 catalog with separate named title and content values.",
+      "validation_command": "sh scripts/check.sh consumer && sh scripts/check.sh javascript",
+      "expected_artifact": "fixtures/host-semantics/multi-input-save.lese",
+      "acceptance_criteria": [
+        "Both planners produce the archived source from the v3 catalog with separate named title and content values."
+      ]
+    },
+    {
+      "id": "agent/session/task-lifetime",
+      "architecture": "agent",
+      "module": "session",
+      "function": "task-lifetime",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "AgentSession owns discovery, planning, execution, verification and cancellation for one submission. Only accepted application evidence can publish verified status.",
+      "dependencies": [
+        "embedding/catalog/host-discovery"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/agent/session.ts",
+          "anchor": "export class AgentSession"
+        },
+        {
+          "kind": "unit-test",
+          "path": "packages/javascript/test/agent.test.mjs",
+          "anchor": "only the host's strict true verification establishes success"
+        },
+        {
+          "kind": "unit-test",
+          "path": "packages/javascript/test/agent.test.mjs",
+          "anchor": "a cancelled uncooperative provider cannot execute its late valid proposal"
+        }
+      ],
+      "next_action": "A cancelled provider or verifier cannot publish a later result, and a new submission receives its own identity.",
+      "validation_command": "sh scripts/check.sh javascript",
+      "expected_artifact": "packages/javascript/test/agent.test.mjs",
+      "acceptance_criteria": [
+        "A cancelled provider or verifier cannot publish a later result, and a new submission receives its own identity."
+      ]
+    },
+    {
+      "id": "agent/workflow/plan-admission",
+      "architecture": "agent",
+      "module": "workflow",
+      "function": "plan-admission",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The session validates every step, typed binding and requirement against a pinned catalog before any step starts. It bounds a workflow to eight tasks and rechecks admission on continuation.",
+      "dependencies": [
+        "agent/semantics/program-generation",
+        "agent/session/task-lifetime"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/agent/workflow-bindings.ts",
+          "anchor": "export function prepareSemanticWorkflow("
+        },
+        {
+          "kind": "unit-test",
+          "path": "packages/javascript/test/workflow.test.mjs",
+          "anchor": "whole-plan admission rejects an invalid final step before any application execution"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "exactly 21 authorized and accepted Effects: 15 for the initial three steps,",
+          "date": "2026-11-20",
+          "version": "bounded workflow protocol fixture",
+          "platform": "macOS desktop, Tauri WebView"
+        }
+      ],
+      "next_action": "Reject a plan with an invalid final step before even the first application dispatch.",
+      "validation_command": "sh scripts/check.sh javascript",
+      "expected_artifact": "packages/javascript/test/workflow.test.mjs",
+      "acceptance_criteria": [
+        "Reject a plan with an invalid final step before even the first application dispatch."
+      ]
+    },
+    {
+      "id": "agent/workflow/sequential-execution",
+      "architecture": "agent",
+      "module": "workflow",
+      "function": "sequential-execution",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "One admitted finite plan runs separate task sessions in declared order. A target starts only after the prior step is verified; earlier committed effects and reports survive a later failure.",
+      "dependencies": [
+        "agent/workflow/plan-admission"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/agent/workflow.ts",
+          "anchor": "export class AgentWorkflowSession"
+        },
+        {
+          "kind": "unit-test",
+          "path": "packages/javascript/test/workflow.test.mjs",
+          "anchor": "a failed second verification keeps evidence and delivered work without starting the third"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "exactly 21 authorized and accepted Effects: 15 for the initial three steps,",
+          "date": "2026-11-20",
+          "version": "bounded workflow protocol fixture",
+          "platform": "macOS desktop, Tauri WebView"
+        }
+      ],
+      "next_action": "Verify a three-step workflow in order and stop after an injected failed second verification, preserving the first result.",
+      "validation_command": "sh scripts/check.sh javascript",
+      "expected_artifact": "packages/javascript/test/workflow.test.mjs",
+      "acceptance_criteria": [
+        "Verify a three-step workflow in order and stop after an injected failed second verification, preserving the first result."
+      ]
+    },
+    {
+      "id": "agent/workflow/verified-result-binding",
+      "architecture": "agent",
+      "module": "workflow",
+      "function": "verified-result-binding",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Explicit backward references bind a verified earlier scalar to a named later string input with a declared conversion. Catalog, verification evidence and input identity remain pinned.",
+      "dependencies": [
+        "agent/workflow/sequential-execution"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/agent/workflow-bindings.ts",
+          "anchor": "export function resolveWorkflowStep("
+        },
+        {
+          "kind": "unit-test",
+          "path": "packages/javascript/test/workflow-bindings.test.mjs",
+          "anchor": "decimal binding preserves the exact u64 maximum instead of a rounded Number"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "step's verified result. Both the input and saved value were `3`, with one Save",
+          "date": "2026-11-20",
+          "version": "verified-result binding protocol fixture",
+          "platform": "macOS desktop, Tauri WebView"
+        }
+      ],
+      "next_action": "Resolve the observed integer to exactly the declared string, reject forward references and reject malformed source evidence.",
+      "validation_command": "sh scripts/check.sh javascript",
+      "expected_artifact": "packages/javascript/test/workflow-bindings.test.mjs",
+      "acceptance_criteria": [
+        "Resolve the observed integer to exactly the declared string, reject forward references and reject malformed source evidence."
+      ]
+    },
+    {
+      "id": "agent/workflow/conditional-execution",
+      "architecture": "agent",
+      "module": "workflow",
+      "function": "conditional-execution",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "An opt-in requirement compares a verified prior result before starting a later task. A mismatch stops the workflow before that target and retains already-observed outcomes.",
+      "dependencies": [
+        "agent/workflow/sequential-execution"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/agent/workflow-bindings.ts",
+          "anchor": "export function checkWorkflowRequirement("
+        },
+        {
+          "kind": "unit-test",
+          "path": "packages/javascript/test/workflow-requirements.test.mjs",
+          "anchor": "a later mismatch preserves earlier decisions and effects without attempting remaining steps"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "Only the two read Effects were dispatched and accepted.",
+          "date": "2026-11-20",
+          "version": "verified-result requirements protocol fixture",
+          "platform": "macOS desktop, Tauri WebView"
+        }
+      ],
+      "next_action": "Exercise both matching and mismatching verified results and assert that only the matching path reaches its next host task.",
+      "validation_command": "sh scripts/check.sh javascript",
+      "expected_artifact": "packages/javascript/test/workflow-requirements.test.mjs",
+      "acceptance_criteria": [
+        "Exercise both matching and mismatching verified results and assert that only the matching path reaches its next host task."
+      ]
+    },
+    {
+      "id": "agent/reports/execution-reports",
+      "architecture": "agent",
+      "module": "reports",
+      "function": "execution-reports",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Explicitly enabled execution reports distinguish terminal typed failure, successful result, effect count and Fuel. Worker protocol three in the registered Node host and the Tauri reference retain partial-effect evidence without retry.",
+      "dependencies": [
+        "embedding/registered/object-runtime",
+        "agent/session/task-lifetime"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "hosts/registered/src/failure.rs",
+          "anchor": "pub enum ExecutionFailureCode"
+        },
+        {
+          "kind": "integration-test",
+          "path": "hosts/registered/tests/execution_failures.rs",
+          "anchor": "fn transport_text_cannot_impersonate_a_native_failure_code()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/node-execution-reports.test.mjs",
+          "anchor": "a worker3 failure completion remains bound to its exact report and is consumed once"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "trace recorded eighteen dispatches and seventeen accepts: one failed lookup",
+          "date": "2026-11-20",
+          "version": "registered execution reports v1",
+          "platform": "macOS desktop, Tauri WebView"
+        }
+      ],
+      "next_action": "A reported runtime failure stops success verification; the typed cause cannot be forged by a callback error string.",
+      "validation_command": "sh scripts/check.sh node-consumer",
+      "expected_artifact": "consumer/javascript/agent/node-execution-reports.test.mjs",
+      "acceptance_criteria": [
+        "A reported runtime failure stops success verification; the typed cause cannot be forged by a callback error string."
+      ]
+    },
+    {
+      "id": "agent/reports/verification-diagnostics",
+      "architecture": "agent",
+      "module": "reports",
+      "function": "verification-diagnostics",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Detailed verification emits bounded value-free reasons for unknown report state, bad identity, budget or failed predicates. A rejected predicate cannot become a successful workflow outcome.",
+      "dependencies": [
+        "agent/session/task-lifetime",
+        "embedding/catalog/host-semantics"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/verification.ts",
+          "anchor": "export function admitVerificationResult("
+        },
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/semantics/report.ts",
+          "anchor": "export function verifyDetailed("
+        },
+        {
+          "kind": "unit-test",
+          "path": "packages/javascript/test/verification.test.mjs",
+          "anchor": "malformed reports and duplicate keys have bounded value-free diagnostics"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/verification.test.mjs",
+          "anchor": "real worker reports the failed host predicate and stops without retrying a completed publication"
+        }
+      ],
+      "next_action": "Surface the failed predicate without exposing its value, and retain the already committed publication exactly once.",
+      "validation_command": "sh scripts/check.sh node-consumer",
+      "expected_artifact": "consumer/javascript/agent/verification.test.mjs",
+      "acceptance_criteria": [
+        "Surface the failed predicate without exposing its value, and retain the already committed publication exactly once."
+      ]
+    },
+    {
+      "id": "agent/provider/offline-selection",
+      "architecture": "agent",
+      "module": "provider",
+      "function": "offline-selection",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The offline provider maps an explicit command and arguments to host-declared tasks. It deterministically generates programs and can drive a real application from its conversation entry.",
+      "dependencies": [
+        "agent/semantics/program-generation",
+        "agent/session/task-lifetime"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/providers/semantic.ts",
+          "anchor": "export function createSemanticProvider("
+        },
+        {
+          "kind": "unit-test",
+          "path": "packages/javascript/test/semantic-provider.test.mjs",
+          "anchor": "the reusable provider discovers renamed tasks, operations, controls and inputs"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "`task fill_and_save:目录驱动的工作流 ✓` produced a verified result and one Save.",
+          "date": "2026-11-13",
+          "version": "Tauri semantic v1 conversation entry",
+          "platform": "macOS desktop, Tauri WebView"
+        }
+      ],
+      "next_action": "Change the declared task, operation and input names and verify that the task still runs with explicit command selection.",
+      "validation_command": "sh scripts/check.sh javascript",
+      "expected_artifact": "packages/javascript/test/semantic-provider.test.mjs",
+      "acceptance_criteria": [
+        "Change the declared task, operation and input names and verify that the task still runs with explicit command selection."
+      ]
+    },
+    {
+      "id": "agent/provider/model-protocol",
+      "architecture": "agent",
+      "module": "provider",
+      "function": "model-protocol",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The SDK accepts strict task selection through an application-owned model transport. Tauri passes catalog and natural language to HTTP and then executes admitted Lese source. The dated GUI/VM acceptance used predetermined loopback replies.",
+      "dependencies": [
+        "agent/semantics/program-generation",
+        "agent/session/task-lifetime"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/providers/model.ts",
+          "anchor": "export function createModelWorkflowProvider("
+        },
+        {
+          "kind": "source",
+          "path": "hosts/tauri/src/desktop/model.rs",
+          "anchor": "fn exchange("
+        },
+        {
+          "kind": "unit-test",
+          "path": "hosts/tauri/src/desktop/model/tests.rs",
+          "anchor": "fn local_http_exercises_real_curl_request_and_extracts_only_assistant_content()"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "clicks. Native tracing contained exactly 15 authorized/accepted Effects: nine",
+          "date": "2026-11-13",
+          "version": "protocol-fixture-not-a-model, single-task transport",
+          "platform": "macOS desktop, Tauri WebView"
+        }
+      ],
+      "next_action": "Round-trip valid selection over loopback, then reject undeclared selection, rate limiting and cancelled planning before any application Effect.",
+      "validation_command": "sh scripts/check.sh tauri-desktop",
+      "expected_artifact": "hosts/tauri/src/desktop/model/tests.rs",
+      "acceptance_criteria": [
+        "Round-trip valid selection over loopback, then reject undeclared selection, rate limiting and cancelled planning before any application Effect."
+      ]
+    },
+    {
+      "id": "agent/provider/live-model-inference",
+      "architecture": "agent",
+      "module": "provider",
+      "function": "live-model-inference",
+      "lifecycle": "target",
+      "status": "early",
+      "progress": 0,
+      "priority": "deferred",
+      "confidence": "high",
+      "contract": "A separate live-inference acceptance would record the actual service/model identity and date, new natural-language inputs, admitted task decisions, application observations and failures.",
+      "dependencies": [
+        "agent/provider/model-protocol"
+      ],
+      "blockers": [
+        "An authorized live inference endpoint and evaluation budget are required."
+      ],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/model-provider.md",
+          "anchor": "## Verification Scope"
+        },
+        {
+          "kind": "documentation-contract",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "against predetermined model-protocol replies, not live model inference."
+        }
+      ],
+      "next_action": "When a model endpoint has been provided, run a bounded evaluation through the Tauri conversation entry and record both the model decisions and independently observed application state.",
+      "validation_command": "target/lean/leselang-tauri-host --agent",
+      "expected_artifact": "docs/acceptance/agents.md",
+      "acceptance_criteria": [
+        "A dated receipt records an actual model id and service, task selections for previously unseen requests, application results, verification and failure behavior without exposing credentials."
+      ]
+    }
+  ]
+}

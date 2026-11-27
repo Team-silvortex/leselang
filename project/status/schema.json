@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:leselang:development-tensor:v1",
+  "title": "LeseLang development tensor protocol v1",
+  "description": "Schemas for catalog.json, milestones.json and each architecture cell shard. The native validator also checks referential integrity, evidence anchors, prerequisites and coverage across files.",
+  "oneOf": [
+    { "$ref": "#/$defs/catalog" },
+    { "$ref": "#/$defs/milestones" },
+    { "$ref": "#/$defs/shard" }
+  ],
+  "$defs": {
+    "version": { "type": "integer", "const": 1 },
+    "text": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "coordinate": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*){2}$" },
+    "coordinates": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/coordinate" } },
+    "texts": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "status_protocol", "architectures"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/version" },
+        "status_protocol": { "const": "dev-tensor-status-v1" },
+        "architectures": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/architecture" } }
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "modules"],
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "label": { "$ref": "#/$defs/text" },
+        "modules": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/module" } }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "owner", "functions"],
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "owner": { "$ref": "#/$defs/text" },
+        "functions": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/slug" } }
+      }
+    },
+    "milestones": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "id", "objective", "goals"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/version" },
+        "id": { "$ref": "#/$defs/slug" },
+        "objective": { "$ref": "#/$defs/text" },
+        "goals": { "$ref": "#/$defs/coordinates", "minItems": 1 }
+      }
+    },
+    "shard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "cells"],
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/version" },
+        "cells": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/cell" } }
+      }
+    },
+    "path": {
+      "type": "string",
+      "pattern": "^(?![A-Za-z]:)(?!.*(?:^|/)\\.{1,2}(?:/|$))[^/\\\\:]+(?:/[^/\\\\:]+)*$",
+      "description": "Canonical repository-relative UTF-8 file path. The resolved file must stay under the repository root."
+    },
+    "proof-kind": { "enum": ["unit-test", "integration-test", "consumer-test", "compatibility-fixture", "native-acceptance", "ci-receipt"] },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "anchor"],
+      "properties": {
+        "kind": { "enum": ["source", "unit-test", "integration-test", "consumer-test", "compatibility-fixture", "benchmark", "native-acceptance", "documentation-contract", "ci-receipt"] },
+        "path": { "$ref": "#/$defs/path" },
+        "anchor": { "$ref": "#/$defs/text", "description": "Unique exact case-sensitive substring identifying a symbol, test, fixture or receipt within the file." },
+        "date": { "type": "string", "format": "date", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "version": { "$ref": "#/$defs/text", "description": "Attested version, revision or named historical record." },
+        "platform": { "$ref": "#/$defs/text" }
+      },
+      "if": { "properties": { "kind": { "enum": ["native-acceptance", "ci-receipt"] } } },
+      "then": { "required": ["date", "version", "platform"] }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "architecture", "module", "function", "lifecycle", "status", "progress", "priority", "confidence", "contract", "dependencies", "blockers", "evidence", "next_action", "validation_command", "expected_artifact", "acceptance_criteria"],
+      "properties": {
+        "id": { "$ref": "#/$defs/coordinate" },
+        "architecture": { "$ref": "#/$defs/slug" },
+        "module": { "$ref": "#/$defs/slug" },
+        "function": { "$ref": "#/$defs/slug" },
+        "lifecycle": { "enum": ["current", "bridge", "target", "retired"] },
+        "status": { "enum": ["early", "active", "usable", "stable"] },
+        "progress": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "priority": { "enum": ["critical", "active", "maintenance", "deferred"] },
+        "confidence": { "enum": ["low", "medium", "high"] },
+        "contract": { "$ref": "#/$defs/text" },
+        "dependencies": { "$ref": "#/$defs/coordinates" },
+        "independent_reason": { "$ref": "#/$defs/text", "description": "Justification for a capability with neither prerequisites nor dependents. An isolated goal can omit this field; a connected cell must omit it." },
+        "blockers": { "$ref": "#/$defs/texts" },
+        "evidence": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/evidence" } },
+        "next_action": { "$ref": "#/$defs/text" },
+        "validation_command": { "$ref": "#/$defs/text" },
+        "expected_artifact": { "$ref": "#/$defs/text" },
+        "acceptance_criteria": { "$ref": "#/$defs/texts", "minItems": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "stable" } } },
+          "then": { "properties": {
+            "progress": { "const": 100 },
+            "lifecycle": { "enum": ["current", "bridge"] },
+            "blockers": { "maxItems": 0 },
+            "evidence": { "contains": { "properties": { "kind": { "$ref": "#/$defs/proof-kind" } } } }
+          } },
+          "else": { "properties": { "progress": { "maximum": 99 } } }
+        },
+        {
+          "if": { "properties": { "progress": { "const": 0 } } },
+          "then": { "properties": { "status": { "const": "early" } } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "usable" } } },
+          "then": { "properties": { "evidence": { "contains": { "properties": { "kind": { "not": { "const": "documentation-contract" } } } } } } }
+        }
+      ]
+    }
+  }
+}

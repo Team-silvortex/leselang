@@ -10,6 +10,13 @@ meaning of submission or completion. See the
 [local host protocol draft](host-protocol.md) for the current contract and its
 acceptance gates.
 
+Rust, JS/TS and C# are the three core host ecosystems. Rust embeds the compiler
+and VM through `HostBuilder`. Node and .NET call the same VM through a bounded
+worker protocol. Their common operation profile is `lese.operations`. Each
+application declares its own capabilities, implements commands in its own
+runtime and verifies observed state. A [three-host conformance example](dotnet-host.md#compare-the-three-hosts)
+checks one program and its exact result, Effect count and Fuel in all three.
+
 ## Dependency Direction
 
 Arrows mean consumer to dependency:
@@ -35,6 +42,7 @@ follows the dependency boundaries:
 | --- | --- |
 | `crates/` | Language libraries and their Rust CLI; no GUI framework or product dependency |
 | `packages/javascript/` | Reusable bridge, task session and semantic planning; no Tauri dependency |
+| `packages/dotnet/` | C# operation registry, cooperative commit authority and worker transport |
 | `hosts/` | Independent reference adapters, application contracts and native transports |
 | `consumer/` | Independent applications and public API acceptance suites |
 | `fixtures/host-semantics/` | Shared, versioned catalog bytes and generated source; test data rather than runtime dependencies |
@@ -48,10 +56,9 @@ Each host includes it privately; it is not an additional language crate or a
 shared runtime service. The cross-language golden fixtures live outside any
 one Consumer or host so their shared compatibility role is explicit.
 
-The JavaScript package's `src/index.ts` is the portable public export boundary;
-`src/node/index.ts` is the optional Node transport entry and `src/dom/index.ts`
-is the optional application-owned DOM binding entry. Neither optional entry is
-imported by the root.
+The JavaScript package's `src/index.ts` is the portable public export boundary.
+Optional entries expose Node transport, DOM bindings and a framework-independent
+operation registry through `/node`, `/dom` and `/operations` respectively.
 Its private implementation is grouped by responsibility:
 
 | SDK path under `packages/javascript/src/` | Responsibility |
@@ -59,6 +66,7 @@ Its private implementation is grouped by responsibility:
 | `bridge.ts` | Registered-object protocol and mutation gates |
 | `dom/controls.ts` | Shared manual/agent text and button handlers, event completion and DOM binding lifetime |
 | `node/transport.ts` | Node child lifecycle and bounded delivery to the standalone worker |
+| `operations/index.ts`, `node/operation-host.ts` | Application-declared scalar operations, live capability checks and verified execution through worker v4 |
 | `agent/registered-application.ts` | Static declarations or dynamic fixed logical slots, structural identity and connection lifetime |
 | `agent/session.ts`, `agent/data.ts` | Single-task lifetime and bounded owned plan/report data |
 | `agent/registered-host.ts`, `agent/registered-evidence.ts` | Reusable registered-application host, transport lifecycle and independent observation evidence |
@@ -234,6 +242,31 @@ mapping nor helper passing authorizes native work or serializes an object.
 Leserpent remains a reference host, not a runtime dependency. Its product evaluator,
 compatibility facades, SQLite recovery, UI, authentication and orchestration remain
 in the product repository. Do not import them to make a native acceptance test pass.
+
+### First formal product trial
+
+Kyuubiki Workbench is the planned first formal product trial of the Lese
+protocol. The dependency runs from the Workbench adapter to a pinned public
+Lese release or revision. The language, SDK and independent Consumer tests
+build and run from the Lese checkout alone.
+
+The [JS/TS operation registry](application-operations.md) lets an application
+declare business operations with bounded arguments, a result and a required
+capability. An independent inventory Consumer passes a receipt between Effects
+and checks the resulting balance. A translation archive exercises the same
+provider with different signatures and verification conditions.
+The Workbench adapter belongs in Kyuubiki alongside the command handlers and
+state readers it calls. Kyuubiki owns its action catalog, project and model
+identities, operator confirmations, audit trail, save receipts and PWDT recipes.
+
+The proposed first comparison uses the existing two-dimensional truss recipe.
+From equivalent starting projects, run the PWDT and Lese paths through the
+same Workbench commands. For each run, verify that the saved model version,
+submitted job and opened result belong to its project and to each other.
+Repeat with a project switch during execution and a lost response after a
+committed save. The old run must stop before its next write, and a receipt
+lookup must identify the committed save without submitting it again.
+Kyuubiki records these results against the Workbench and Lese revisions tested.
 
 ## Host Adapter Boundaries
 

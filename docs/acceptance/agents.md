@@ -1224,3 +1224,199 @@ processes and independent JavaScript applications; its DOM fixture is an
 EventTarget test fixture, not a native GUI run. All planning and execution were
 offline, without a model service or credits.
 
+## 2026-11-27 — application-declared JS/TS operations
+
+On macOS arm64 with Node 24.6.0, the independent
+[stock Consumer](../../consumer/javascript/agent/operations.mjs) submitted
+`stock.reserve |> stock.remaining` with the item `Spare parts`. Its offline
+provider read both named signatures from the application catalog and generated
+a Lese `bind`. The first handler committed one reservation and returned ticket
+`9007199254740993`. The second accepted that exact ticket and returned
+`9007199254740998` remaining. The real v4 worker reported two Effects and 9,988
+Fuel remaining. The application's count, balance and item checks passed.
+
+The same provider ran a translation lookup followed by an archive write.
+Its optional-string result carried both a translated word and a missing entry
+through the VM. When a faulty archive silently deduplicated a repeated request,
+both VM reports were identical, but only the first run increased the record
+count and passed verification. Other real-worker tests denied a required grant
+before any callback, revoked authority or cancelled while a handler was waiting,
+and retained the committed archive entry after the handler returned a value of
+the wrong type. Subsequent explicitly submitted tasks ran in fresh workers.
+
+The SDK tests passed (333), along with the Tauri frontend (115), independent
+Node Consumer (76), independent Rust Consumer and catalog agent (848), and
+registered Rust host and worker (27 plus its external Rust Consumer). The Node
+group installed the packed SDK into a temporary project, type-checked the new
+public entries and ran the stock example there. Portable and macOS desktop
+Tauri check groups passed. The desktop group's existing model transport tests
+used a local loopback fixture. This run exercised deterministic planning and
+application-owned state in Node.
+
+## 2026-11-27 — Rust, Node and .NET operation conformance
+
+On macOS arm64 with .NET SDK 10.0.201, the independent C# application read
+its operation catalog, generated the shared meter program and executed it in
+the Rust worker. Its balance increased from `9007199254740992` to
+`9007199254740993`. The application observed one add and one read. The
+in-process Rust Consumer and the Node Consumer matched the same fixture,
+including the exact final integer, two Effects and 9,994 Fuel remaining.
+Node and C# used the explicit `lese.operations` profile. Existing Node
+applications continued to use `javascript.operations` by default.
+
+The C# suite exercised all six scalar types, including `ulong.MaxValue`, an
+absent optional string and a list containing Unicode text. Missing grants
+prevented both handlers. Cancellation and revocation while a handler was
+awaiting work prevented its commit. A handler returning an invalid result
+after a write left the balance incremented once and prevented the read. An
+old context remained fenced when another submission ran. Two deliberately
+misbehaving worker processes exercised output arriving before a reply and
+nonzero exit after a valid report. Neither delivered success evidence.
+The .NET build completed with zero warnings and errors. See the
+[C# Consumer and reproducible check](../dotnet-host.md).
+
+## 2026-11-27 — native Windows worker and C# Consumer
+
+The Windows Server 2022 Datacenter x64 job built the Rust 1.98.0 MSVC worker
+and ran the independent C# Consumer on .NET 10.0.15 (OS build 20348). All
+19 selected worker tests passed, including generation of fresh 64-character
+hexadecimal challenges and rejection of mismatched replies. The .NET build
+reported zero warnings and zero errors.
+[Windows job and log](https://github.com/Team-silvortex/leselang/actions/runs/45986249213/job/140462507890)
+· [Tested source](https://github.com/Team-silvortex/leselang/commit/34502cb3a9b621f55f760426b28af1673487f9e4)
+
+The native executables ran the shared meter program in two Effects. The C#
+application observed one increment, one read, the exact balance
+`9007199254740993`, and 9,994 Fuel remaining. The same job confirmed the
+following application and transport outcomes.
+
+- Missing authority reached zero callbacks. A write followed by an invalid
+  result committed exactly once and prevented the subsequent read.
+- Revocation and cancellation while awaiting a write fenced the pending
+  mutation and its saved context. A fresh submission could still complete.
+  Catching a denied commit and restoring the grant kept the old context retired.
+- Six scalar types crossed the VM boundary, including an absent optional
+  string and the largest unsigned 64-bit integer.
+- An out-of-order request produced no second callback or late commit. The same
+  well-formed report was accepted after exit code zero and rejected after
+  nonzero exit.
+
+The Ubuntu and macOS jobs ran the same Consumer at this revision.
+[Ubuntu job](https://github.com/Team-silvortex/leselang/actions/runs/45986249213/job/140462507900)
+· [macOS job](https://github.com/Team-silvortex/leselang/actions/runs/45986249213/job/140462508054)
+
+## 2026-11-27 — using a host list to decide whether to write
+
+On macOS arm64, independent Rust, Node and C# Consumers ran the same
+[Lese program and five input cases](../../fixtures/application-operations/list-membership.json).
+Each application supplied its own `filters.available` and `filters.select`
+handlers and checked the returned boolean, number of reads and selected values.
+Rust used its embedded VM. Node and C# used the native worker.
+
+| Available options and request | Observable result on each host |
+| --- | --- |
+| `["草稿", "已发布", "已发布"]`, request `"已发布"` | `true`, one read and one selection of `"已发布"`. |
+| `["草稿", "已发布"]`, request `"发布"` | `false`, one read and zero selections. |
+| Empty list, request `""` | `false`, one read and zero selections. |
+| `["", "草稿"]`, request `""` | `true`, one read and one selection of the empty string. |
+| `["é"]`, request `"e\u0301"` | `false`, one read and zero selections. |
+
+The CLI also rejected an invalid operand type in an unchosen branch at
+compile time. With insufficient Fuel, a program that tested membership before
+calling `std.print` exited with a Fuel error and empty stdout.
+
+## 2026-11-27 — shared operation failure vectors
+
+The Rust, Node and C# Consumers executed the same `main` from the
+[failure fixture](../../fixtures/application-operations/failure-vectors.json)
+on macOS 27.0.1 arm64. Rust 1.98.0 embedded the VM directly. Node 24.6.0
+and .NET 10.0.5 (SDK 10.0.201) used the native v4 `lese.operations` worker.
+The fixture SHA-256 was `4c52d3fa08075c329e9466e55f2ff5b928e6d98b5e224f2b97f732f33e7278d4`.
+
+Each case started with a fresh meter at `9007199254740992`. Each application
+recorded its outcome, write and read callbacks, committed writes and final
+balance. All three observations matched each other and the fixture field for field.
+
+| Case | Outcome | Write callbacks | Read callbacks | Committed writes | Final balance |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `missing-grant` | Failed | 0 | 0 | 0 | `9007199254740992` |
+| `post-write-invalid-result` | Failed | 1 | 0 | 1 | `9007199254740993` |
+
+With only `meter.read` granted, Rust observed a compile-time capability
+denial. With both grants, the write handler incremented the meter and returned
+a string for its declared integer result. Rust observed a typed receipt
+rejection, polled the still-pending session and cancelled it explicitly. Node
+returned a failed submission without a report. The C# call raised
+`InvalidDataException`. After recording each failure, C# restored full grants
+and a valid reply, then verified a fresh two-Effect run on the same host.
+
+The complete `consumer`, `node-consumer` and `dotnet-consumer` check groups
+passed. The independent Rust group ran 851 tests, the Node suite ran 81 tests,
+and the .NET group passed 19 Rust worker tests and the C# Consumer.
+
+## 2026-11-27 — losing a write request or its successful reply
+
+On macOS 27.0.1 arm64, Rust 1.98.0, Node 24.6.0 and .NET 10.0.5
+ran the [same two programs and loss cases](../../fixtures/application-operations/lost-reply.json).
+The fixture SHA-256 was `528bb63246c6bd713a02da42ed31bab87319905b0d4950c5e94be7861eb83bf8`.
+Each application started a fresh in-memory ledger at `9007199254740992`.
+Its write handler recorded the new balance under a caller-supplied operation key.
+
+| Cut | Write callbacks | Committed writes | Tail reads | Receipt under the submitted key | Final balance |
+| --- | ---: | ---: | ---: | --- | ---: |
+| Request withheld before the handler | 0 | 0 | 0 | `null` | 9007199254740992 |
+| Successful reply withheld after commit | 1 | 1 | 0 | `"9007199254740993"` | 9007199254740993 |
+
+Rust dropped the authorization or the typed receipt. Both embedded sessions
+remained pending until explicitly cancelled. For Node and C#, a test relay
+started the native v4 worker. On the first cut it withheld the worker's write
+request. On the second it read the application's successful reply, checked
+its scope, serial, challenge and decimal value, then terminated the worker
+before forwarding it. Each harness verified an independent cut marker. Node
+reported `failed` with `possiblePartialEffects`, and C# observed EOF. Neither
+cut produced a run report.
+
+Each Consumer opened fresh sessions with only `ledger.lookup` granted. The
+original key produced the receipts above. An unrelated key returned `null`
+in both cases. After recording those observations, all three resubmitted the
+same write program with the already-committed key as a control. Each recorded
+two total writes and a balance of `9007199254740994`.
+
+The application stayed alive throughout, and the interrupted writer had
+stopped before each lookup. The experiment covers that ordering. Receipt
+durability across application restarts and lookups racing a pending write
+need separate evidence. Reproduce with the `consumer`, `node-consumer` and
+`dotnet-consumer` groups of `sh scripts/check.sh`.
+
+## 2026-11-27 — same-key retry after an interrupted write
+
+The independent Rust, Node and C# Consumers ran the expanded
+[lost-reply fixture](../../fixtures/application-operations/lost-reply.json)
+on macOS 27.0.1 arm64 with Rust 1.98.0, Node 24.6.0 and .NET 10.0.5
+(SDK 10.0.201). The fixture SHA-256 was
+`113349da6422d9937e309db06976a3f37f6bd35ceaf26807a28d7eb9c2ecb2e3`.
+Each host implemented `ledger.add_once` with an application-owned receipt
+per business key. The program called it, read the balance, then returned
+the write receipt.
+
+After each cut a fresh lookup-only session checked the original key, and
+another checked an unrelated key. The interrupted program produced no result
+or tail read. Once it had stopped, a fresh write-authorized session submitted
+the same program and key. Rust drove the embedded VM explicitly. Node and C#
+used the native v4 worker with the same two cuts described above.
+
+| Cut | Receipt before retry | Total write callbacks after retry | Total commits | Tail reads | Accepted Effects in retry | Returned receipt |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Request withheld | `null` | 1 | 1 | 1 | 2 | `9007199254740993` |
+| Successful reply withheld | `9007199254740993` | 2 | 1 | 1 | 2 | `9007199254740993` |
+
+In both cases a second key advanced the balance to `9007199254740994`.
+Calling the original key again returned `9007199254740993`, with two commits
+total across both keys. The ordinary `ledger.add` control committed twice
+when resubmitted with one key after reply loss. All three Consumers' retry
+and second-key observations matched the fixture field for field.
+
+The application and its receipt store stayed alive between submissions.
+These sequential runs exercise a settled first attempt. Reproduce with
+`sh scripts/check.sh consumer`, `sh scripts/check.sh node-consumer` and
+`sh scripts/check.sh dotnet-consumer`.

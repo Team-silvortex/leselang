@@ -6977,6 +6977,12 @@ fn main() = bind(caller: "outer", body: bind(answer:
                         }
                         continue;
                     }
+                    if operator == Contains {
+                        probes.push((
+                            format!("contains(left: {LIST}, right: text)"),
+                            ScalarValue::Boolean(true),
+                        ));
+                    }
                     let (left, right, expected) = match operator {
                         Add => (INTEGER, "3", ScalarValue::Integer(10)),
                         Sub => (INTEGER, "3", ScalarValue::Integer(4)),
@@ -7012,7 +7018,7 @@ fn main() = bind(caller: "outer", body: bind(answer:
                         expected,
                     ));
                 }
-                assert_eq!(probes.len(), 33);
+                assert_eq!(probes.len(), 34);
                 for operator in UNARY {
                     let values = match operator {
                         UnaryOperator::Not => vec![(BOOLEAN, ScalarValue::Boolean(false))],
@@ -7040,7 +7046,7 @@ fn main() = bind(caller: "outer", body: bind(answer:
                         probes.push((format!("{}(value: {value})", operator.name()), expected));
                     }
                 }
-                assert_eq!(probes.len(), 44);
+                assert_eq!(probes.len(), 45);
                 probes
             }
 
@@ -7075,7 +7081,7 @@ fn main() = bind(caller: "outer", body: bind(answer:
             }
 
             #[test]
-            fn all_44_declared_scalar_signatures_cross_two_hosts_and_three_return_routes() {
+            fn all_declared_scalar_signatures_cross_two_hosts_and_three_return_routes() {
                 fn check<P: Profile>() -> usize {
                     let mut cases = 0;
                     for kind in ["seq", "all"] {
@@ -7092,7 +7098,7 @@ fn main() = bind(caller: "outer", body: bind(answer:
                     }
                     cases
                 }
-                assert_eq!(check::<Counter>() + check::<Panel>(), 528);
+                assert_eq!(check::<Counter>() + check::<Panel>(), 540);
             }
 
             #[test]

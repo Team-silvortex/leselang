@@ -1,0 +1,31 @@
+{
+  "entry": "main",
+  "source": "fn main() = bind(added: meter.add(amount: 1), body: meter.read())",
+  "initial_balance": "9007199254740992",
+  "cases": [
+    {
+      "id": "missing-grant",
+      "grants": ["meter.read"],
+      "write_reply": "balance",
+      "expected": {
+        "outcome": "failed",
+        "add_calls": 0,
+        "read_calls": 0,
+        "committed_writes": 0,
+        "balance": "9007199254740992"
+      }
+    },
+    {
+      "id": "post-write-invalid-result",
+      "grants": ["meter.write", "meter.read"],
+      "write_reply": "string",
+      "expected": {
+        "outcome": "failed",
+        "add_calls": 1,
+        "read_calls": 0,
+        "committed_writes": 1,
+        "balance": "9007199254740993"
+      }
+    }
+  ]
+}

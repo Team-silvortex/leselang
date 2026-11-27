@@ -34,7 +34,7 @@ test("an external installed Node SDK consumer runs real workflows, partial failu
     assert.deepEqual((await readdir(join(directory, "node_modules"))).sort(), [".package-lock.json", "@leselang"]);
 
     await mkdir(join(directory, "agent"));
-    for (const file of ["application.mjs", "catalog.mjs", "assistant.mjs", "multi-input-application.mjs", "multi-input-catalog.mjs", "dom-application.mjs"]) {
+    for (const file of ["application.mjs", "catalog.mjs", "assistant.mjs", "multi-input-application.mjs", "multi-input-catalog.mjs", "dom-application.mjs", "operations.mjs"]) {
       await copyFile(new URL(file, import.meta.url), join(directory, "agent", file));
     }
     await copyFile(new URL("../semantic-contract.mjs", import.meta.url), join(directory, "semantic-contract.mjs"));
@@ -44,6 +44,7 @@ import { AgentSession, AgentWorkflowSession, createRegisteredAgentHost, createSe
 import { createNodeAgentTransport } from "@leselang/bridge/node";
 import { createPublicationApplication } from "./agent/application.mjs";
 import { createPublicationAgent } from "./agent/assistant.mjs";
+import { createStockAgent } from "./agent/operations.mjs";
 import { createArticleApplication } from "./agent/multi-input-application.mjs";
 import { createArticleCatalog } from "./agent/multi-input-catalog.mjs";
 import { createDomArticleApplication, createDynamicDomArticleApplication } from "./agent/dom-application.mjs";
@@ -71,6 +72,16 @@ function workflow(host, text) {
   } } });
 }
 const acceptance = {};
+{
+  const app = createStockAgent(executable);
+  try {
+    const result = await app.session.submit("stock.reserve |> stock.remaining\nInstalled consumer");
+    assert.equal(result.status, "verified", result.error);
+    assert.equal(app.snapshot().available, 9007199254740998n);
+    assert.deepEqual(app.snapshot().reservations, [[9007199254740993n, "Installed consumer"]]);
+    acceptance.operations = { effects: report(result).effects, result: report(result).result };
+  } finally { app.close(); }
+}
 {
   // Actual native classification through the installed optional Node entry.
   // The default carrier keeps the previous exception contract for the same fault.
@@ -343,6 +354,7 @@ process.stdout.write(JSON.stringify(acceptance) + "\n");
 `);
     const acceptance = JSON.parse(run(process.execPath, ["consumer.mjs", worker], directory));
     assert.deepEqual(acceptance, {
+      operations: { effects: 2, result: { type: "integer", value: "9007199254740998" } },
       nativeFailure: [
         { mode: "legacy", code: null, subsequentRun: "verified", publications: 1 },
         { mode: "v1", code: "execution_object_unavailable", subsequentRun: "verified", publications: 1 },
@@ -358,7 +370,8 @@ process.stdout.write(JSON.stringify(acceptance) + "\n");
     });
 
     await writeFile(join(directory, "consumer.ts"), `
-import { createNodeAgentTransport, type NodeAgentTransportOptions } from "@leselang/bridge/node";
+import { createNodeAgentTransport, createNodeOperationHost, type NodeAgentTransportOptions } from "@leselang/bridge/node";
+import { createOperationRegistry, defineOperation } from "@leselang/bridge/operations";
 import { createRegisteredAgentHost, createRegisteredApplication, type RegisteredAgentTransport, type VerificationResult } from "@leselang/bridge";
 const options: NodeAgentTransportOptions = {
   executable: "/trusted/agent_worker", args: [], timeoutMs: 15_000, executionReports: "v1",
@@ -366,6 +379,25 @@ const options: NodeAgentTransportOptions = {
   onStderr(text: string): void { void text; },
 };
 const transport: RegisteredAgentTransport = createNodeAgentTransport(options);
+let scheduled = 0;
+const registry = createOperationRegistry([defineOperation({
+  name: "schedule.delay", parameters: { minutes: "integer", reason: "optional_string" },
+  result: "integer", capability: "schedule.write",
+  handle({ minutes, reason }, context) {
+    const note: string | null = reason;
+    context.commit(() => { scheduled++; void note; });
+    return minutes + 1n;
+  },
+})]);
+const operationHost = createNodeOperationHost({
+  executable: "/trusted/agent_worker", registry, grants: () => ["schedule.write"],
+  observe: () => scheduled,
+  verify: ({ before, after, report }) => typeof before === "number" && after === before + 1 && report.effects === 1,
+});
+void operationHost;
+defineOperation({ name: "schedule.flag", parameters: {}, result: "boolean", capability: "schedule.read",
+  // @ts-expect-error the declared boolean result cannot be returned as a string
+  handle: () => "true" });
 const host = createRegisteredAgentHost({
   window: "typed-node", epoch: "fresh-instance", transport,
   application: createRegisteredApplication({}),

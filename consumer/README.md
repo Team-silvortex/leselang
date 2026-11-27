@@ -12,6 +12,8 @@ all workspaces still share the repository's ignored `target/` cache.
 | Discover a host catalog, generate one task and verify one execution | `examples/catalog_agent.rs` and the [Rust catalog-agent guide](../docs/agent-workflow.md) |
 | Expose JS application objects and drive the real Rust VM | [`javascript/`](javascript) and the [Node consumer guide](../docs/javascript-sdk.md#run-the-independent-javascript-consumer) |
 | Keep a JS application alive across agent tasks and launch Rust workers | [`javascript/agent.mjs`](javascript/agent.mjs) and the [Node-owned agent guide](../docs/node-agent-host.md) |
+| Discover application-declared operations and verify two Effects | [Stock Consumer](javascript/agent/operations.mjs) and the [JS/TS application operations guide](../docs/application-operations.md) |
+| Check the same program across Rust, Node and C# | [.NET Consumer](dotnet/Program.cs) and the [three-host contract](../docs/dotnet-host.md#compare-the-three-hosts) |
 
 The Rust catalog agent makes no model call and invokes a selected host as a
 subprocess. It is distinct from the JavaScript SDK's

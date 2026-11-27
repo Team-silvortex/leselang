@@ -4,10 +4,7 @@ use serde::{
     de::{self, MapAccess, SeqAccess, Visitor},
 };
 use serde_json::{Map, Number, Value};
-use std::{
-    fmt,
-    io::{BufRead, Read},
-};
+use std::{fmt, io::BufRead};
 
 /// JSON objects must not contain duplicate fields, including nested objects.
 /// Parsing Value directly would discard that evidence before gateway validation.
@@ -113,14 +110,67 @@ impl Correlation {
 }
 
 pub fn challenge() -> Result<String, String> {
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    {
-        let mut bytes = [0_u8; 32];
-        std::fs::File::open("/dev/urandom")
-            .and_then(|mut random| random.read_exact(&mut bytes))
-            .map_err(|_| "cannot obtain operating-system request randomness")?;
-        Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    let mut bytes = [0_u8; 32];
+    fill_challenge(&mut bytes)?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn fill_challenge(bytes: &mut [u8; 32]) -> Result<(), &'static str> {
+    use std::io::Read;
+
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut random| random.read_exact(bytes))
+        .map_err(|_| "cannot obtain operating-system request randomness")
+}
+
+#[cfg(windows)]
+fn fill_challenge(bytes: &mut [u8; 32]) -> Result<(), &'static str> {
+    use std::ffi::c_void;
+
+    const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
+    #[link(name = "bcrypt")]
+    unsafe extern "system" {
+        fn BCryptGenRandom(algorithm: *mut c_void, buffer: *mut u8, length: u32, flags: u32)
+        -> i32;
     }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    Err("the Node reference transport currently supports Linux and macOS".into())
+
+    // SAFETY: CNG requires a null handle for the system-preferred RNG. The
+    // writable 32-byte array stays alive for the entire synchronous call.
+    let status = unsafe {
+        BCryptGenRandom(
+            std::ptr::null_mut(),
+            bytes.as_mut_ptr(),
+            bytes.len() as u32,
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+        )
+    };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err("cannot obtain operating-system request randomness")
+    }
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+fn fill_challenge(_: &mut [u8; 32]) -> Result<(), &'static str> {
+    Err("request challenges require Linux, macOS or Windows")
+}
+
+#[cfg(all(test, any(windows, target_os = "linux", target_os = "macos")))]
+mod tests {
+    #[test]
+    fn os_challenges_are_fresh_and_match_the_wire_format() {
+        let first = super::challenge().unwrap();
+        let second = super::challenge().unwrap();
+        for value in [&first, &second] {
+            assert_eq!(value.len(), 64);
+            assert!(
+                value
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            );
+        }
+        assert_ne!(first, second);
+    }
 }

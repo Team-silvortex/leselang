@@ -61,8 +61,9 @@ The worker is the `leselang-agent-worker` binary in the independent
 the registered-object gateway, task admission and explicit VM driver. Its
 dependency graph contains no Tauri or WebView framework, including optional
 dependencies. Tauri consumes that same library and retains its old public API
-and `agent_worker` example as compatibility wrappers. The carrier currently
-targets Linux and macOS.
+and `agent_worker` example as compatibility wrappers. Node Consumer checks
+run on Linux and macOS. The same Rust worker also runs with the independent
+[Windows C# Consumer](dotnet-host.md).
 
 Applications can build this binary or install it to an application-owned prefix:
 

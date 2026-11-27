@@ -14,9 +14,12 @@ automatic action retry or rollback of committed effects.
 
 | I want to… | Start here |
 | --- | --- |
+| Find the current capability status or next development task | [Project status](STATUS.md) and the [development mainline](docs/development-mainline.md) |
 | Write and run a LeseLang program | [Language and CLI](docs/language.md), or the quickstart below |
 | Embed the compiler and VM in Rust | [Rust embedding](docs/embedding.md) |
 | Expose JavaScript or TypeScript application controls | [JavaScript SDK](docs/javascript-sdk.md) |
+| Give an agent typed JS/TS application commands | [Application operations](docs/application-operations.md) |
+| Give an agent C# application commands | [.NET host and three-host conformance example](docs/dotnet-host.md) |
 | Give an application an agent conversation entry | [Agent entry](docs/agent-entry.md), then [sequential workflows](docs/agent-workflows.md) |
 | Build or use a GUI adapter | [Reference hosts](hosts/README.md) and [local host protocol](docs/host-protocol.md) |
 | Contribute to the repository | [Architecture](docs/architecture.md) and [contributor checks](CONTRIBUTING.md) |
@@ -30,11 +33,13 @@ contributor requirements and dated acceptance evidence.
 | --- | --- |
 | [`crates/`](crates) | The five language crates: syntax, runtime contracts, HIR and VM |
 | [`packages/javascript/`](packages/javascript/README.md) | Framework-independent JavaScript bridge, agent sessions and semantic planning |
+| [`packages/dotnet/`](packages/dotnet/) | .NET operation declarations, live grants and process transport to the same Rust VM |
 | [`hosts/`](hosts/README.md) | Standalone registered-object worker plus AppKit, macOS Accessibility and Tauri adapters |
 | [`consumer/`](consumer/README.md) | Independent Rust and JavaScript applications exercising public APIs |
 | [`fixtures/host-semantics/`](fixtures/host-semantics/README.md) | Shared catalog and generated-program compatibility fixtures |
 | [`examples/`](examples) | Small LeseLang programs for the CLI |
 | [`scripts/`](scripts/README.md) | Shared local and CI check groups |
+| [`project/status/`](project/status/catalog.json) and [`tools/leselang-dev/`](tools/leselang-dev/) | Capability inventory, evidence and independent Rust query tool |
 | [`docs/`](docs/README.md) | Guides, contracts, contributor reference and acceptance records |
 
 Cargo workspaces remain separate and share only the ignored `target/` build cache.
@@ -161,10 +166,16 @@ current setup instructions.
 
 ## Scope And Status
 
+The [development tensor](STATUS.md) is the authority for current capability
+status, evidence and mainline selection. Architecture guides describe design
+boundaries and dated acceptance records preserve observations from individual runs.
+
 LeseLang is an independent native language foundation, initially extracted from
 Gewyvern. Its language crates have no Gewyvern, Leserpent, SQLite or GUI product
 dependency. A durable runtime, full declared-language parity, broader application
 and platform support, and a stable FFI ABI remain separate milestones.
+Kyuubiki Workbench is the planned [first formal product trial](docs/architecture.md#first-formal-product-trial)
+of the protocol, with the adapter and workflow acceptance owned by Kyuubiki.
 Native callbacks are trusted code: Fuel does not sandbox them, and cancellation
 does not roll back committed external effects. See [security boundaries](SECURITY.md).
 

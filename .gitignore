@@ -1,3 +1,7 @@
 /target/
 /consumer/target/
+/consumer/dotnet/bin/
+/consumer/dotnet/obj/
+/packages/dotnet/bin/
+/packages/dotnet/obj/
 **/.DS_Store

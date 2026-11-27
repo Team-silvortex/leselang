@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "id": "independent-language-conformance",
+  "objective": "Make observable Lese Effect semantics reproducible across independently implemented Rust, JavaScript and C# hosts.",
+  "goals": ["hosts/conformance/shared-failure-vectors", "hosts/conformance/write-reconciliation"]
+}

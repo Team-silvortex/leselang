@@ -69,6 +69,13 @@ output errors retain the original error channel; cancellation does not fabricate
 a report. Node still requires clean process closure before delivering either a
 successful or failed report to the host's verifier.
 
+For application-declared scalar operations, `createNodeOperationHost` selects
+worker v4. Its start frame carries operation signatures and the host's grant
+snapshot. The worker registers them with the Rust embedding API, compiles the
+entry, and sends each authorized Effect to the application. The success report
+uses the `javascript.operations` profile. The application owns discovery and
+verification. See the [JS/TS application operations guide](../../docs/application-operations.md).
+
 ## Ownership And Compatibility
 
 | Source | Responsibility |
@@ -80,6 +87,7 @@ successful or failed report to the host's verifier.
 | `src/host.rs` | Local object authority, metering, dispatch and reply acceptance |
 | `src/task.rs` | Prepared scalar task admission and fixed registered report identity |
 | `src/worker.rs`, `src/worker/json_lines.rs` | One-task stdio process and strict private framing |
+| `src/worker/operations.rs` | Worker v4 declaration admission, scalar encoding and explicit VM driving |
 | `src/bin/leselang-agent-worker.rs` | Standalone CLI entry |
 | `tests/boundary.rs`, `tests/consumer/` | Resolved dependency isolation and independent Rust usage |
 
@@ -88,7 +96,7 @@ The Tauri library re-exports these same Rust types so existing `Scope`,
 Tauri keeps its application catalogs, form constants, desktop IPC and fixed
 report naming in its own workspace. Its old `agent_worker` example delegates to
 this worker; the old Rust-launched `node_host` retains its behavior and privately
-includes the canonical framing helper. There is one VM driver and task compiler.
+includes the canonical framing helper. Both use the registered-object VM driver and task compiler.
 The Tauri frontend selects `agent_start_named_task` only for the explicit named
 input marker; its original command and v2 form and board catalogs keep their
 existing behavior. Worker `--describe` still emits the unchanged base catalog.

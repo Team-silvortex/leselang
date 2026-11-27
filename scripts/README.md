@@ -24,8 +24,10 @@ causing offline plan checks to run a different executable.
 
 | Group | Coverage / prerequisite |
 | --- | --- |
+| `tensor` | Standalone Rust development tool, checked catalog and evidence identities, hierarchy and task selection |
 | `language` | Main workspace formatting, all-feature tests and strict Clippy |
 | `consumer` | Independent Rust suite, catalog-agent example tests and Clippy |
+| `dotnet-consumer` | Worker challenge and reply checks, native .NET 10 Consumer, shared two-Effect fixture and failure paths. Windows uses Git Bash, MSVC and native `.exe` files. Restore uses the installed .NET reference packs and a local source. |
 | `registered` | Standalone Rust host/worker, dependency boundary, strict Clippy and a separate Rust Consumer |
 | `javascript` | SDK, Node transport failure fixtures, packed JS/TS Consumer, browser isolation and Tauri frontend; install SDK and host npm dependencies |
 | `node-consumer` | Both portable Rust carriers, checked application declarations, real Node application, packed external Consumer with real VM, and an offline Tauri agent plan; requires SDK build/development tools and Node Consumer npm dependencies |

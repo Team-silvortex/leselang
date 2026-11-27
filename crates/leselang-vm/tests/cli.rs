@@ -104,6 +104,77 @@ fn standalone_run_compiles_pure_helpers_and_control_programs() {
 }
 
 #[test]
+fn contains_checks_and_runs_list_membership_and_string_substrings() {
+    let source = r#"
+fn has_name(names: string_list, query: string) = contains(left: names, right: query)
+fn main(query: string) = has_name(names: strings(first: "工具箱", second: ""), query: query)
+"#;
+    assert_success(
+        &run_file("check", source, &["--text", "query", "工具"]),
+        b"",
+    );
+    for (query, expected) in [("工具箱", true), ("工具", false), ("", true)] {
+        let output = run_file("run", source, &["--text", "query", query]);
+        assert_success(&output, format!("{expected}\n").as_bytes());
+    }
+    assert_success(
+        &run_file(
+            "run",
+            r#"fn main() = contains(left: "工具箱", right: "工具")"#,
+            &[],
+        ),
+        b"true\n",
+    );
+}
+
+#[test]
+fn contains_rejects_an_optional_list_needle_even_in_a_cold_branch() {
+    let source = r#"fn main() = choose(when: true, then: true,
+        otherwise: contains(left: strings(), right: optional_string(value: "工具")))"#;
+    for mode in ["check", "run"] {
+        let output = run_file(mode, source, &["--diagnostic-format", "json"]);
+        assert_code(&output, 1);
+        assert!(output.stdout.is_empty());
+        let records = json_diagnostics(&output);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0]["phase"], "compile");
+        assert_eq!(records[0]["kind"], "compilation");
+        assert_eq!(records[0]["code"], "LSC0001");
+    }
+}
+
+#[test]
+fn contains_guard_cannot_print_when_its_evaluation_runs_out_of_fuel() {
+    let source = r#"fn main() = choose(
+        when: contains(left: strings(item: "ready"), right: "ready"),
+        then: std.print(message: "accepted"), otherwise: none)"#;
+    assert_success(
+        &run_file("run", source, &["--allow", "stdio"]),
+        b"accepted\n",
+    );
+    // Both operands are ready. The comparison costs three Fuel and only two remain.
+    let output = run_file(
+        "run",
+        source,
+        &[
+            "--allow",
+            "stdio",
+            "--fuel",
+            "9",
+            "--diagnostic-format",
+            "json",
+        ],
+    );
+    assert_code(&output, 1);
+    assert!(output.stdout.is_empty());
+    let records = json_diagnostics(&output);
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["phase"], "runtime");
+    assert_eq!(records[0]["message"], "pure evaluation fuel exhausted");
+    assert_eq!(records[0]["fuel_remaining"], 2);
+}
+
+#[test]
 fn explicit_entry_selects_a_root_without_changing_default_main() {
     let source = "fn main() = 7\nfn task() = add(left: 19, right: 23)";
     assert_success(&run_file("run", source, &[]), b"7\n");

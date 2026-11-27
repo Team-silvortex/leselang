@@ -345,7 +345,8 @@ All binary operations below take `left:` and `right:`; unary operations take
 | `eq`, `ne` | Two values of the same scalar type → boolean. |
 | `and`, `or`; `not` | Booleans → boolean. `and` and `or` short-circuit their right operand. |
 | `concat` | Two strings → string. |
-| `contains`, `starts_with`, `ends_with` | Two strings → boolean. |
+| `contains` | String and string → substring match. String list and string → exact element match. Both return a boolean. |
+| `starts_with`, `ends_with` | Two strings → boolean. |
 | `len` | String or string list → integer. String length counts Unicode scalar values, not bytes or grapheme clusters. |
 | `char_at` | String and zero-based integer index → optional string. |
 | `split` | String and separator string → string list. |
@@ -359,6 +360,24 @@ All binary operations below take `left:` and `right:`; unary operations take
 
 Out-of-range `char_at` and `item_at` return an absent optional string. Character
 indices, like string `len`, address Unicode scalar values.
+
+Use list membership when an operation returns names or identifiers. For example,
+this program returns `true` with `--text name save` and `false` with
+`--text name sav`.
+
+```text
+fn main(name: string) = contains(
+  left: strings(first: "save", second: "open"),
+  right: name
+)
+```
+
+List membership uses the same case-sensitive string equality as `eq`, including
+for Unicode text. An empty list returns `false` for every query. An empty
+string matches a list that contains an empty entry. A list supplied by a host
+uses the same rules. Bind the reply, then pass the membership result to
+`choose` to control a later Effect, as in the
+[filter selection program shared by Rust, Node and C# Consumers](../fixtures/application-operations/list-membership.json).
 
 ## Branching And Recovery
 

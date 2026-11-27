@@ -55,6 +55,7 @@ test("the public browser runtime and declarations never reach the opt-in Node ca
   const browser = manifest.exports["."];
   const node = manifest.exports["./node"];
   const dom = manifest.exports["./dom"];
+  const operations = manifest.exports["./operations"];
   assert.equal(typeof node.import, "string", "the Node carrier has its own public entry");
   assert.equal(typeof node.types, "string", "the Node carrier has its own public declarations");
   const runtime = await browserGraph(new URL(browser.import, root), false);
@@ -69,6 +70,8 @@ test("the public browser runtime and declarations never reach the opt-in Node ca
   assert.ok(!runtime.has(new URL(dom.import, root).href), "the root entry does not eagerly import DOM bindings");
   assert.ok(!domRuntime.has(new URL(node.import, root).href));
   assert.ok(!domDeclarations.has(new URL(node.types, root).href));
+  await browserGraph(new URL(operations.import, root), false);
+  await browserGraph(new URL(operations.types, root), true);
   await readFile(new URL(node.import, root), "utf8");
   await readFile(new URL(node.types, root), "utf8");
 });

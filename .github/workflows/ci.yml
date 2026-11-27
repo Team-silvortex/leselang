@@ -14,6 +14,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - run: rustup toolchain install 1.98.0 --profile minimal --component clippy,rustfmt
       - run: cargo +1.98.0 fetch --locked
+      - run: cargo +1.98.0 fetch --manifest-path tools/leselang-dev/Cargo.toml --locked
+      - name: Validate development tensor and task selection
+        run: sh scripts/check.sh tensor
       - run: cargo +1.98.0 fetch --manifest-path consumer/Cargo.toml --locked
       - run: cargo +1.98.0 fetch --manifest-path hosts/appkit/Cargo.toml --locked
       - run: cargo +1.98.0 fetch --manifest-path hosts/macos-ax/Cargo.toml --locked
@@ -27,6 +30,24 @@ jobs:
         run: sh scripts/check.sh macos-ax
       - name: Exercise CLI, embedding and offline host plans
         run: sh scripts/check.sh smoke
+  dotnet-consumer:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.201'
+      - run: rustup toolchain install 1.98.0 --profile minimal
+      - run: cargo +1.98.0 fetch --manifest-path hosts/registered/Cargo.toml --locked
+      - run: cargo +1.98.0 fetch --manifest-path consumer/Cargo.toml --locked
+      - name: Run native worker and independent C# Consumer
+        shell: bash
+        run: sh scripts/check.sh dotnet-consumer
   typescript-host:
     strategy:
       fail-fast: false

@@ -12,6 +12,17 @@ passing portable suite does not establish native desktop behavior; desktop
 procedures are explicit and their dated results belong in
 [the acceptance archive](acceptance/README.md).
 
+The Rust, Node and .NET Consumers exercise the same meter program on success
+and failure. The success fixture checks its returned value, accepted Effects
+and Fuel. The failure fixture checks the terminal outcome, write and read
+callback counts, committed writes and final balance against each application's
+own state. [Success fixture](../fixtures/application-operations/two-effects.json)
+· [Failure vectors](../fixtures/application-operations/failure-vectors.json)
+Run `consumer`, `node-consumer` and `dotnet-consumer` when the neutral operation
+profile changes. The C# check requires a .NET 10 SDK with its installed reference
+packs on Windows, macOS or Linux. The Windows job runs the native Consumer and
+worker executables from Git Bash. See the [host guide](dotnet-host.md).
+
 ## Commands And Scope
 
 Fetch the pinned dependencies once, then validate the language and consumer
@@ -19,6 +30,7 @@ workspaces offline:
 
 ```sh
 cargo fetch --locked
+cargo fetch --manifest-path tools/leselang-dev/Cargo.toml --locked
 cargo fetch --manifest-path consumer/Cargo.toml --locked
 cargo fetch --manifest-path hosts/appkit/Cargo.toml --locked
 cargo fetch --manifest-path hosts/macos-ax/Cargo.toml --locked

@@ -1,0 +1,596 @@
+{
+  "schema_version": 1,
+  "cells": [
+    {
+      "id": "semantics/leselang-hir-core/type-system",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "type-system",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Infer scalar and host-result types in bounded HIR, including the unselected branches of choice and recovery.",
+      "dependencies": [
+        "frontend/leselang-syntax/syntax-tree",
+        "runtime/leselang-runtime-core/value-model"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/pure_typing.rs",
+          "anchor": "pub fn infer_pure_type"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/pure_typing.rs",
+          "anchor": "fn cold_branches_short_circuit_operands_and_recovery_fallback_are_still_typed()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/pure_typing.rs",
+          "anchor": "fn every_closed_operator_signature_is_used_for_all_six_scalar_types()"
+        }
+      ],
+      "next_action": "Recheck the cold-branch and six-type matrices when admitting a new type or scalar signature.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "HIR type-inference tests covering the supported signatures and cold arms.",
+      "acceptance_criteria": [
+        "Ill-typed cold branches fail admission before any host execution."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/scalar-operations",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "scalar-operations",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Lower scalar expressions and evaluate the declared bounded signatures. String membership accepts either a substring query or an exact string-list element.",
+      "dependencies": [
+        "semantics/leselang-hir-core/type-system"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/scalar_source.rs",
+          "anchor": "pub fn lower_scalar_source<'source,"
+        },
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/scalar_ops.rs",
+          "anchor": "pub fn apply_binary("
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-runtime-core/tests/scalar_operations.rs",
+          "anchor": "fn list_contains_compares_whole_strings_and_validates_both_operands()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn select_only_an_exact_filter_returned_by_the_host()"
+        }
+      ],
+      "next_action": "Keep HIR inference, runtime application and independent Consumer expectations in sync when adjusting operators.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Signature and Consumer regressions for bounded scalar expressions.",
+      "acceptance_criteria": [
+        "String-list membership matches complete items and rejects oversize operands."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/variable-binding",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "variable-binding",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Lower bounded bind expressions with lexical scope and enforce shadow, capture and scope restoration rules.",
+      "dependencies": [
+        "semantics/leselang-hir-core/type-system"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/binding_source.rs",
+          "anchor": "pub fn lower_binding_source"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/binding_source.rs",
+          "anchor": "fn native_unwind_releases_owned_parts_and_guarded_frames_once()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/binding_source.rs",
+          "anchor": "fn whole_cold_source_nodes_and_depth_fail_before_value_lowering()"
+        }
+      ],
+      "next_action": "Run binding scope and cleanup cases after changing local-slot handling.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Scoped binding tests for cleanup, original values and physical preflight.",
+      "acceptance_criteria": [
+        "A refused or unwound binding leaves the caller prefix intact and publishes no result."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/function-calls",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "function-calls",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Compile bounded multi-function programs, check helper dependencies and entry signatures, and expand helpers under declared budgets.",
+      "dependencies": [
+        "frontend/leselang-syntax/function-declaration",
+        "frontend/leselang-syntax/named-arguments",
+        "semantics/leselang-hir-core/type-system"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/catalog_program.rs",
+          "anchor": "pub fn compile_catalog_typed_program"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/task_inputs.rs",
+          "anchor": "fn task_compilation_checks_signatures_cold_branches_and_unused_helpers()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/declaration_source.rs",
+          "anchor": "fn program_current_physical_limits_and_final_native_admission_cannot_be_skipped()"
+        }
+      ],
+      "next_action": "Recompile helper graphs with unused and cold errors and check admission precedes execution.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "Entry and helper acceptance cases for the independent Rust Consumer.",
+      "acceptance_criteria": [
+        "Incorrect signatures and invalid unused helpers fail admission; valid typed entries accept named data."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/conditional-selection",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "conditional-selection",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Check the pure boolean condition and both branch types, then evaluate only the selected arm.",
+      "dependencies": [
+        "semantics/leselang-hir-core/type-system"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/choice_source.rs",
+          "anchor": "pub fn lower_choice_source"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/pure_evaluation.rs",
+          "anchor": "fn short_circuit_and_conditional_arms_are_lazy_but_not_structurally_unchecked()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn select_only_an_exact_filter_returned_by_the_host()"
+        }
+      ],
+      "next_action": "Run cold type rejection and selected-arm Effect counts when adjusting choose.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "A checked source choice and a Consumer trace with zero writes on a false condition.",
+      "acceptance_criteria": [
+        "Both arms pass static typing and only the chosen arm can reach the host."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/bounded-loop",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "bounded-loop",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Lower bounded scalar-state loops and check the boolean continuation condition and iteration budget before taking the next step.",
+      "dependencies": [
+        "semantics/leselang-hir-core/variable-binding",
+        "runtime/leselang-runtime-core/fuel-accounting"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/loop_source.rs",
+          "anchor": "pub fn bind_loop_source"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/scalar_loop_source.rs",
+          "anchor": "fn zero_and_exact_iteration_limits_check_condition_before_next()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/scalar_loop_source.rs",
+          "anchor": "fn loop_exhaustion_fuel_and_native_faults_do_not_become_calculation_fallbacks()"
+        }
+      ],
+      "next_action": "Recheck zero, exact and exhausted iteration budgets on changes to loop progression.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Exact-budget loop admission and execution regressions.",
+      "acceptance_criteria": [
+        "Zero and exact budgets check the condition in the specified order and exhaustion cannot invoke recover."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/bounded-fold",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "bounded-fold",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Fold a bounded string list in order with a typed accumulator, scoped item name and explicit literal iteration limit.",
+      "dependencies": [
+        "semantics/leselang-hir-core/variable-binding",
+        "runtime/leselang-runtime-core/fuel-accounting"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/fold_source.rs",
+          "anchor": "pub fn bind_fold_source"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/scalar_fold_source.rs",
+          "anchor": "fn shared_source_folds_keep_exact_reference_copy_scan_and_iteration_fuel()"
+        }
+      ],
+      "next_action": "Run collection-order, limit and Fuel boundary cases whenever traversal or copying changes.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Bounded fold tests for accumulator results and Fuel.",
+      "acceptance_criteria": [
+        "Fold uses the admitted list order and rejects a list longer than the declared fold limit."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/sequence-group",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "sequence-group",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Compose ordered sequential members under checked width and distinct labels. Publish subsequent members after their predecessors settle.",
+      "dependencies": [
+        "semantics/leselang-hir-core/host-effect-typing"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/sequence_source.rs",
+          "anchor": "pub fn lower_sequence_source"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/sequence_source.rs",
+          "anchor": "fn original_rows_order_labels_and_move_only_results_survive_flattening()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/sequence_source.rs",
+          "anchor": "fn inclusive_expanded_width_accepts_sixty_four_and_refuses_sixty_five()"
+        }
+      ],
+      "next_action": "Run sequential row order and width checks when changing group composition.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Sequence source tests with 64 and 65 expanded members.",
+      "acceptance_criteria": [
+        "Rows retain declaration order and the first over-width group is refused."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/parallel-group",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "parallel-group",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Track the original reply barrier for admitted parallel members and return results in declared order despite out-of-order replies.",
+      "dependencies": [
+        "semantics/leselang-hir-core/host-effect-typing"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/prepared_parallel.rs",
+          "anchor": "pub struct PreparedParallelSession"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/prepared_parallel.rs",
+          "anchor": "fn wrong_member_identity_domain_or_authority_keeps_original_input_and_never_exposes_partial_results()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/saved_parallel.rs",
+          "anchor": "fn every_partial_mask_restores_the_original_barrier_and_order_without_a_new_meter()"
+        }
+      ],
+      "next_action": "Exercise every saved-member mask and the original correlation barrier after parallel group changes.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Partial-barrier and out-of-order receipt cases.",
+      "acceptance_criteria": [
+        "Partial replies never expose completed results until all admitted members settle."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/host-effect-typing",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "host-effect-typing",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Type-check named atomic call arguments against the registered host signature and forbid nested Effects in pure operands.",
+      "dependencies": [
+        "frontend/leselang-syntax/named-arguments",
+        "semantics/leselang-hir-core/type-system"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/call_typing.rs",
+          "anchor": "pub fn check_call_arguments"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/call_typing.rs",
+          "anchor": "fn only_call_roots_are_admitted_and_nested_effects_remain_impure()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/catalog_source.rs",
+          "anchor": "fn complete_cold_catalog_versions_grants_and_names_precede_every_source_hook()"
+        }
+      ],
+      "next_action": "Run unknown catalog, invalid argument and nested Effect cases before changing call admission.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Call admission tests for catalog, arguments and pure operand restrictions.",
+      "acceptance_criteria": [
+        "An unknown or ill-typed call is rejected before any dispatch."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/result-projection",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "result-projection",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Lower scalar field projections and named group member access against host result observations and admitted projection policy.",
+      "dependencies": [
+        "semantics/leselang-hir-core/variable-binding",
+        "semantics/leselang-hir-core/host-effect-typing"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/projection_source.rs",
+          "anchor": "pub fn lower_projection_source"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/projection_source.rs",
+          "anchor": "fn parsed_native_projection_prepares_an_atomic_argument_against_the_original_schema()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/group_reply_reentry.rs",
+          "anchor": "fn selected_member_never_falls_back_to_another_operation_or_stale_native_view()"
+        }
+      ],
+      "next_action": "Check original operation identity and live result domains when changing projection selection.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Projection tests for the accepted member and its original operation schema.",
+      "acceptance_criteria": [
+        "Wrong member identity or stale result views cannot supply a substituted field."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/capture-continuation",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "capture-continuation",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Retain the admitted body and captured lexical values across a yielded Effect and re-enter the saved continuation with the original Fuel.",
+      "dependencies": [
+        "semantics/leselang-hir-core/variable-binding",
+        "semantics/leselang-hir-core/result-projection"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/effect_reentry.rs",
+          "anchor": "pub fn resume_captured_effects_in_scope"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/captured_reentry.rs",
+          "anchor": "fn mixed_move_only_saved_schema_enters_actual_body_in_wire_order_with_original_meter()"
+        }
+      ],
+      "next_action": "Exercise captured rows and successor preparation whenever continuation layout changes.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "Independent capture and re-entry cases with move-only host data.",
+      "acceptance_criteria": [
+        "The restored body sees the ordered capture and work consumes the original meter."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/compile-limits",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "compile-limits",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Bound physical structure, expansion nodes and extra source work separately from the runtime Fuel meter.",
+      "dependencies": [
+        "frontend/leselang-syntax/source-bounds",
+        "semantics/leselang-hir-core/function-calls"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/source_cost.rs",
+          "anchor": "pub fn measure_source_cost"
+        },
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/helper_expansion.rs",
+          "anchor": "pub fn reserve_helper_expansion"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/declaration_source.rs",
+          "anchor": "fn tightened_receipts_match_fresh_physical_admission_for_every_node_and_depth_cutoff()"
+        }
+      ],
+      "next_action": "Recheck fresh and tightened admission at every size/depth cutoff after a limit changes.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Node, depth and helper expansion boundary tests.",
+      "acceptance_criteria": [
+        "An over-limit physical or expanded body fails before execution."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir-core/scalar-recovery",
+      "architecture": "semantics",
+      "module": "leselang-hir-core",
+      "function": "scalar-recovery",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Recover from eligible scalar calculation failures while keeping Fuel exhaustion and native failures terminal.",
+      "dependencies": [
+        "semantics/leselang-hir-core/type-system",
+        "runtime/leselang-runtime-core/fuel-accounting"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir-core/src/pure_evaluation.rs",
+          "anchor": "pub fn evaluate_pure_in_scope"
+        },
+        {
+          "kind": "integration-test",
+          "path": "crates/leselang-hir/tests/pure_evaluation.rs",
+          "anchor": "fn scalar_recovery_is_typed_and_preserves_exact_fuel()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn recover_handles_scalar_operand_errors_but_never_native_denial_or_fuel_exhaustion()"
+        }
+      ],
+      "next_action": "Check recoverable scalar failures beside Fuel and authority refusals after changing recovery classification.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "Typed recovery cases and independent refusals with preserved Fuel.",
+      "acceptance_criteria": [
+        "Only the admitted scalar failure class enters fallback. Fuel is never refunded."
+      ]
+    },
+    {
+      "id": "semantics/leselang-hir/hir-facade",
+      "architecture": "semantics",
+      "module": "leselang-hir",
+      "function": "hir-facade",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Expose shared HIR and source plans through the public HIR crate while retaining the identity of generic native data.",
+      "dependencies": [
+        "semantics/leselang-hir-core/type-system",
+        "semantics/leselang-hir-core/compile-limits"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-hir/src/lib.rs",
+          "anchor": "pub use leselang_hir_core"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/core_identity.rs",
+          "anchor": "fn facade_moves_the_original_owned_ir_without_conversion_or_copy()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/core_identity.rs",
+          "anchor": "fn source_plans_and_diagnostics_keep_one_identity_across_both_packages()"
+        }
+      ],
+      "next_action": "Compile standalone Consumer identity checks when changing public HIR module exports.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "Public API Consumer tests that move the original HIR and source plans.",
+      "acceptance_criteria": [
+        "A Consumer can move owned HIR through both crates without conversion or copies."
+      ]
+    }
+  ]
+}

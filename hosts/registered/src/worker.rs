@@ -1,6 +1,7 @@
 //! One bounded Rust VM execution owned by an independent JavaScript parent.
 //! stdout is a carrier only; no Tauri runtime, child application or evaluator.
 mod json_lines;
+mod operations;
 
 use crate::{
     ExecutionFailure, ExecutionFailureCode, PreparedTask, Scope, Transport, describe_registered,
@@ -36,6 +37,22 @@ struct StartScope {
     session: String,
 }
 
+impl StartScope {
+    fn admit(self) -> Result<Scope, String> {
+        if [&self.window, &self.epoch, &self.session]
+            .iter()
+            .any(|name| !crate::gateway::valid_name(name))
+        {
+            return Err("invalid worker scope".into());
+        }
+        Ok(Scope {
+            window: self.window,
+            epoch: self.epoch,
+            session: self.session,
+        })
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Start {
@@ -67,20 +84,7 @@ fn admit(mut value: Value) -> Result<(Scope, PreparedTask), String> {
     if !matches!(start.agent_worker_version, 1..=3) || start.kind != "start" {
         return Err("unsupported worker start record".into());
     }
-    if [
-        &start.scope.window,
-        &start.scope.epoch,
-        &start.scope.session,
-    ]
-    .iter()
-    .any(|name| {
-        !(1..=64).contains(&name.len())
-            || !name
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-    }) {
-        return Err("invalid worker scope".into());
-    }
+    let scope = start.scope.admit()?;
     // Complete syntax, type and argument admission before any Bridge request.
     let arguments = start.arguments.into_iter().collect();
     let prepared = if named_inputs {
@@ -88,14 +92,7 @@ fn admit(mut value: Value) -> Result<(Scope, PreparedTask), String> {
     } else {
         prepare_task(&start.source, arguments)?
     };
-    Ok((
-        Scope {
-            window: start.scope.window,
-            epoch: start.scope.epoch,
-            session: start.scope.session,
-        },
-        prepared,
-    ))
+    Ok((scope, prepared))
 }
 
 #[derive(Clone)]
@@ -108,7 +105,7 @@ struct Pending {
 fn deliver(pending: &Mutex<Option<Pending>>, value: Value) -> Result<Value, String> {
     let fields = value.as_object().ok_or("invalid worker reply envelope")?;
     if fields.len() != 4
-        || !matches!(value["agent_worker_version"].as_u64(), Some(1..=3))
+        || !matches!(value["agent_worker_version"].as_u64(), Some(1..=4))
         || value["kind"] != "reply"
         || !fields.contains_key("challenge")
         || !fields.contains_key("reply")
@@ -236,8 +233,11 @@ impl StdioTransport {
 
     fn serve(&mut self) -> Result<Value, String> {
         let initial = self.initial()?;
-        if let Some(version @ 1..=3) = initial["agent_worker_version"].as_u64() {
+        if let Some(version @ 1..=4) = initial["agent_worker_version"].as_u64() {
             self.version = version as u32;
+        }
+        if self.version == 4 {
+            return operations::execute(self, initial);
         }
         let (scope, prepared) = admit(initial)?;
         if !self.is_live() {
@@ -538,15 +538,15 @@ mod tests {
     }
 
     #[test]
-    fn reply_gate_pins_all_three_versions_without_consuming_foreign_replies() {
+    fn reply_gate_pins_all_versions_without_consuming_foreign_replies() {
         let reply = json!({"transport_version":1,"window":"node","epoch":"instance","session":"run_1","request_id":1});
-        for version in [1, 2, 3] {
+        for version in [1, 2, 3, 4] {
             let pending = Mutex::new(Some(Pending {
                 version,
                 correlation: Correlation::read(&reply).unwrap(),
                 challenge: "a".repeat(64),
             }));
-            for foreign in [0, 1, 2, 3, 4] {
+            for foreign in [0, 1, 2, 3, 4, 5] {
                 if foreign != version {
                     let envelope = json!({"agent_worker_version":foreign,"kind":"reply","challenge":"a".repeat(64),"reply":reply});
                     assert!(deliver(&pending, envelope).is_err());

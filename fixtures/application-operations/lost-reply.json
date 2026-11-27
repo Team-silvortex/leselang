@@ -1,0 +1,38 @@
+{
+  "write_source": "fn main(key: string) = bind(receipt: ledger.add(key: key), body: ledger.read())",
+  "idempotent_source": "fn main(key: string) = bind(receipt: ledger.add_once(key: key), body: bind(balance: ledger.read(), body: receipt))",
+  "lookup_source": "fn main(key: string) = ledger.lookup(key: key)",
+  "initial_balance": "9007199254740992",
+  "unknown_key": "op-unrelated",
+  "cases": [
+    {
+      "id": "request-lost",
+      "key": "op-before",
+      "expected": {
+        "run_report": false, "add_calls": 0, "committed_writes": 0, "tail_reads": 0,
+        "lookup_receipt": null, "unknown_receipt": null, "balance": "9007199254740992"
+      },
+      "idempotent_retry": {
+        "add_calls": 1, "committed_writes": 1, "tail_reads": 1, "effects": 2,
+        "receipt": "9007199254740993", "balance": "9007199254740993"
+      }
+    },
+    {
+      "id": "reply-lost",
+      "key": "op-after",
+      "expected": {
+        "run_report": false, "add_calls": 1, "committed_writes": 1, "tail_reads": 0,
+        "lookup_receipt": "9007199254740993", "unknown_receipt": null, "balance": "9007199254740993"
+      },
+      "idempotent_retry": {
+        "add_calls": 2, "committed_writes": 1, "tail_reads": 1, "effects": 2,
+        "receipt": "9007199254740993", "balance": "9007199254740993"
+      }
+    }
+  ],
+  "replay_control": {"case": "reply-lost", "committed_writes": 2, "balance": "9007199254740994"},
+  "key_isolation": {
+    "other_key": "op-independent", "other_receipt": "9007199254740994",
+    "replayed_receipt": "9007199254740993", "balance": "9007199254740994", "committed_writes": 2
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "source": "fn main(wanted: string) = bind(options: filters.available(), body: choose(when: contains(left: options, right: wanted), then: filters.select(value: wanted), otherwise: false))",
+  "cases": [
+    { "options": ["草稿", "已发布", "已发布"], "wanted": "已发布", "matched": true },
+    { "options": ["草稿", "已发布"], "wanted": "发布", "matched": false },
+    { "options": [], "wanted": "", "matched": false },
+    { "options": ["", "草稿"], "wanted": "", "matched": true },
+    { "options": ["é"], "wanted": "e\u0301", "matched": false }
+  ]
+}

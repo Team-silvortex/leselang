@@ -4,6 +4,8 @@ import { isAbsolute } from "node:path";
 import { clearTimeout, setTimeout } from "node:timers";
 import type { Reply, Scope } from "../bridge.js";
 import type { RegisteredAgentEndpoint, RegisteredAgentRun, RegisteredAgentTransport } from "../agent/registered-host.js";
+import type { OperationSchema } from "../operations/index.js";
+import type { OperationProfile } from "./operation-host.js";
 
 /** A trusted executable implementing the registered-agent worker protocol. */
 export interface NodeAgentTransportOptions {
@@ -21,12 +23,25 @@ export interface NodeAgentTransportOptions {
   readonly onStderr?: (text: string) => void;
 }
 
+type WorkerReply = Omit<Reply, "value"> & { readonly value: unknown };
 interface ActiveWorker {
   readonly scope: Readonly<Scope> | undefined;
   fail(reason: unknown): void;
-  reply(reply: Reply): Promise<void>;
+  reply(reply: WorkerReply): Promise<void>;
 }
-type CapturedRun = Pick<RegisteredAgentRun, "scope" | "onRequest"> & { readonly version: 1 | 2 | 3 };
+type CapturedRun = Pick<RegisteredAgentRun, "scope" | "onRequest"> & { readonly version: 1 | 2 | 3 | 4 };
+
+interface WorkerTransport extends RegisteredAgentTransport {
+  execute(run: RegisteredAgentRun, signal: AbortSignal): Promise<string>;
+  reply(reply: WorkerReply): Promise<void>;
+}
+
+interface OperationMode {
+  readonly profile: OperationProfile;
+  readonly operations: readonly OperationSchema[];
+  grants(): readonly string[];
+  retire(): void;
+}
 
 const START_LIMIT = 128 * 1024;
 const REQUEST_LIMIT = 64 * 1024;
@@ -52,7 +67,7 @@ function validText(value: unknown, limit: number): value is string {
 }
 
 /** Strict bounded envelope JSON. Report JSON stays an opaque original string. */
-function decode(bytes: Uint8Array): unknown {
+export function decodeWorkerJson(bytes: Uint8Array, version: CapturedRun["version"] = VERSION): unknown {
   const source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   let offset = 0, nodes = 0;
   const invalid = (): never => { throw failure("node_worker_invalid_json"); };
@@ -111,7 +126,9 @@ function decode(bytes: Uint8Array): unknown {
     if (!number) return invalid();
     offset += number[0].length;
     const result = Number(number[0]);
-    if (!Number.isSafeInteger(result)) invalid();
+    // Protocol 4 emits canonical integer tokens. Converting first without
+    // checking the spelling can round a fractional request ID into a valid one.
+    if (!Number.isSafeInteger(result) || (version === 4 && String(result) !== number[0])) invalid();
     return result;
   };
   const result = value(0);
@@ -120,7 +137,7 @@ function decode(bytes: Uint8Array): unknown {
   return result;
 }
 
-function exact(record: unknown, keys: readonly string[]): asserts record is Record<string, unknown> {
+export function exact(record: unknown, keys: readonly string[]): asserts record is Record<string, unknown> {
   if (!record || typeof record !== "object" || Array.isArray(record)
     || Object.keys(record).length !== keys.length || keys.some((key) => !Object.hasOwn(record, key))) {
     throw failure("node_worker_invalid_frame");
@@ -135,8 +152,14 @@ const sameScope = (a: unknown, b: unknown): boolean => record(a) && record(b) &&
  * A report never completes execute until the child has actually closed cleanly.
  */
 export function createNodeAgentTransport(options: NodeAgentTransportOptions): RegisteredAgentTransport {
+  return createWorkerTransport(options);
+}
+
+/** Internal construction shared by the two public hosts. Each pins its own request vocabulary. */
+export function createWorkerTransport(options: Omit<NodeAgentTransportOptions, "catalog"> &
+  Partial<Pick<NodeAgentTransportOptions, "catalog">>, operationMode?: OperationMode): WorkerTransport {
   if (!options || typeof options !== "object" || !validText(options.executable, 4096) || !isAbsolute(options.executable) || options.executable.includes("\0")
-    || typeof options.catalog !== "function"
+    || (!operationMode && typeof options.catalog !== "function")
     || (options.args !== undefined && (!Array.isArray(options.args)
       || options.args.length > 16 || options.args.some((arg) => !validText(arg, 4096) || arg.includes("\0"))))
     || (options.onStderr !== undefined && typeof options.onStderr !== "function")) {
@@ -148,6 +171,8 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 20 || timeoutMs > 60_000) throw failure("node_worker_invalid_timeout");
   const executable = options.executable, args = [...(options.args ?? [])];
   const catalog = options.catalog, onStderr = options.onStderr;
+  const allowedNames = new Set(operationMode ? operationMode.operations.map((op) => op.name)
+    : ["gui.list", "gui.find", "gui.observe", "gui.set_text", "gui.click"]);
   let active: ActiveWorker | null = null;
   let closed = false;
   let endpoint: RegisteredAgentEndpoint | null = null;
@@ -179,6 +204,7 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
           if (error) return;
           error = reason instanceof Error ? reason : failure("node_worker_failed");
           pending = null;
+          operationMode?.retire();
           child.stdin.destroy();
           try { child.kill("SIGTERM"); } catch { /* The close event owns settlement. */ }
           forceKill = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} }, 100);
@@ -206,7 +232,7 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
       timer = setTimeout(() => current.fail(failure("node_worker_deadline")), timeoutMs);
       const frame = (bytes: Uint8Array): void => {
         if (terminal) throw failure("node_worker_after_terminal");
-        const message = decode(bytes);
+        const message = decodeWorkerJson(bytes, version);
         if (!record(message) || message.agent_worker_version !== version) throw failure("node_worker_invalid_version");
         if (message.kind === "request") {
           exact(message, ["agent_worker_version", "kind", "challenge", "request"]);
@@ -219,7 +245,7 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
           if (!run || !sameScope(request, run.scope) || request.transport_version !== 1
             || typeof request.request_id !== "number" || request.request_id !== lastSerial + 1 || request.request_id > 256
             || typeof request.budget_ms !== "number" || !Number.isInteger(request.budget_ms) || request.budget_ms < 1 || request.budget_ms > 5000
-            || typeof request.operation !== "string" || !["gui.list", "gui.find", "gui.observe", "gui.set_text", "gui.click"].includes(request.operation)
+            || typeof request.operation !== "string" || !allowedNames.has(request.operation)
             || !request.arguments || typeof request.arguments !== "object" || Array.isArray(request.arguments)) {
             throw failure("node_worker_foreign_request");
           }
@@ -277,13 +303,14 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
         clearTimeout(timer); clearTimeout(forceKill);
         signal.removeEventListener("abort", abort);
         if (active === current) active = null;
+        operationMode?.retire();
         try {
           if (error) throw error;
           if (signal.aborted || closed) throw failure("node_worker_cancelled");
           if (exitSignal || code !== 0) throw failure("node_worker_exit_failed");
           stderrDecoder.decode();
           if (mode === "--describe") {
-            decode(buffer);
+            decodeWorkerJson(buffer);
             resolve(new TextDecoder("utf-8", { fatal: true }).decode(buffer));
           } else {
             if (pending || buffer.length || !terminal || typeof report !== "string") throw failure("node_worker_incomplete_result");
@@ -300,9 +327,13 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
 
   return {
     async describe(signal) {
+      if (operationMode) {
+        available(signal);
+        return Object.freeze({ schema_version: 1, profile: operationMode.profile, operations: operationMode.operations });
+      }
       const base = await launch("--describe", signal);
       if (closed || signal.aborted) throw failure("node_worker_cancelled");
-      const described = catalog(base);
+      const described = catalog!(base);
       if (closed || signal.aborted) throw failure("node_worker_cancelled");
       if (!validText(described, CATALOG_LIMIT)) throw failure("node_worker_invalid_catalog");
       return described;
@@ -319,7 +350,7 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
       if (!validText(source, 16 * 1024) || source.includes("\0")) throw failure("node_worker_invalid_source");
       if (inputMode !== undefined && inputMode !== "named_strings") throw failure("node_worker_invalid_input_mode");
       const namedInputs = inputMode === "named_strings";
-      const version = executionReports === "v1" ? 3 : namedInputs ? 2 : 1;
+      const version = operationMode ? 4 : executionReports === "v1" ? 3 : namedInputs ? 2 : 1;
       if (!supplied || typeof supplied !== "object" || Array.isArray(supplied)
         || ![Object.prototype, null].includes(Object.getPrototypeOf(supplied))) {
         throw failure("node_worker_invalid_arguments");
@@ -342,7 +373,10 @@ export function createNodeAgentTransport(options: NodeAgentTransportOptions): Re
       const captured: CapturedRun = { scope, onRequest, version };
       const bytes = Buffer.from(JSON.stringify({ agent_worker_version: version, kind: "start",
         scope, source, arguments: arguments_,
-        ...(version === 3 ? { input_mode: namedInputs ? "named_strings" : "single_string" } : {}) }) + "\n");
+        ...(version === 3 ? { input_mode: namedInputs ? "named_strings" : "single_string" } : {}),
+        // Omit the historical default so existing v4 workers still admit this frame.
+        ...(operationMode?.profile === "lese.operations" ? { profile: operationMode.profile } : {}),
+        ...(operationMode ? { operations: operationMode.operations, grants: operationMode.grants() } : {}) }) + "\n");
       if (bytes.length > START_LIMIT) throw failure("node_worker_start_limit");
       endpoint ??= Object.freeze({ window: scope.window, epoch: scope.epoch });
       return launch("--serve", signal, captured, bytes);

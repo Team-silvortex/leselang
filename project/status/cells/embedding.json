@@ -1,0 +1,373 @@
+{
+  "schema_version": 1,
+  "cells": [
+    {
+      "id": "embedding/catalog/operation-catalog",
+      "architecture": "embedding",
+      "module": "catalog",
+      "function": "operation-catalog",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Rust borrows a bounded, versioned table of named operations, parameters, result domains and capabilities. Lookup binds parameters in their declared order.",
+      "dependencies": [
+        "runtime/leselang-runtime-core/value-model"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/catalog.rs",
+          "anchor": "pub struct OperationCatalog<"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-runtime-core/tests/catalog.rs",
+          "anchor": "fn unrelated_native_hosts_share_registration_lookup_and_declaration_order_binding()"
+        }
+      ],
+      "next_action": "Two unrelated native hosts resolve their own keys, reject duplicates and preserve declaration order.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "crates/leselang-runtime-core/tests/catalog.rs",
+      "acceptance_criteria": [
+        "Two unrelated native hosts resolve their own keys, reject duplicates and preserve declaration order."
+      ]
+    },
+    {
+      "id": "embedding/catalog/capability-registration",
+      "architecture": "embedding",
+      "module": "catalog",
+      "function": "capability-registration",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The Rust builder registers scalar signatures and required grants; compiling a denied operation fails before its callback. Live grants are rechecked at dispatch.",
+      "dependencies": [
+        "embedding/catalog/operation-catalog"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-vm/src/embedding.rs",
+          "anchor": "pub fn register("
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn revocation_after_authorization_is_rechecked_immediately_before_dispatch()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn cold_compilation_rejects_invalid_calls_and_denied_capabilities_without_dispatch()"
+        }
+      ],
+      "next_action": "A denied or revoked operation leaves the callback count at zero.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "consumer/tests/embedding.rs",
+      "acceptance_criteria": [
+        "A denied or revoked operation leaves the callback count at zero."
+      ]
+    },
+    {
+      "id": "embedding/rust/native-embedding",
+      "architecture": "embedding",
+      "module": "rust",
+      "function": "native-embedding",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "HostBuilder compiles bounded scalar source with explicit task arguments and drives a local session through poll, authorize, dispatch and accept.",
+      "dependencies": [
+        "embedding/catalog/capability-registration",
+        "runtime/leselang-vm/execution-session"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-vm/src/embedding.rs",
+          "anchor": "pub struct HostBuilder<'a>"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn two_effects_require_every_explicit_step_and_reuse_the_original_session()"
+        }
+      ],
+      "next_action": "One independent application drives both Effects on the original session and observes the typed result.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "consumer/tests/embedding.rs",
+      "acceptance_criteria": [
+        "One independent application drives both Effects on the original session and observes the typed result."
+      ]
+    },
+    {
+      "id": "embedding/catalog/host-discovery",
+      "architecture": "embedding",
+      "module": "catalog",
+      "function": "host-discovery",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "A bounded discovery record describes registered operations, scalar and native types, parameters and required capabilities without invoking a handler or granting live authority.",
+      "dependencies": [
+        "embedding/catalog/operation-catalog"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/discovery.rs",
+          "anchor": "pub struct CatalogDescription"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-runtime-core/tests/discovery.rs",
+          "anchor": "fn exact_versioned_schema_retains_types_order_and_required_capabilities()"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/embedding.rs",
+          "anchor": "fn host_discovery_uses_the_registered_contract_without_granting_or_invoking_operations()"
+        }
+      ],
+      "next_action": "Describe the host with no grants or calls and compare the emitted names and types against its registrations.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "consumer/tests/embedding.rs",
+      "acceptance_criteria": [
+        "Describe the host with no grants or calls and compare the emitted names and types against its registrations."
+      ]
+    },
+    {
+      "id": "embedding/catalog/host-semantics",
+      "architecture": "embedding",
+      "module": "catalog",
+      "function": "host-semantics",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "Host-authored semantic v1 fixed results, v2 observed results and v3 named string inputs are validated against the operation catalog. Semantics declare finite tasks and verification predicates.",
+      "dependencies": [
+        "embedding/catalog/host-discovery"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/discovery/semantics.rs",
+          "anchor": "pub struct SemanticDescription"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-runtime-core/tests/discovery_semantics_v3.rs",
+          "anchor": "fn named_inputs_round_trip_without_changing_base_or_legacy_public_enums()"
+        },
+        {
+          "kind": "compatibility-fixture",
+          "path": "fixtures/host-semantics/multi-input-save.lese",
+          "anchor": "fn main("
+        }
+      ],
+      "next_action": "The v3 schema admits separately named strings while the v1/v2 decoders retain their original input bounds.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "fixtures/host-semantics/multi-input-save.lese",
+      "acceptance_criteria": [
+        "The v3 schema admits separately named strings while the v1/v2 decoders retain their original input bounds."
+      ]
+    },
+    {
+      "id": "embedding/objects/object-identity",
+      "architecture": "embedding",
+      "module": "objects",
+      "function": "object-identity",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "LocalObjectOwner issues weak object references bound to the owning generation and execution lease. Replacement, retirement, foreign owners and closed leases prevent access.",
+      "dependencies": [
+        "runtime/leselang-vm/execution-session"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/host_protocol.rs",
+          "anchor": "pub struct LocalObjectOwner"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-runtime-core/tests/host_protocol.rs",
+          "anchor": "fn opaque_references_reject_foreign_owners_and_execution_scopes()"
+        }
+      ],
+      "next_action": "Foreign owners and scopes reject a reference and invalidated generations cannot access replacement objects.",
+      "validation_command": "sh scripts/check.sh language",
+      "expected_artifact": "crates/leselang-runtime-core/tests/host_protocol.rs",
+      "acceptance_criteria": [
+        "Foreign owners and scopes reject a reference and invalidated generations cannot access replacement objects."
+      ]
+    },
+    {
+      "id": "embedding/objects/observe-act-verify",
+      "architecture": "embedding",
+      "module": "objects",
+      "function": "observe-act-verify",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "An observation stamps a snapshot with the live revision. The host admits an action on that revision before native dispatch and verifies its result through a fresh observation.",
+      "dependencies": [
+        "embedding/objects/object-identity"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/host_protocol.rs",
+          "anchor": "pub fn with_current<T>"
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/tests/host_protocol.rs",
+          "anchor": "fn both_reference_adapters_run_the_same_observe_apply_verify_program()"
+        }
+      ],
+      "next_action": "Two independent adapter representations run one observe/apply/verify program and refuse stale or foreign requests.",
+      "validation_command": "sh scripts/check.sh consumer",
+      "expected_artifact": "consumer/tests/host_protocol.rs",
+      "acceptance_criteria": [
+        "Two independent adapter representations run one observe/apply/verify program and refuse stale or foreign requests."
+      ]
+    },
+    {
+      "id": "embedding/registered/object-runtime",
+      "architecture": "embedding",
+      "module": "registered",
+      "function": "object-runtime",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The framework-free registered-host crate resolves application-owned objects, validates scoped requests and runs compiled tasks in a Rust worker with a fresh execution scope.",
+      "dependencies": [
+        "embedding/objects/observe-act-verify",
+        "embedding/catalog/operation-catalog"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "hosts/registered/src/task.rs",
+          "anchor": "pub fn run_prepared_registered_task("
+        },
+        {
+          "kind": "integration-test",
+          "path": "hosts/registered/tests/boundary.rs",
+          "anchor": "fn complete_registered_worker_dependency_graph_has_no_desktop_framework()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "hosts/registered/tests/named_inputs.rs",
+          "anchor": "fn generated_two_field_fixture_is_admitted_by_the_actual_registered_host()"
+        }
+      ],
+      "next_action": "The independent registered-host Consumer builds and exercises task execution without a desktop framework.",
+      "validation_command": "sh scripts/check.sh registered",
+      "expected_artifact": "hosts/registered/tests/consumer/src/main.rs",
+      "acceptance_criteria": [
+        "The independent registered-host Consumer builds and exercises task execution without a desktop framework."
+      ]
+    },
+    {
+      "id": "embedding/compatibility/local-protocol",
+      "architecture": "embedding",
+      "module": "compatibility",
+      "function": "local-protocol",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "The local object protocol accepts exactly ProtocolVersion::V1. Historical Tauri exports share types and VM behavior with the standalone registered host. Remote negotiation is outside this contract.",
+      "dependencies": [
+        "embedding/objects/object-identity",
+        "embedding/registered/object-runtime"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "path": "crates/leselang-runtime-core/src/host_protocol.rs",
+          "anchor": "pub const V1: Self = Self(1);"
+        },
+        {
+          "kind": "unit-test",
+          "path": "crates/leselang-runtime-core/tests/host_protocol.rs",
+          "anchor": "fn protocol_version_accepts_only_the_exact_local_draft()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "hosts/tauri/tests/registered_compatibility.rs",
+          "anchor": "fn historical_and_registered_exports_share_types_and_vm_execution()"
+        }
+      ],
+      "next_action": "Legacy and registered entry points accept the same prepared task and resolve identical Rust types.",
+      "validation_command": "sh scripts/check.sh tauri-portable",
+      "expected_artifact": "hosts/tauri/tests/registered_compatibility.rs",
+      "acceptance_criteria": [
+        "Legacy and registered entry points accept the same prepared task and resolve identical Rust types."
+      ]
+    },
+    {
+      "id": "embedding/ffi/stable-abi",
+      "architecture": "embedding",
+      "module": "ffi",
+      "function": "stable-abi",
+      "lifecycle": "target",
+      "status": "early",
+      "progress": 0,
+      "priority": "deferred",
+      "confidence": "high",
+      "contract": "A documented, versioned C ABI would expose embedding with explicit ownership and error lifetimes. The existing Rust and JSON worker interfaces cover separate contracts.",
+      "dependencies": [
+        "embedding/rust/native-embedding"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/migration.md",
+          "anchor": "a stable FFI ABI"
+        },
+        {
+          "kind": "documentation-contract",
+          "path": "docs/host-protocol.md",
+          "anchor": "acceptance is an exact local check"
+        }
+      ],
+      "next_action": "Specify an ABI ownership and versioning contract and decide its release target before implementing a Foreign Function Interface.",
+      "validation_command": "cargo test --manifest-path consumer/ffi/Cargo.toml",
+      "expected_artifact": "consumer/ffi/Cargo.toml",
+      "acceptance_criteria": [
+        "An independent C application links only the exported ABI, completes two Effects and rejects stale handles."
+      ]
+    }
+  ]
+}

@@ -112,6 +112,10 @@ impl BinaryOperator {
                     .then_some(ScalarType::StringList);
             }
             Join => return (left == ScalarType::StringList && right == String).then_some(String),
+            Contains => {
+                return (matches!(left, String | ScalarType::StringList) && right == String)
+                    .then_some(Boolean);
+            }
             _ => {}
         }
         if left != right {
@@ -122,7 +126,7 @@ impl BinaryOperator {
             (And | Or, Boolean) => Some(Boolean),
             (Concat, String) => Some(String),
             (Split, String) => Some(ScalarType::StringList),
-            (Contains | StartsWith | EndsWith, String) => Some(Boolean),
+            (StartsWith | EndsWith, String) => Some(Boolean),
             (Add | Sub | Mul | Div | Rem, Integer) => Some(Integer),
             (Lt | Le | Gt | Ge, Integer) => Some(Boolean),
             _ => None,
@@ -368,6 +372,7 @@ pub fn apply_binary(
         (And, Boolean(left), Boolean(right)) => Ok(Boolean(left && right)),
         (Or, Boolean(left), Boolean(right)) => Ok(Boolean(left || right)),
         (Contains, String(left), String(right)) => Ok(Boolean(left.contains(&right))),
+        (Contains, StringList(left), String(right)) => Ok(Boolean(left.0.contains(&right))),
         (StartsWith, String(left), String(right)) => Ok(Boolean(left.starts_with(&right))),
         (EndsWith, String(left), String(right)) => Ok(Boolean(left.ends_with(&right))),
         (CharAt, String(left), Integer(index)) => {

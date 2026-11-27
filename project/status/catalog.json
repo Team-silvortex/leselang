@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "status_protocol": "dev-tensor-status-v1",
+  "architectures": [
+    {
+      "id": "project",
+      "label": "Project infrastructure",
+      "modules": [
+        {
+          "id": "workspace",
+          "owner": "Repository Cargo workspace and independent metadata-boundary Consumer",
+          "functions": [
+            "dependency-boundaries"
+          ]
+        },
+        {
+          "id": "packaging",
+          "owner": "Rust package manifests and versioned compatibility fixtures",
+          "functions": [
+            "package-identity",
+            "protocol-compatibility",
+            "registry-release"
+          ]
+        },
+        {
+          "id": "build",
+          "owner": "Pinned Rust toolchain, Cargo locks and shared build profile",
+          "functions": [
+            "offline-build"
+          ]
+        },
+        {
+          "id": "verification",
+          "owner": "scripts/check.sh, CI jobs and independent Consumer maintainers",
+          "functions": [
+            "check-groups",
+            "independent-consumers"
+          ]
+        },
+        {
+          "id": "documentation",
+          "owner": "docs/ guides, provenance and acceptance archive maintainers",
+          "functions": [
+            "contracts-and-records"
+          ]
+        },
+        {
+          "id": "governance",
+          "owner": "tools/leselang-dev and project/status maintainers",
+          "functions": [
+            "development-tensor"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "frontend",
+      "label": "Language frontend",
+      "modules": [
+        {
+          "id": "leselang-syntax",
+          "owner": "crates/leselang-syntax",
+          "functions": [
+            "diagnostics",
+            "function-declaration",
+            "lexer",
+            "named-arguments",
+            "parser",
+            "source-bounds",
+            "source-formatting",
+            "source-span",
+            "syntax-tree"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "semantics",
+      "label": "Language semantics and HIR",
+      "modules": [
+        {
+          "id": "leselang-hir-core",
+          "owner": "crates/leselang-hir-core",
+          "functions": [
+            "bounded-fold",
+            "bounded-loop",
+            "capture-continuation",
+            "compile-limits",
+            "conditional-selection",
+            "function-calls",
+            "host-effect-typing",
+            "parallel-group",
+            "result-projection",
+            "scalar-operations",
+            "scalar-recovery",
+            "sequence-group",
+            "type-system",
+            "variable-binding"
+          ]
+        },
+        {
+          "id": "leselang-hir",
+          "owner": "crates/leselang-hir",
+          "functions": [
+            "hir-facade"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "runtime",
+      "label": "Runtime and VM",
+      "modules": [
+        {
+          "id": "leselang-runtime-core",
+          "owner": "crates/leselang-runtime-core",
+          "functions": [
+            "authority-validation",
+            "checkpoint-primitives",
+            "fuel-accounting",
+            "reply-validation",
+            "scope-revocation",
+            "value-model"
+          ]
+        },
+        {
+          "id": "leselang-vm",
+          "owner": "crates/leselang-vm and VM-facing HIR execution sessions",
+          "functions": [
+            "bytecode-execution",
+            "cancellation",
+            "continuation-recovery",
+            "durable-runtime",
+            "effect-dispatch",
+            "execution-session",
+            "local-vm-ownership",
+            "partial-effects"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "embedding",
+      "label": "Embedding and host protocol",
+      "modules": [
+        {
+          "id": "catalog",
+          "owner": "crates/leselang-runtime-core discovery and crates/leselang-vm embedding",
+          "functions": [
+            "capability-registration",
+            "host-discovery",
+            "host-semantics",
+            "operation-catalog"
+          ]
+        },
+        {
+          "id": "rust",
+          "owner": "crates/leselang-vm embedding",
+          "functions": [
+            "native-embedding"
+          ]
+        },
+        {
+          "id": "objects",
+          "owner": "crates/leselang-runtime-core host object protocol",
+          "functions": [
+            "object-identity",
+            "observe-act-verify"
+          ]
+        },
+        {
+          "id": "registered",
+          "owner": "hosts/registered",
+          "functions": [
+            "object-runtime"
+          ]
+        },
+        {
+          "id": "compatibility",
+          "owner": "Host protocol fixtures and runtime contract maintainers",
+          "functions": [
+            "local-protocol"
+          ]
+        },
+        {
+          "id": "ffi",
+          "owner": "LeseLang public ABI design",
+          "functions": [
+            "stable-abi"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hosts",
+      "label": "Host ecosystem",
+      "modules": [
+        {
+          "id": "cli",
+          "owner": "crates/leselang-vm CLI host",
+          "functions": [
+            "stdio-runner"
+          ]
+        },
+        {
+          "id": "javascript",
+          "owner": "packages/javascript",
+          "functions": [
+            "registered-sdk",
+            "scalar-operations"
+          ]
+        },
+        {
+          "id": "node",
+          "owner": "packages/javascript Node transport and hosts/registered worker",
+          "functions": [
+            "worker-transport"
+          ]
+        },
+        {
+          "id": "dom",
+          "owner": "packages/javascript DOM bindings",
+          "functions": [
+            "control-bindings",
+            "dynamic-lifetime"
+          ]
+        },
+        {
+          "id": "appkit",
+          "owner": "hosts/appkit",
+          "functions": [
+            "owned-form"
+          ]
+        },
+        {
+          "id": "macos-ax",
+          "owner": "hosts/macos-ax",
+          "functions": [
+            "auxiliary-process-grants",
+            "scoped-controls",
+            "widgets-and-waits"
+          ]
+        },
+        {
+          "id": "tauri",
+          "owner": "hosts/tauri",
+          "functions": [
+            "registered-webview"
+          ]
+        },
+        {
+          "id": "dotnet",
+          "owner": "packages/dotnet and consumer/dotnet",
+          "functions": [
+            "scalar-operations",
+            "windows-worker"
+          ]
+        },
+        {
+          "id": "consumers",
+          "owner": "consumer/ and installed JS/TS and .NET applications",
+          "functions": [
+            "independent-applications"
+          ]
+        },
+        {
+          "id": "conformance",
+          "owner": "fixtures/application-operations and the three independent Consumer suites",
+          "functions": [
+            "shared-failure-vectors",
+            "shared-programs",
+            "write-reconciliation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agent",
+      "label": "Agent control",
+      "modules": [
+        {
+          "id": "semantics",
+          "owner": "packages/javascript/semantics and the independent Rust catalog agent",
+          "functions": [
+            "program-generation",
+            "task-discovery"
+          ]
+        },
+        {
+          "id": "session",
+          "owner": "packages/javascript agent session",
+          "functions": [
+            "task-lifetime"
+          ]
+        },
+        {
+          "id": "workflow",
+          "owner": "packages/javascript workflow admission and execution",
+          "functions": [
+            "conditional-execution",
+            "plan-admission",
+            "sequential-execution",
+            "verified-result-binding"
+          ]
+        },
+        {
+          "id": "reports",
+          "owner": "Execution report and diagnostics protocol maintainers",
+          "functions": [
+            "execution-reports",
+            "verification-diagnostics"
+          ]
+        },
+        {
+          "id": "provider",
+          "owner": "packages/javascript providers and hosts/tauri model integration",
+          "functions": [
+            "live-model-inference",
+            "model-protocol",
+            "offline-selection"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "future",
+      "label": "Future system integration",
+      "modules": [
+        {
+          "id": "shell",
+          "owner": "Sirius shell integration design",
+          "functions": [
+            "sirius-native-shell"
+          ]
+        },
+        {
+          "id": "application",
+          "owner": "ns-nova application integration design",
+          "functions": [
+            "ns-nova-integration"
+          ]
+        },
+        {
+          "id": "xr",
+          "owner": "XR semantic protocol design",
+          "functions": [
+            "semantic-control"
+          ]
+        },
+        {
+          "id": "resources",
+          "owner": "System resource protocol design",
+          "functions": [
+            "system-resource-control"
+          ]
+        },
+        {
+          "id": "authority",
+          "owner": "System authority protocol design",
+          "functions": [
+            "system-level-authority"
+          ]
+        }
+      ]
+    }
+  ]
+}

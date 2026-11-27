@@ -1,0 +1,18 @@
+[package]
+name = "leselang-dev"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "Inspect and validate LeseLang's development tensor"
+
+[workspace]
+
+[dependencies]
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+
+[profile.lean]
+inherits = "dev"
+debug = 0
+incremental = false

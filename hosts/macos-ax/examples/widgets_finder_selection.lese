@@ -50,7 +50,7 @@ fn select_row(row_key: string) = bind(
                                     left: and(left: field(value: selected, name: "selection_available"), right: field(value: selected, name: "selected")),
                                     right: and(
                                         left: eq(left: len(value: field(value: after, name: "selected_keys")), right: 1),
-                                        right: fold(found: false, items: field(value: after, name: "selected_keys"), item: "candidate", next: or(left: found, right: eq(left: candidate, right: row_key)), limit: 64),
+                                        right: contains(left: field(value: after, name: "selected_keys"), right: row_key),
                                     ),
                                 ),
                             ),

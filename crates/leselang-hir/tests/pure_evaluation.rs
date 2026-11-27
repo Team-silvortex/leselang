@@ -11,7 +11,8 @@ use leselang_hir::pure_typing::{
 };
 use leselang_runtime_core::{
     BinaryOperator, CalculationFailure, Fuel, HostResultDomain, LoopError, MAX_SCALAR_STRING_BYTES,
-    ScalarError, ScalarType, ScalarValue, ScopeFrame, UnaryOperator, validate_host_result,
+    ScalarError, ScalarType, ScalarValue, ScopeFrame, StringListValue, UnaryOperator,
+    validate_host_result,
 };
 
 // Native slots intentionally have no Clone, Debug, serde or Send requirement.
@@ -294,6 +295,32 @@ fn scalar_recovery_is_typed_and_preserves_exact_fuel() {
         CalculationFailure::Scalar(ScalarError::TypeMismatch)
     ));
     assert!(!failure.is_recoverable());
+}
+
+#[test]
+fn contains_meters_both_operands_regardless_of_where_a_list_entry_matches() {
+    let items = ScalarValue::StringList(StringListValue(vec!["a".into(), "b".into()]));
+    // Three nodes, plus each operand charged once for its literal and once for the comparison.
+    for (haystack, needle, expected, cost) in [
+        (items.clone(), "a", true, 13),
+        (items.clone(), "b", true, 13),
+        (items, "c", false, 13),
+        (ScalarValue::String("abc".into()), "b", true, 7),
+    ] {
+        let expression = binary(BinaryOperator::Contains, literal(haystack), text(needle));
+        assert!(matches!(
+            run(&expression, &mut Fuel::new(cost - 1)),
+            Err(CalculationFailure::External(
+                PureEvaluationFault::FuelExhausted
+            ))
+        ));
+        let mut fuel = Fuel::new(cost);
+        assert_scalar(
+            run(&expression, &mut fuel).unwrap(),
+            ScalarValue::Boolean(expected),
+        );
+        assert_eq!(fuel.remaining(), 0);
+    }
 }
 
 #[test]
