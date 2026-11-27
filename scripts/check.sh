@@ -17,7 +17,7 @@ Groups:
   javascript      SDK (including packed Consumer) and Tauri frontend tests
   registered      Standalone registered-object host, worker and Rust Consumer
   registered-gui  Compare registered GUI observations from Rust, Node and C# Consumers
-  benchmark-registered-gui  Opt-in Release benchmark [--warmup N] [--samples N]
+  benchmark-registered-gui  Opt-in Release benchmark [--worker-phases] [--warmup N] [--samples N]
   node-consumer   Portable Node carrier, failure tests, real VM Consumer, Tauri plan
   dotnet-consumer C# application against the real worker and shared contract (.NET 10 SDK)
   appkit          AppKit declarations and non-interactive host checks
@@ -143,7 +143,7 @@ check_group() {
             run node benchmarks/registered-gui.mjs "$@"
             ;;
         node-consumer)
-            run node --test benchmarks/registered-gui.test.mjs benchmarks/compare-registered-gui.test.mjs
+            run node --test benchmarks/registered-gui.test.mjs benchmarks/compare-registered-gui.test.mjs benchmarks/worker-phases.test.mjs
             cargo_checked build --manifest-path hosts/registered/Cargo.toml --bin leselang-agent-worker
             cargo_checked build --manifest-path consumer/Cargo.toml --example lost_reply_relay
             cargo_checked build --manifest-path hosts/tauri/Cargo.toml --no-default-features --example node_host

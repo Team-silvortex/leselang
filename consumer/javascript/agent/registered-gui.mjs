@@ -99,10 +99,12 @@ function articleExchange(bridge, app, fault, supersedingText) {
   };
 }
 
-async function runWorker(executable, app, source, args, { fault = "none", supersedingText, readOnly = false, requestTimes } = {}) {
+async function runWorker(executable, app, source, args, { fault = "none", supersedingText, readOnly = false, requestTimes, onPhase } = {}) {
   const scope = { window: "article", epoch: randomUUID(), session: randomUUID() };
   const bridge = new Bridge(scope);
-  const transport = createNodeAgentTransport({ executable, catalog: (base) => base, executionReports: "v1" });
+  let handlerNs = 0n;
+  const transport = createNodeAgentTransport({ executable, catalog: (base) => base, executionReports: "v1",
+    onWorkerProfile: onPhase && ((sample) => onPhase({ ...sample, handler_ns: Number(handlerNs) })) });
   const controller = new AbortController();
   const trace = [];
   const exchange = articleExchange(bridge, app, fault, supersedingText);
@@ -122,7 +124,9 @@ async function runWorker(executable, app, source, args, { fault = "none", supers
       cancelEdit();
       return;
     }
+    const handlerStart = onPhase && process.hrtime.bigint();
     const reply = await exchange(request);
+    if (handlerStart !== undefined) handlerNs += process.hrtime.bigint() - handlerStart;
     if (operation === "set_text" && fault === "cancel_after_edit") {
       assert.equal(app.state.edits, 1);
       assert.equal(app.state.draft, request.arguments.text);
@@ -158,8 +162,8 @@ async function runWorker(executable, app, source, args, { fault = "none", supers
   }
 }
 
-async function readValue(executable, app, source) {
-  const { report } = await runWorker(executable, app, source, {}, { readOnly: true });
+async function readValue(executable, app, source, onPhase) {
+  const { report } = await runWorker(executable, app, source, {}, { readOnly: true, onPhase });
   assert.equal(report.result.type, "string");
   assert.equal(report.effects, 2);
   return report.result.value;
@@ -183,7 +187,7 @@ function summarize(report, app, text) {
     report_after: { draft, published, clicks } };
 }
 
-export async function checkRegisteredGui(executable, fixturePath, onCase, onTiming) {
+export async function checkRegisteredGui(executable, fixturePath, onCase, onTiming, onPhases) {
   const clock = onTiming ? process.hrtime.bigint : undefined;
   const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
   assert.equal(fixture.version, 1);
@@ -196,20 +200,28 @@ export async function checkRegisteredGui(executable, fixturePath, onCase, onTimi
     assert.ok(faults.has(fault), `unsupported GUI fault ${fault}`);
     const app = createArticle(fault);
     const requestTimes = onTiming ? {} : undefined;
+    const phases = { id };
+    const collect = (session) => onPhases && ((sample) => { phases[session] = sample; });
     const primaryStart = clock?.();
     const { report, trace } = await runWorker(executable, app, program, fixture.arguments,
-      { fault, supersedingText: fixture.superseding_text, requestTimes });
+      { fault, supersedingText: fixture.superseding_text, requestTimes, onPhase: collect("primary") });
     const primaryEnd = clock?.();
     const result = summarize(report, app, fixture.arguments.text);
     const commits = { edits: app.state.edits, clicks: app.state.clicks };
     const readbackStart = clock?.();
-    const draft = await readValue(executable, app, readDraft);
-    const published = await readValue(executable, app, readPublication);
+    const draft = await readValue(executable, app, readDraft, collect("read_draft"));
+    const published = await readValue(executable, app, readPublication, collect("read_publication"));
     const readbackEnd = clock?.();
     assert.deepEqual(app.state, { draft, published, ...commits }, id);
     const observed = { ...result, readback: { draft, published }, commits, trace };
     assert.deepEqual(observed, expected, id);
     onCase({ id, observed });
+    if (onPhases) {
+      assert.equal(phases.primary.request_count, trace.length);
+      assert.equal(phases.primary.worker_profile === null, report === null);
+      assert.ok(phases.read_draft.worker_profile && phases.read_publication.worker_profile);
+      onPhases(phases);
+    }
     if (onTiming) {
       onTiming({ id, primary_ns: Number(primaryEnd - primaryStart),
         request_span_ns: requestTimes.first === undefined ? 0 : Number(requestTimes.last - requestTimes.first),
@@ -221,9 +233,11 @@ export async function checkRegisteredGui(executable, fixturePath, onCase, onTimi
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   const args = process.argv.slice(2);
   const benchmark = args[0] === "--benchmark-registered-gui";
-  if (benchmark) args.shift();
-  assert.equal(args.length, 2, "usage: node registered-gui.mjs [--benchmark-registered-gui] WORKER FIXTURE");
+  const profile = args[0] === "--profile-registered-gui";
+  if (benchmark || profile) args.shift();
+  assert.equal(args.length, 2, "usage: node registered-gui.mjs [--benchmark-registered-gui|--profile-registered-gui] WORKER FIXTURE");
   await checkRegisteredGui(resolve(args[0]), resolve(args[1]),
     (record) => console.log(`LESE_GUI ${JSON.stringify(record)}`),
-    benchmark ? (record) => console.log(`LESE_GUI_TIMING ${JSON.stringify(record)}`) : undefined);
+    benchmark ? (record) => console.log(`LESE_GUI_TIMING ${JSON.stringify(record)}`) : undefined,
+    profile ? (record) => console.log(`LESE_GUI_PHASES ${JSON.stringify(record)}`) : undefined);
 }

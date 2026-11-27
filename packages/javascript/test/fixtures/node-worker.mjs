@@ -33,6 +33,20 @@ if (command === "--describe") {
   else if (mode === "description_hang") setInterval(() => {}, 1000);
   else finish('{"schema_version":1,"profile":"javascript.registered"}');
 } else {
+  const profile = process.argv.at(-2) === "--profile-gui";
+  const ready = line({ agent_worker_version: 3, kind: "profile_ready" });
+  if (profile || mode === "ordinary_ready") {
+    if (mode === "missing_ready") finish(line({ agent_worker_version: 3, kind: "report", report_json: report }));
+    else {
+      if (mode === "profile_handshake") {
+        const premature = () => process.exit(17);
+        process.stdin.once("readable", premature);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        process.stdin.off("readable", premature);
+      }
+      process.stdout.write(mode === "duplicate_ready" ? ready + ready : ready);
+    }
+  }
   const start = await readLine();
   version = mode === "downgrade" ? 1 : mode === "upgrade" || mode === "downgrade_two" ? 2
     : mode === "upgrade_three" ? 3 : start.agent_worker_version;
@@ -52,6 +66,10 @@ if (command === "--describe") {
   const terminal = envelope("report", { report_json: mode === "echo_arguments"
     ? JSON.stringify({ version, source: start.source, arguments: start.arguments,
       input_mode: start.input_mode, start_keys: Object.keys(start) }) : report });
+  if ((profile && mode !== "missing_profile") || mode === "ordinary_profile") {
+    terminal.worker_profile = { compile_ns: 101, vm_local_ns: 250, exchange_ns: mode === "invalid_duration" ? -1 : 400,
+      exchange_count: mode === "wrong_exchange_count" || mode === "report_nonzero" ? 0 : 1 };
+  }
   if (mode === "ignore_term") {
     process.on("SIGTERM", () => {});
     process.stderr.write(`ready:${process.pid}\n`);

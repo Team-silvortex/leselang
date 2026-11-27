@@ -6,6 +6,7 @@ import type { Reply, Scope } from "../bridge.js";
 import type { RegisteredAgentEndpoint, RegisteredAgentRun, RegisteredAgentTransport } from "../agent/registered-host.js";
 import type { OperationSchema } from "../operations/index.js";
 import type { OperationProfile } from "./operation-host.js";
+import { GuiWorkerClock, type NodeGuiWorkerProfile } from "./worker-profile.js";
 
 /** A trusted executable implementing the registered-agent worker protocol. */
 export interface NodeAgentTransportOptions {
@@ -21,6 +22,8 @@ export interface NodeAgentTransportOptions {
   readonly timeoutMs?: number;
   /** Display-only diagnostics; callback exceptions cannot authorize execution. */
   readonly onStderr?: (text: string) => void;
+  /** Opt into the registered GUI benchmark handshake. Requires protocol 3 execution reports. */
+  readonly onWorkerProfile?: (sample: NodeGuiWorkerProfile) => void;
 }
 
 type WorkerReply = Omit<Reply, "value"> & { readonly value: unknown };
@@ -167,6 +170,10 @@ export function createWorkerTransport(options: Omit<NodeAgentTransportOptions, "
   }
   const executionReports = options.executionReports;
   if (executionReports !== undefined && executionReports !== "v1") throw failure("node_worker_invalid_options");
+  const onProfile = operationMode ? undefined : options.onWorkerProfile;
+  if (onProfile !== undefined && (typeof onProfile !== "function" || executionReports !== "v1")) {
+    throw failure("node_worker_invalid_options");
+  }
   const timeoutMs = options.timeoutMs ?? 15_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 20 || timeoutMs > 60_000) throw failure("node_worker_invalid_timeout");
   const executable = options.executable, args = [...(options.args ?? [])];
@@ -190,7 +197,11 @@ export function createWorkerTransport(options: Omit<NodeAgentTransportOptions, "
     available(signal);
     const version = run?.version ?? VERSION;
     return new Promise<string>((resolve, reject) => {
-      const child = spawn(executable, [...args, mode], { shell: false, stdio: ["pipe", "pipe", "pipe"] });
+      const profile = onProfile && mode === "--serve";
+      const launchArgs = profile ? [...args, "--profile-gui", mode] : [...args, mode];
+      const clock = profile ? new GuiWorkerClock() : undefined;
+      const child = spawn(executable, launchArgs, { shell: false, stdio: ["pipe", "pipe", "pipe"] });
+      clock?.spawnReturned();
       let error: Error | null = null;
       let forceKill: ReturnType<typeof setTimeout> | undefined;
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -227,13 +238,28 @@ export function createWorkerTransport(options: Omit<NodeAgentTransportOptions, "
         },
       };
       active = current;
-      const abort = () => current.fail(failure("node_worker_cancelled"));
+      const abort = () => {
+        if (!error) clock?.cancel();
+        current.fail(failure("node_worker_cancelled"));
+      };
+      const sendStart = () => {
+        if (!error && first) child.stdin.write(first, (writeError) => {
+          if (writeError) current.fail(failure("node_worker_write_failed"));
+        });
+      };
       signal.addEventListener("abort", abort, { once: true });
       timer = setTimeout(() => current.fail(failure("node_worker_deadline")), timeoutMs);
       const frame = (bytes: Uint8Array): void => {
         if (terminal) throw failure("node_worker_after_terminal");
         const message = decodeWorkerJson(bytes, version);
         if (!record(message) || message.agent_worker_version !== version) throw failure("node_worker_invalid_version");
+        if (clock && message.kind === "profile_ready") {
+          exact(message, ["agent_worker_version", "kind"]);
+          clock.ready();
+          sendStart();
+          return;
+        }
+        if (clock && clock.readyAt === undefined) throw failure("node_worker_missing_ready");
         if (message.kind === "request") {
           exact(message, ["agent_worker_version", "kind", "challenge", "request"]);
           if (bytes.length > REQUEST_LIMIT || pending || typeof message.challenge !== "string"
@@ -253,8 +279,14 @@ export function createWorkerTransport(options: Omit<NodeAgentTransportOptions, "
           pending = { challenge: message.challenge, serial: lastSerial };
           run.onRequest(request);
         } else if (message.kind === "report") {
-          exact(message, ["agent_worker_version", "kind", "report_json"]);
+          exact(message, clock ? ["agent_worker_version", "kind", "report_json", "worker_profile"]
+            : ["agent_worker_version", "kind", "report_json"]);
           if (pending || !validText(message.report_json, REPORT_LIMIT) || !message.report_json) throw failure("node_worker_invalid_report");
+          if (clock) {
+            const fields = message.worker_profile;
+            exact(fields, ["compile_ns", "vm_local_ns", "exchange_ns", "exchange_count"]);
+            clock.report(fields, lastSerial);
+          }
           terminal = true;
           report = message.report_json;
         } else if (message.kind === "error") {
@@ -300,12 +332,17 @@ export function createWorkerTransport(options: Omit<NodeAgentTransportOptions, "
       child.stderr.on("error", () => current.fail(failure("node_worker_read_failed")));
       child.on("error", () => current.fail(failure("node_worker_spawn_failed")));
       child.on("close", (code, exitSignal) => {
+        const closeAt = clock && process.hrtime.bigint();
         clearTimeout(timer); clearTimeout(forceKill);
         signal.removeEventListener("abort", abort);
         if (active === current) active = null;
         operationMode?.retire();
         try {
-          if (error) throw error;
+          if (error) {
+            if (clock && closeAt !== undefined && clock.readyAt !== undefined && signal.aborted
+              && error.message === "node_worker_cancelled") onProfile!(clock.finish(closeAt, lastSerial));
+            throw error;
+          }
           if (signal.aborted || closed) throw failure("node_worker_cancelled");
           if (exitSignal || code !== 0) throw failure("node_worker_exit_failed");
           stderrDecoder.decode();
@@ -314,14 +351,13 @@ export function createWorkerTransport(options: Omit<NodeAgentTransportOptions, "
             resolve(new TextDecoder("utf-8", { fatal: true }).decode(buffer));
           } else {
             if (pending || buffer.length || !terminal || typeof report !== "string") throw failure("node_worker_incomplete_result");
+            if (clock && closeAt !== undefined) onProfile!(clock.finish(closeAt, lastSerial));
             resolve(report);
           }
         } catch (caught) { reject(caught); }
       });
       if (signal.aborted) abort();
-      if (!error && first) child.stdin.write(first, (writeError) => {
-        if (writeError) current.fail(failure("node_worker_write_failed"));
-      });
+      if (!clock) sendStart();
     });
   }
 

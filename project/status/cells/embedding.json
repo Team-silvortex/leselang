@@ -310,7 +310,7 @@
         {
           "kind": "benchmark",
           "path": "benchmarks/registered-gui.mjs",
-          "anchor": "const timings = readTimings(stdout, cases.map((c) => c.id), consumer, suiteNs);"
+          "anchor": "verifiedObservations(stdout, expected, consumer);"
         }
       ],
       "next_action": "The independent registered-host Consumer builds and exercises task execution without a desktop framework.",

@@ -5,7 +5,9 @@ mod operations;
 
 use crate::{
     ExecutionFailure, ExecutionFailureCode, PreparedTask, Scope, Transport, describe_registered,
+    gui_profile::{GuiProfile, ProfiledTransport},
     prepare_named_task, prepare_task, run_prepared_registered_task_detailed,
+    task::run_registered_task,
 };
 use json_lines::{Correlation, challenge, read_record};
 use serde::Deserialize;
@@ -63,7 +65,10 @@ struct Start {
     arguments: BTreeMap<String, String>,
 }
 
-fn admit(mut value: Value) -> Result<(Scope, PreparedTask), String> {
+fn admit_start(
+    mut value: Value,
+    profile: Option<&GuiProfile>,
+) -> Result<(Scope, PreparedTask), String> {
     // Version three opts into terminal execution reports without conflating
     // that choice with the independent single/named-input admission rules.
     // Legacy versions retain their exact field set, including rejecting this
@@ -87,11 +92,17 @@ fn admit(mut value: Value) -> Result<(Scope, PreparedTask), String> {
     let scope = start.scope.admit()?;
     // Complete syntax, type and argument admission before any Bridge request.
     let arguments = start.arguments.into_iter().collect();
-    let prepared = if named_inputs {
-        prepare_named_task(&start.source, arguments)?
-    } else {
-        prepare_task(&start.source, arguments)?
+    let compile = || {
+        if named_inputs {
+            prepare_named_task(&start.source, arguments)
+        } else {
+            prepare_task(&start.source, arguments)
+        }
     };
+    let prepared = match profile {
+        Some(profile) => profile.measure_compile(compile),
+        None => compile(),
+    }?;
     Ok((scope, prepared))
 }
 
@@ -231,20 +242,30 @@ impl StdioTransport {
         }
     }
 
-    fn serve(&mut self) -> Result<Value, String> {
+    fn serve(&mut self, profile: Option<&GuiProfile>) -> Result<Value, String> {
+        if profile.is_some() {
+            self.version = 3;
+            self.write(
+                json!({"agent_worker_version":3,"kind":"profile_ready"}),
+                WIRE_LIMIT,
+            )?;
+        }
         let initial = self.initial()?;
+        if profile.is_some() && initial["agent_worker_version"].as_u64() != Some(3) {
+            return Err("GUI profiling requires worker version three".into());
+        }
         if let Some(version @ 1..=4) = initial["agent_worker_version"].as_u64() {
             self.version = version as u32;
         }
         if self.version == 4 {
             return operations::execute(self, initial);
         }
-        let (scope, prepared) = admit(initial)?;
+        let (scope, prepared) = admit_start(initial, profile)?;
         if !self.is_live() {
             return Err("worker connection closed before execution".into());
         }
         let version = self.version;
-        execute_admitted(self, scope, prepared, version)
+        execute_admitted(self, scope, prepared, version, profile)
     }
 }
 
@@ -301,8 +322,19 @@ fn execute_admitted(
     scope: Scope,
     prepared: PreparedTask,
     version: u32,
+    profile: Option<&GuiProfile>,
 ) -> Result<Value, String> {
-    match run_prepared_registered_task_detailed(transport, scope, prepared) {
+    let result = match profile {
+        Some(profile) => {
+            let mut measured = ProfiledTransport {
+                inner: transport,
+                profile,
+            };
+            run_registered_task(&mut measured, scope, prepared, Some(profile))
+        }
+        None => run_prepared_registered_task_detailed(transport, scope, prepared),
+    };
+    match result {
         Ok(report) => Ok(report),
         Err(error) if version == 3 && transport.is_live() => Ok(execution_failure_report(error)),
         Err(error) => Err(error.to_string()),
@@ -343,10 +375,10 @@ fn error_message(error: &str) -> String {
     error[..end].to_owned()
 }
 
-fn serve() -> Result<(), String> {
+fn serve(profile: Option<GuiProfile>) -> Result<(), String> {
     let mut transport = StdioTransport::open();
     let mut terminal_started = false;
-    let result = transport.serve().and_then(|report| {
+    let result = transport.serve(profile.as_ref()).and_then(|report| {
         let report_json =
             serde_json::to_string(&report).map_err(|_| "worker report encoding failed")?;
         if report_json.len() > REPORT_LIMIT {
@@ -356,10 +388,12 @@ fn serve() -> Result<(), String> {
             return Err("worker connection closed before report delivery".into());
         }
         terminal_started = true;
-        transport.write(
-            json!({"agent_worker_version":transport.version,"kind":"report","report_json":report_json}),
-            TERMINAL_LIMIT,
-        )?;
+        let mut frame =
+            json!({"agent_worker_version":transport.version,"kind":"report","report_json":report_json});
+        if let Some(profile) = &profile {
+            frame["worker_profile"] = profile.report();
+        }
+        transport.write(frame, TERMINAL_LIMIT)?;
         if !transport.is_live() {
             return Err("worker connection closed during report delivery".into());
         }
@@ -390,9 +424,11 @@ pub fn main() -> ExitCode {
                 .map_err(|_| "cannot write worker catalog".into())
         })
     } else if args.len() == 1 && args[0] == "--serve" {
-        serve()
+        serve(None)
+    } else if args.len() == 2 && args[0] == "--profile-gui" && args[1] == "--serve" {
+        serve(Some(GuiProfile::default()))
     } else {
-        Err("usage: leselang-agent-worker --describe | --serve".into())
+        Err("usage: leselang-agent-worker --describe | [--profile-gui] --serve".into())
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -410,6 +446,10 @@ pub fn main() -> ExitCode {
 mod tests {
     use super::*;
     use crate::run_prepared_registered_task;
+
+    fn admit(value: Value) -> Result<(Scope, PreparedTask), String> {
+        admit_start(value, None)
+    }
 
     fn start(source: &str, arguments: Value) -> Value {
         json!({"agent_worker_version":1,"kind":"start","scope":{"window":"node","epoch":"instance","session":"run_1"},"source":source,"arguments":arguments})
@@ -689,7 +729,7 @@ mod tests {
                 requests: 0,
                 live: false,
             };
-            assert!(execute_admitted(&mut transport, scope, prepared, version).is_err());
+            assert!(execute_admitted(&mut transport, scope, prepared, version, None).is_err());
             assert_eq!(transport.requests, 0);
         }
     }
@@ -703,7 +743,7 @@ mod tests {
                 requests: 0,
                 live: true,
             };
-            let result = execute_admitted(&mut transport, scope, prepared, version);
+            let result = execute_admitted(&mut transport, scope, prepared, version, None);
             if version == 3 {
                 assert_eq!(
                     result.unwrap(),
@@ -733,7 +773,7 @@ mod tests {
                 requests: 0,
                 live: true,
             };
-            let report = execute_admitted(&mut transport, scope, prepared, version).unwrap();
+            let report = execute_admitted(&mut transport, scope, prepared, version, None).unwrap();
             assert_eq!(report["effects"], 2);
             assert!(report.get("status").is_none());
             assert!(report.get("execution_failure").is_none());
@@ -764,7 +804,7 @@ mod tests {
         for retire in [false, true] {
             let (scope, prepared) = admit(start("fn main() = true", json!({}))).unwrap();
             let mut transport = BrokenRegistry { live: true, retire };
-            let result = execute_admitted(&mut transport, scope, prepared, 3);
+            let result = execute_admitted(&mut transport, scope, prepared, 3, None);
             if retire {
                 assert_eq!(result.unwrap_err(), "unknown registered object");
             } else {

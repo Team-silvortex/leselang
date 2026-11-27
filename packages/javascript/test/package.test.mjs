@@ -33,6 +33,7 @@ test("packed public ESM and declarations work in an external JavaScript/TypeScri
       "dist/dom/index.d.ts", "dist/dom/index.js", "dist/dom/controls.d.ts", "dist/dom/controls.js",
       "dist/verification.d.ts", "dist/verification.js",
       "dist/node/index.d.ts", "dist/node/index.js", "dist/node/transport.d.ts", "dist/node/transport.js",
+      "dist/node/worker-profile.d.ts", "dist/node/worker-profile.js",
       "dist/node/operation-host.d.ts", "dist/node/operation-host.js",
       "dist/operations/index.d.ts", "dist/operations/index.js",
       "dist/providers/model.d.ts", "dist/providers/model.js", "dist/providers/semantic.d.ts", "dist/providers/semantic.js",

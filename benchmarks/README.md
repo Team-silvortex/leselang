@@ -8,6 +8,10 @@ protocol from their own processes and start a fresh reference worker for each
 task. All three applications use in-memory controls and run the same Lese source.
 [Workload and fault definitions](../fixtures/registered-gui/README.md)
 
+To measure worker launch, protocol round trips, GUI handlers, Lese
+compilation and VM execution for Node and C#, run this benchmark with
+`--worker-phases`. [Worker phase timings](worker-phases.md)
+
 Run the suite from the repository root with the pinned Cargo and npm
 dependencies and the .NET 10 SDK installed.
 

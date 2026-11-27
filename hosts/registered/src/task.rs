@@ -1,5 +1,7 @@
 //! Bounded task admission and typed reports for the application-owned agent entry.
-use crate::{Error, ExecutionFailure, Scope, Transport, drive, gateway, host};
+use crate::{
+    Error, ExecutionFailure, Scope, Transport, drive, gateway, gui_profile::GuiProfile, host,
+};
 use leselang_vm::{
     embedding::bind_entry_arguments,
     native::{
@@ -130,10 +132,23 @@ pub fn run_prepared_registered_task_detailed(
     scope: Scope,
     task: PreparedTask,
 ) -> Result<Value, ExecutionFailure> {
+    run_registered_task(transport, scope, task, None)
+}
+
+pub(crate) fn run_registered_task(
+    transport: &mut dyn Transport,
+    scope: Scope,
+    task: PreparedTask,
+    profile: Option<&GuiProfile>,
+) -> Result<Value, ExecutionFailure> {
     let gui = gateway::RemoteGui::registered(transport, scope).map_err(ExecutionFailure::from)?;
     let before = gui.public_snapshots();
     let (value, effects, fuel_remaining) = host::with_host(&gui, |host, scope| {
-        drive(host, scope, &task.program, task.arguments)
+        let run = || drive(host, scope, &task.program, task.arguments);
+        match profile {
+            Some(profile) => profile.measure_vm(run),
+            None => run(),
+        }
     })
     .map_err(ExecutionFailure::from)??;
     let result = typed_result(value)?;

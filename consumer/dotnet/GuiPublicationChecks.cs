@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using static GuiWire;
 
+internal enum GuiMeasurement { None, Timings, Phases }
+
 internal static class GuiPublicationChecks
 {
     private sealed record Observations(string draft, string published, int clicks);
@@ -12,11 +14,10 @@ internal static class GuiPublicationChecks
         Converters = { new JsonStringEnumConverter<GuiFault>(JsonNamingPolicy.SnakeCaseLower, allowIntegerValues: false) }
     };
 
-    private static long Nanoseconds(long start, long end) =>
-        checked((long)((Int128)(end - start) * 1_000_000_000 / Stopwatch.Frequency));
-
-    internal static async Task RunAsync(string worker, string fixturePath, bool benchmark = false)
+    internal static async Task RunAsync(string worker, string fixturePath, GuiMeasurement measurement)
     {
+        bool benchmark = measurement == GuiMeasurement.Timings;
+        bool profile = measurement == GuiMeasurement.Phases;
         using var document = Parse(await File.ReadAllBytesAsync(fixturePath));
         var fixture = document.RootElement;
         if (Number(fixture, "version") != 1) throw new InvalidDataException("Unknown publication fixture version");
@@ -35,6 +36,9 @@ internal static class GuiPublicationChecks
             var fault = sample.GetProperty("fault").Deserialize<GuiFault>(Faults);
             using var binding = new CancellationTokenSource();
             var app = new GuiArticle(fault, Text(fixture, "superseding_text"), binding.Cancel);
+            var primaryPhases = profile ? new GuiPhaseTiming() : null;
+            var draftPhases = profile ? new GuiPhaseTiming() : null;
+            var publicationPhases = profile ? new GuiPhaseTiming() : null;
             long? firstRequest = null;
             long lastRequest = 0;
             GuiWorker.Reply TimedDispatch(string operation, JsonElement arguments)
@@ -46,7 +50,7 @@ internal static class GuiPublicationChecks
             Func<string, JsonElement, GuiWorker.Reply> dispatch = benchmark ? TimedDispatch : app.Dispatch;
             long primaryStart = benchmark ? Stopwatch.GetTimestamp() : 0;
             JsonElement? terminal;
-            try { terminal = await GuiWorker.RunAsync(worker, program, inputs, dispatch, binding.Token); }
+            try { terminal = await GuiWorker.RunAsync(worker, program, inputs, dispatch, binding.Token, primaryPhases); }
             catch (OperationCanceledException error) when (binding.IsCancellationRequested && error.CancellationToken == binding.Token)
             {
                 terminal = null;
@@ -55,10 +59,10 @@ internal static class GuiPublicationChecks
             var (outcome, result, effects, after) = ParsePrimary(terminal);
 
             var commits = new { edits = app.Edits, clicks = app.Clicks };
-            async Task<string> Read(string source)
+            async Task<string> Read(string source, GuiPhaseTiming? phases)
             {
                 var empty = JsonSerializer.SerializeToElement(new { });
-                var read = await GuiWorker.RunAsync(worker, source, empty, app.Read);
+                var read = await GuiWorker.RunAsync(worker, source, empty, app.Read, phases: phases);
                 CheckReportIdentity(read);
                 var value = TypedResult(read, "string");
                 if (Number(read, "effects") != 2 || app.Edits != commits.edits || app.Clicks != commits.clicks)
@@ -66,7 +70,7 @@ internal static class GuiPublicationChecks
                 return value.GetString()!;
             }
             long readbackStart = benchmark ? Stopwatch.GetTimestamp() : 0;
-            var readback = new { draft = await Read(readDraft), published = await Read(readPublication) };
+            var readback = new { draft = await Read(readDraft, draftPhases), published = await Read(readPublication, publicationPhases) };
             long readbackEnd = benchmark ? Stopwatch.GetTimestamp() : 0;
             if (readback.draft != app.Draft || readback.published != app.Published)
                 throw new InvalidDataException($"Readback differs from the application's stored article for {id}");
@@ -80,10 +84,16 @@ internal static class GuiPublicationChecks
             Console.WriteLine("LESE_GUI " + JsonSerializer.Serialize(new { id, observed }));
             if (benchmark)
             {
-                var timing = new { id, primary_ns = Nanoseconds(primaryStart, primaryEnd),
-                    request_span_ns = Nanoseconds(firstRequest ?? throw new InvalidDataException("Missing primary request"), lastRequest),
-                    readback_ns = Nanoseconds(readbackStart, readbackEnd) };
+                var timing = new { id, primary_ns = GuiPhaseTiming.Nanoseconds(primaryEnd - primaryStart),
+                    request_span_ns = GuiPhaseTiming.Nanoseconds(lastRequest - (firstRequest ?? throw new InvalidDataException("Missing primary request"))),
+                    readback_ns = GuiPhaseTiming.Nanoseconds(readbackEnd - readbackStart) };
                 Console.WriteLine("LESE_GUI_TIMING " + JsonSerializer.Serialize(timing));
+            }
+            if (profile)
+            {
+                var phases = new { id, primary = primaryPhases!.Observation(), read_draft = draftPhases!.Observation(),
+                    read_publication = publicationPhases!.Observation() };
+                Console.WriteLine("LESE_GUI_PHASES " + JsonSerializer.Serialize(phases));
             }
         }
         if (ids.Count == 0) throw new InvalidDataException("Empty GUI fixture");

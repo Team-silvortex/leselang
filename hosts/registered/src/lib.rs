@@ -2,6 +2,7 @@
 mod catalog;
 mod failure;
 pub mod gateway;
+mod gui_profile;
 pub mod host;
 mod task;
 mod worker;

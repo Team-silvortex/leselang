@@ -122,6 +122,12 @@ contract. The setting is captured at construction. Omitting it retains the
 original protocol and exception behavior. Unsupported workers fail without
 downgrade or retry. See [execution failure reports](execution-reports.md).
 
+With `executionReports: "v1"`, the optional `onWorkerProfile(sample)` transport
+callback selects the reference worker's profiling handshake. It receives host
+lifecycle durations and worker phase totals on normal report delivery. A
+cancelled run that reached readiness supplies host timings and a null
+`worker_profile`. [Measurement boundaries and example](../benchmarks/worker-phases.md)
+
 The package remains private and is installed from a local build or packed
 tarball. The tarball contains both public entries and declarations, with no
 runtime npm dependencies or worker binary. No copying of the carrier source

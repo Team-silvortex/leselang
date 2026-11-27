@@ -18,14 +18,15 @@ export function consumerPaths(benchmark) {
   };
 }
 
-export function consumerCommands(fixture, benchmark = false) {
+export function consumerCommands(fixture, mode = "--registered-gui") {
+  const benchmark = mode !== "--registered-gui";
   const { rust, worker, nodeScript, dotnet } = consumerPaths(benchmark);
-  const mode = benchmark ? "--benchmark-registered-gui" : "--registered-gui";
-  return [
-    ["rust", rust, [mode, fixture]],
+  const commands = [
     ["node", process.execPath, [nodeScript, ...(benchmark ? [mode] : []), worker, fixture]],
     ["dotnet", dotnet, [mode, worker, fixture]],
   ];
+  if (mode !== "--profile-registered-gui") commands.unshift(["rust", rust, [mode, fixture]]);
+  return commands;
 }
 
 export function runConsumer([name, executable, args]) {

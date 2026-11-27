@@ -7,6 +7,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import { consumerCommands, consumerPaths, publicationFixture, root, runConsumer, verifiedObservations } from "../scripts/registered-gui-consumers.mjs";
 import { distribution, readTimings } from "./registered-gui-stats.mjs";
+import { readWorkerPhases, summarizeWorkerPhases } from "./worker-phases.mjs";
 
 function count(text, min, max, name) {
   const n = Number(text);
@@ -16,14 +17,16 @@ function count(text, min, max, name) {
 }
 const { values } = parseArgs({ options: {
   warmup: { type: "string", default: "3" }, samples: { type: "string", default: "30" },
+  "worker-phases": { type: "boolean", default: false },
   help: { type: "boolean", short: "h" },
 } });
 if (values.help) {
-  console.log("Usage: node benchmarks/registered-gui.mjs [--warmup 3] [--samples 30]");
+  console.log("Usage: node benchmarks/registered-gui.mjs [--worker-phases] [--warmup 3] [--samples 30]");
   process.exit(0);
 }
 const warmup = count(values.warmup, 0, 100, "warmup");
 const samples = count(values.samples, 1, 500, "samples");
+const workerPhases = values["worker-phases"];
 const fixture = JSON.parse(await readFile(publicationFixture, "utf8"));
 assert.equal(fixture.version, 1);
 const expected = new Map(fixture.cases.map(({ id, expected }) => [id, expected]));
@@ -41,10 +44,10 @@ for (const key of ["program", "read_draft", "read_publication"]) {
 
 const parent = join(root, "target/benchmarks");
 await mkdir(parent, { recursive: true });
-const output = await mkdtemp(join(parent, "registered-gui."));
+const output = await mkdtemp(join(parent, workerPhases ? "worker-phases." : "registered-gui."));
 console.log(`Benchmark output: ${output}`);
 const roundFixture = join(output, "workload.json");
-const commands = consumerCommands(roundFixture, true);
+const commands = consumerCommands(roundFixture, workerPhases ? "--profile-registered-gui" : "--benchmark-registered-gui");
 const version = (command, args) => execFileSync(command, args, { cwd: root, encoding: "utf8" }).trim();
 function git(args) {
   const run = spawnSync("git", args, { cwd: root, encoding: "utf8" });
@@ -52,7 +55,8 @@ function git(args) {
 }
 
 const paths = consumerPaths(true);
-const binaries = [paths.rust, paths.worker, paths.nodeScript, join(dirname(paths.dotnet), "LeseLang.Consumer.dll")];
+const binaries = [paths.worker, paths.nodeScript, join(dirname(paths.dotnet), "LeseLang.Consumer.dll")];
+if (!workerPhases) binaries.push(paths.rust);
 const artifacts = {};
 for (const path of binaries) artifacts[pathKey(path)] = await sha256(path);
 const sdk = join(root, "packages/javascript/dist");
@@ -70,7 +74,7 @@ const environment = {
     .filter((r) => r.startsWith("Microsoft.NETCore.App ")).map((r) => r.split(" [")[0]).sort(),
 };
 const summary = {
-  schema_version: 1, suite: "registered-gui-publication", method_version: 1,
+  schema_version: 1, suite: workerPhases ? "registered-gui-worker-phases" : "registered-gui-publication", method_version: 1,
   started_utc: new Date().toISOString(), revision: git(["rev-parse", "HEAD"]),
   dirty_worktree: status === null ? null : status !== "", environment,
   inputs_sha256: inputs, artifacts_sha256: artifacts,
@@ -95,7 +99,8 @@ try {
       const stdout = runConsumer(command);
       const suiteNs = Number(process.hrtime.bigint() - start);
       verifiedObservations(stdout, expected, consumer);
-      const timings = readTimings(stdout, cases.map((c) => c.id), consumer, suiteNs);
+      const timings = workerPhases ? readWorkerPhases(stdout, cases, consumer, suiteNs)
+        : readTimings(stdout, cases.map((c) => c.id), consumer, suiteNs);
       if (measured) rows.push({ round: round + 1, consumer, suite_process_ns: suiteNs, cases: Object.fromEntries(timings) });
     }
     if (!measured && index + 1 === warmup) console.log(`Validated ${warmup} warm-up round(s).`);
@@ -108,6 +113,17 @@ const results = {};
 for (const [name] of commands) {
   const runs = rows.filter((r) => r.consumer === name);
   assert.equal(runs.length, samples);
+  const suite = distribution(runs.map((r) => r.suite_process_ns));
+  console.log(`${name}: suite p50 ${(suite.p50 / 1e6).toFixed(2)} ms`);
+  if (workerPhases) {
+    const phases = summarizeWorkerPhases(runs);
+    results[name] = { suite_process_ns: suite, ...phases };
+    const shares = Object.entries(phases.attribution)
+      .map(([key, part]) => `${key.replace(/_ns$/, "")} ${part.percent_of_suite.toFixed(1)}%`);
+    console.log(`  Share of suite time: ${shares.join(", ")}`);
+    console.log(`  Mean completed round trip: ${(phases.completed_session_exchanges.mean_rtt_ns / 1e3).toFixed(1)} µs`);
+    continue;
+  }
   const cases = {};
   for (const id of expected.keys()) {
     const timings = {};
@@ -116,8 +132,7 @@ for (const [name] of commands) {
     }
     cases[id] = timings;
   }
-  results[name] = { suite_process_ns: distribution(runs.map((r) => r.suite_process_ns)), cases };
-  console.log(`${name}: suite p50 ${(results[name].suite_process_ns.p50 / 1e6).toFixed(2)} ms`);
+  results[name] = { suite_process_ns: suite, cases };
 }
 const raw = rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
 await writeFile(join(output, "samples.ndjson"), raw);

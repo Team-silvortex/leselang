@@ -5,11 +5,17 @@ using LeseLang.Operations;
 
 if (args is ["--serve"]) return await ProtocolChecks.ServeAsync();
 if (args is [var guiMode, var guiWorker, var publicationFixture]
-    && guiMode is "--registered-gui" or "--benchmark-registered-gui")
+    && guiMode is "--registered-gui" or "--benchmark-registered-gui" or "--profile-registered-gui")
 {
     try
     {
-        await GuiPublicationChecks.RunAsync(guiWorker, publicationFixture, guiMode == "--benchmark-registered-gui");
+        var measurement = guiMode switch
+        {
+            "--profile-registered-gui" => GuiMeasurement.Phases,
+            "--benchmark-registered-gui" => GuiMeasurement.Timings,
+            _ => GuiMeasurement.None
+        };
+        await GuiPublicationChecks.RunAsync(guiWorker, publicationFixture, measurement);
         return 0;
     }
     catch (InvalidDataException error)
@@ -21,7 +27,7 @@ if (args is [var guiMode, var guiWorker, var publicationFixture]
 if (args.Length is not (2 or 3))
 {
     Console.Error.WriteLine("Usage: LeseLang.Consumer <absolute worker path> <two-effects.json> [absolute lost-reply relay path]");
-    Console.Error.WriteLine("       LeseLang.Consumer (--registered-gui | --benchmark-registered-gui) <absolute worker path> <publication.json>");
+    Console.Error.WriteLine("       LeseLang.Consumer (--registered-gui | --benchmark-registered-gui | --profile-registered-gui) <absolute worker path> <publication.json>");
     return 2;
 }
 

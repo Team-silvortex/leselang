@@ -39,6 +39,44 @@ test("a fresh Node-owned worker preserves raw integer report bytes and scoped re
   assert.deepEqual(f.received.map((item) => item.session), ["run_1", "run_2"]);
 });
 
+test("profile mode waits for ready before start and publishes durations only after clean close", async (t) => {
+  const samples = [];
+  const f = fixture(t, "profile_handshake", { executionReports: "v1", onWorkerProfile: (s) => samples.push(s) });
+  assert.equal(await f.carrier.execute(f.run(), signal()), expected);
+  assert.equal(samples.length, 1);
+  const [s] = samples;
+  assert.equal(s.request_count, 1);
+  assert.ok(Number.isSafeInteger(s.spawn_call_ns) && s.spawn_call_ns >= 0 && s.spawn_call_ns <= s.startup_ns);
+  assert.ok(s.startup_ns > 0 && s.shutdown_ns >= 0 && s.startup_ns + s.shutdown_ns <= s.wall_ns);
+  assert.deepEqual(s.worker_profile, { compile_ns: 101, vm_local_ns: 250, exchange_ns: 400, exchange_count: 1 });
+});
+
+test("profile telemetry requires the handshake, matching counts and a complete terminal frame", async (t) => {
+  const samples = [];
+  for (const mode of ["missing_ready", "duplicate_ready", "wrong_exchange_count", "missing_profile", "invalid_duration", "report_nonzero"]) {
+    const f = fixture(t, mode, { executionReports: "v1", onWorkerProfile: (s) => samples.push(s) });
+    await assert.rejects(f.carrier.execute(f.run(), signal()), /node_worker_/);
+  }
+  assert.equal(samples.length, 0);
+  for (const mode of ["ordinary_ready", "ordinary_profile"]) {
+    const f = fixture(t, mode, { executionReports: "v1" });
+    await assert.rejects(f.carrier.execute(f.run(), signal()), /node_worker_/);
+  }
+});
+
+test("profiled cancellation measures through child close without inventing worker telemetry", async (t) => {
+  const samples = [];
+  const f = fixture(t, "profile_cancel", { executionReports: "v1", onWorkerProfile: (s) => samples.push(s) });
+  const binding = new AbortController();
+  await assert.rejects(f.carrier.execute(f.run("cancel", () => binding.abort()), binding.signal), /node_worker_cancelled/);
+  assert.equal(samples.length, 1);
+  const [s] = samples;
+  assert.equal(s.request_count, 1);
+  assert.equal(s.worker_profile, null);
+  assert.ok(Number.isSafeInteger(s.spawn_call_ns) && s.spawn_call_ns >= 0 && s.spawn_call_ns <= s.startup_ns);
+  assert.ok(s.startup_ns > 0 && s.shutdown_ns >= 0 && s.startup_ns + s.shutdown_ns <= s.wall_ns);
+});
+
 test("an explicit named-input run pins protocol two without changing adjacent legacy runs", async (t) => {
   const f = fixture(t, "echo_arguments");
   const first = JSON.parse(await f.carrier.execute(f.run(), signal()));
