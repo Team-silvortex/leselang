@@ -1,5 +1,7 @@
 # LeseLang
 
+**Project version 0.2.3** · [Source revision `a27099e`](https://github.com/Team-silvortex/leselang/commit/a27099e4792124c4868e2870a7787e869d92fb0f)
+
 An embeddable agent control language with GUI control as its first host target
 and support for CLI hosts. An application declares its operations and task
 semantics; an agent can discover that contract, generate a typed LeseLang
@@ -183,11 +185,11 @@ of the protocol, with the adapter and workflow acceptance owned by Kyuubiki.
 Native callbacks are trusted code: Fuel does not sandbox them, and cancellation
 does not roll back committed external effects. See [security boundaries](SECURITY.md).
 
-The independent package line starts at **0.1.0**. The five crates, separate Rust
-consumer and reference hosts share that version. Packages remain
-`publish = false`; use local paths until publication is deliberately prepared.
-Historical source versions and hashes remain in the
-[repository handoff and provenance](docs/migration.md).
+The Rust crate, npm package and Tauri application manifests in this revision
+declare package version `0.1.0`. The Rust crates use `publish = false`.
+Rust consumers can use a local checkout or pin the project revision shown
+above. [Dependency examples](docs/embedding.md#dependency-setup) ·
+[Version history and provenance](docs/migration.md#origin)
 
 ## License
 

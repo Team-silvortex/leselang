@@ -5,10 +5,10 @@
 This repository was initialized from Gewyvern's reviewed native source exporter
 on 2026-10-28. The source checkout HEAD was
 `784e4aac7ca622497de40333ab1d4ade5787f84d` (commit subject `2.5.5`). Its Cargo
-workspace version was 2.5.0. Independent Leselang now starts at **0.1.0** instead
-of inheriting that product version; Gewyvern's own version is unchanged. Pending
-product test ownership changes were present; this is a recorded working-tree snapshot, not
-an assertion that every source byte came from that commit alone.
+workspace version was 2.5.0. LeseLang began its independent history at
+`0.1.0` in commit `5f86dfb`. The export captured a working tree that also
+contained pending product test ownership changes. The [project README](../README.md#leselang)
+identifies the current version and source revision.
 
 [source-checkpoint.json](provenance/source-checkpoint.json) is the original
 export inventory. Paths and hashes describe the export **before repository
@@ -41,7 +41,8 @@ language code and must not be moved wholesale.
 
 ## Complete The Product Cutover
 
-1. Review and make the first Leselang commit; choose/create its remote explicitly.
+1. Select the immutable LeseLang revision to validate in the product.
+   The [embedding guide](embedding.md#dependency-setup) gives the current pin.
 2. Pin the three shared cores (`leselang-syntax`, `leselang-runtime-core`,
    `leselang-hir-core`) to the same immutable source in every product consumer.
 3. Keep the old HIR/VM product facades until their import paths are deliberately
@@ -52,9 +53,8 @@ language code and must not be moved wholesale.
 5. Remove obsolete in-tree native implementations/export assumptions and update
    product CI/status ownership in the same reviewed dependency-switch change.
 
-A permanent sibling-directory dependency is not suitable for the product's
-ordinary clone or CI. No remote, commit, tag or registry release is fabricated
-as part of creating this local repository. The user controls Git publication.
+Use that revision for ordinary product clones and CI so they can resolve the
+same source independently of a developer's directory layout.
 
 ## Separate Release Gates
 

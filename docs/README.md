@@ -1,8 +1,8 @@
 # Documentation
 
-Choose a route by what you are building. Guides describe current executable
-contracts. [Acceptance records](acceptance/README.md) preserve dated platform and
-application evidence; they are separate from setup instructions.
+These guides cover [LeseLang 0.2.3](../README.md#leselang). Choose a route by
+what you are building. [Acceptance records](acceptance/README.md) identify the
+platforms, application versions and revisions used in each run.
 
 ## Start Here
 

@@ -1,5 +1,9 @@
 # LeseLang development status
 
+The [0.2.3 project revision](README.md#leselang) includes the registered GUI
+conformance suite for Rust, Node and C#, with [worker phase timings](benchmarks/worker-phases.md)
+for the two out-of-process Consumers.
+
 The versioned [development tensor](project/status/catalog.json) is the
 authoritative inventory of current capability status. Each coordinate has
 an owner, a scoped contract, prerequisites, evidence and an acceptance gate.

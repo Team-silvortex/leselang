@@ -118,14 +118,18 @@ separate consumer whenever public types, features or ownership change. Test
 partial effects, stale replies and cancellation as well as the success path.
 Never present a source budget as preemption of arbitrary native callbacks.
 
-The independent version line starts at 0.1.0. Update all five crate manifests,
-the separate consumer and reference hosts together; the repository-boundary test
-rejects version drift.
-Package numbering is separate from operation, protocol and checkpoint schema versions.
+The [README](README.md#leselang) identifies the project version and its Git
+revision. When documenting a new project version, update the documentation
+index, status overview and pinned dependency example to match that revision.
+When changing Rust package versions, update all five crate manifests, the
+separate Consumer and reference hosts together. The repository-boundary test
+checks their package identity. Operation, protocol and checkpoint schemas
+carry their own compatibility versions.
 Workspace lockfiles are tracked. Update them intentionally when packages or dependencies change.
-Keep MIT metadata and the LICENSE notice. Crates are not yet registry-publishable:
-release preparation must choose version policy, versioned inter-crate dependencies,
-package contents and a real repository URL before removing `publish = false`.
+Keep MIT metadata and the LICENSE notice. Crates are not yet registry-publishable.
+Before enabling publication, choose the package versioning policy, specify
+versioned inter-crate dependencies, review the package contents and record
+the repository URL in the crate metadata.
 
 The product repository retains a compatibility baseline during handoff. Do not
 develop separate native implementations in both repositories; record deliberate

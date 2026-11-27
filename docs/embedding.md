@@ -526,7 +526,13 @@ leselang-vm = { path = "../leselang/crates/leselang-vm" }
 Adjust the path to your checkout. No product feature must be disabled in this
 repository: all supported feature combinations remain native.
 
-After this repository has an actual commit and remote, consumers should pin an
-immutable Git revision or a deliberately published package version. Do not use
-an invented URL/revision or treat the initial 0.1.0 package version as evidence
-of a published crate or guaranteed stable ABI.
+For a separate Rust application, this dependency pins LeseLang 0.2.3 to its
+source revision.
+
+```toml
+[dependencies]
+leselang-vm = { git = "https://github.com/Team-silvortex/leselang.git", rev = "a27099e4792124c4868e2870a7787e869d92fb0f" }
+```
+
+Cargo selects the project revision through `rev` and reports the crate's
+manifest version as `0.1.0` in the consuming application's lockfile.
