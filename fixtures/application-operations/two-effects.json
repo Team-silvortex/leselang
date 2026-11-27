@@ -1,0 +1,14 @@
+{
+  "operations": [
+    {"name":"meter.add","parameters":{"amount":"integer"},"result":"integer","capability":"meter.write"},
+    {"name":"meter.read","parameters":{},"result":"integer","capability":"meter.read"}
+  ],
+  "source": "fn main() = bind(added: meter.add(amount: 1), body: meter.read())",
+  "arguments": {},
+  "grants": ["meter.write", "meter.read"],
+  "expected": {
+    "effects": 2,
+    "result": {"type":"integer","value":"9007199254740993"},
+    "fuel_remaining": 9994
+  }
+}

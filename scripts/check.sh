@@ -16,6 +16,7 @@ Groups:
   javascript      SDK (including packed Consumer) and Tauri frontend tests
   registered      Standalone registered-object host, worker and Rust Consumer
   node-consumer   Portable Node carrier, failure tests, real VM Consumer, Tauri plan
+  dotnet-consumer C# application against the real worker and shared contract (.NET 10 SDK)
   appkit          AppKit declarations and non-interactive host checks
   macos-ax        AX fake-backend checks; native boundary checks on macOS
   tauri-portable  Tauri without desktop features
@@ -110,6 +111,26 @@ check_group() {
             cargo_checked run --manifest-path consumer/Cargo.toml --example catalog_agent -- \
                 --host target/lean/leselang-tauri-host --output "$plan_root/tauri" --text 'TypeScript agent CI'
             ;;
+        dotnet-consumer)
+            cargo_checked test --manifest-path hosts/registered/Cargo.toml --lib worker::
+            cargo_checked build --manifest-path hosts/registered/Cargo.toml --bin leselang-agent-worker
+            dotnet_repo="$repo_dir"
+            exe_suffix=
+            case "$(uname -s)" in
+                MINGW*|MSYS*|CYGWIN*)
+                    dotnet_repo=$(cygpath -m "$repo_dir")
+                    exe_suffix=.exe
+                    ;;
+            esac
+            artifacts="$dotnet_repo/target/dotnet"
+            export DOTNET_CLI_HOME="$artifacts/home" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_GENERATE_ASPNET_CERTIFICATE=false
+            run dotnet restore consumer/dotnet/LeseLang.Consumer.csproj --artifacts-path "$artifacts" \
+                --source "$dotnet_repo/packages/dotnet" --disable-build-servers -p:NuGetAudit=false
+            run dotnet build consumer/dotnet/LeseLang.Consumer.csproj --artifacts-path "$artifacts" \
+                --no-restore --disable-build-servers
+            run "$artifacts/bin/LeseLang.Consumer/debug/LeseLang.Consumer$exe_suffix" \
+                "$dotnet_repo/target/lean/leselang-agent-worker$exe_suffix" "$dotnet_repo/fixtures/application-operations/two-effects.json"
+            ;;
         appkit)
             format --manifest-path hosts/appkit/Cargo.toml
             cargo_checked test --manifest-path hosts/appkit/Cargo.toml
@@ -173,7 +194,7 @@ check_group() {
                 --task calculate_one_plus_two --output "$plan_root/calculator"
             ;;
         all)
-            for group in language consumer appkit macos-ax javascript registered tauri-portable node-consumer; do
+            for group in language consumer appkit macos-ax javascript registered tauri-portable node-consumer dotnet-consumer; do
                 check_group "$group"
             done
             if [ "$(uname -s)" = Darwin ]; then

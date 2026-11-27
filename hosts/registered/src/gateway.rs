@@ -115,15 +115,28 @@ impl Snapshot {
     }
 }
 
-struct Connection<'a> {
+pub(crate) struct Connection<'a> {
     transport: &'a mut dyn Transport,
     scope: Scope,
     serial: u32,
     retired: bool,
 }
-impl Connection<'_> {
-    fn request(&mut self, operation: &str, arguments: Value) -> Result<Value, Error> {
-        if self.retired || !self.transport.is_live() {
+impl<'a> Connection<'a> {
+    pub(crate) fn new(transport: &'a mut dyn Transport, scope: Scope) -> Self {
+        Self {
+            transport,
+            scope,
+            serial: 0,
+            retired: false,
+        }
+    }
+
+    pub(crate) fn is_live(&self) -> bool {
+        !self.retired && self.transport.is_live()
+    }
+
+    pub(crate) fn request(&mut self, operation: &str, arguments: Value) -> Result<Value, Error> {
+        if !self.is_live() {
             return Err(Error::Native("JavaScript scope is closed"));
         }
         self.serial = self
@@ -223,12 +236,7 @@ impl<'a> RemoteGui<'a> {
             return Err(Error::Native("invalid bridge scope"));
         }
         let mut gui = Self {
-            connection: RefCell::new(Connection {
-                transport,
-                scope,
-                serial: 0,
-                retired: false,
-            }),
+            connection: RefCell::new(Connection::new(transport, scope)),
             names: Vec::new(),
             snapshots: RefCell::new(Vec::new()),
             open: Cell::new(true),
@@ -362,8 +370,7 @@ impl Backend for RemoteGui<'_> {
         self.names.len()
     }
     fn is_open(&self) -> Result<bool, Error> {
-        let c = self.connection.borrow();
-        Ok(self.open.get() && !c.retired && c.transport.is_live())
+        Ok(self.open.get() && self.connection.borrow().is_live())
     }
     fn list(&self) -> Result<Vec<String>, Error> {
         self.admitted(|| {

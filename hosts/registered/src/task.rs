@@ -16,7 +16,7 @@ pub struct PreparedTask {
     arguments: Vec<(String, ScalarValue)>,
 }
 
-fn input_name(name: &str) -> bool {
+pub(crate) fn input_name(name: &str) -> bool {
     (1..=64).contains(&name.len())
         && name.bytes().enumerate().all(|(index, byte)| {
             byte == b'_' || byte.is_ascii_alphabetic() || (index > 0 && byte.is_ascii_digit())
@@ -49,26 +49,7 @@ fn prepare_inputs(
     arguments: Vec<(String, String)>,
     max_inputs: usize,
 ) -> Result<PreparedTask, String> {
-    if source.len() > 16 * 1024 || source.contains('\0') {
-        return Err("task source exceeds 16 KiB or contains NUL".into());
-    }
-    if arguments.len() > max_inputs
-        || arguments
-            .iter()
-            .any(|(name, value)| !input_name(name) || value.len() > 4096 || value.contains('\0'))
-        || arguments
-            .iter()
-            .map(|(_, value)| value.len())
-            .sum::<usize>()
-            > 16 * 1024
-    {
-        return Err(if max_inputs == 1 {
-            "task arguments require zero or one bounded named string"
-        } else {
-            "task arguments require at most eight bounded named strings totaling at most 16 KiB"
-        }
-        .into());
-    }
+    validate_inputs(source, &arguments, max_inputs)?;
     // The existing compiler uses only catalog/type metadata. An empty backend
     // supplies no native objects and refuses every operation if this changes.
     let program = host::with_host(&DeclarationsOnly, |host, _| {
@@ -101,6 +82,34 @@ fn prepare_inputs(
     )
     .map_err(|error| error.to_string())?;
     Ok(PreparedTask { program, arguments })
+}
+
+pub(crate) fn validate_inputs(
+    source: &str,
+    arguments: &[(String, String)],
+    max_inputs: usize,
+) -> Result<(), String> {
+    if source.len() > 16 * 1024 || source.contains('\0') {
+        return Err("task source exceeds 16 KiB or contains NUL".into());
+    }
+    if arguments.len() > max_inputs
+        || arguments
+            .iter()
+            .any(|(name, value)| !input_name(name) || value.len() > 4096 || value.contains('\0'))
+        || arguments
+            .iter()
+            .map(|(_, value)| value.len())
+            .sum::<usize>()
+            > 16 * 1024
+    {
+        return Err(if max_inputs == 1 {
+            "task arguments require zero or one bounded named string"
+        } else {
+            "task arguments require at most eight bounded named strings totaling at most 16 KiB"
+        }
+        .into());
+    }
+    Ok(())
 }
 
 /// Run an admitted task for an independent JavaScript application through the
