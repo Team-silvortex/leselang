@@ -10,12 +10,16 @@ live permissions and event processing. Execution keeps the explicit
 `poll → authorize → dispatch → accept` boundary. There is no implicit scheduler,
 automatic action retry or rollback of committed effects.
 
+Nuis is the planned primary application host. Today's Rust, JS/TS and C#
+hosts exercise the [shared scalar operation contract](docs/operations-host-protocol.md).
+
 ## Choose A Starting Point
 
 | I want to… | Start here |
 | --- | --- |
 | Find the current capability status or next development task | [Project status](STATUS.md) and the [development mainline](docs/development-mainline.md) |
 | Write and run a LeseLang program | [Language and CLI](docs/language.md), or the quickstart below |
+| Implement a host in a new language | [Scalar application host contract and interoperability check](docs/operations-host-protocol.md) |
 | Embed the compiler and VM in Rust | [Rust embedding](docs/embedding.md) |
 | Expose JavaScript or TypeScript application controls | [JavaScript SDK](docs/javascript-sdk.md) |
 | Give an agent typed JS/TS application commands | [Application operations](docs/application-operations.md) |

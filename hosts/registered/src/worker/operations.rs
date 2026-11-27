@@ -46,9 +46,29 @@ fn qualified_name(name: &str) -> bool {
     name.len() <= 128 && name.contains('.') && name.split('.').all(input_name)
 }
 
+// The v4 vocabulary is shared with other host languages. Rust's Serde
+// representation of ScalarType can evolve independently.
+const V4_SCALARS: &[(&str, ScalarType)] = &[
+    ("integer", ScalarType::Integer),
+    ("boolean", ScalarType::Boolean),
+    ("string", ScalarType::String),
+    ("none", ScalarType::None),
+    ("optional_string", ScalarType::OptionalString),
+    ("string_list", ScalarType::StringList),
+];
+
 fn scalar_type(name: &str) -> Result<ScalarType, String> {
-    serde_json::from_value(Value::String(name.into()))
-        .map_err(|_| "unknown operation scalar type".into())
+    V4_SCALARS
+        .iter()
+        .find_map(|&(label, ty)| (label == name).then_some(ty))
+        .ok_or_else(|| "unknown operation scalar type".into())
+}
+
+fn wire_type(ty: ScalarType) -> Result<&'static str, String> {
+    V4_SCALARS
+        .iter()
+        .find_map(|&(label, scalar)| (scalar == ty).then_some(label))
+        .ok_or_else(|| "unsupported v4 operation result type".into())
 }
 
 // v4 encodes integers as canonical decimal strings, including in the final
@@ -210,7 +230,7 @@ pub(super) fn execute(transport: &mut dyn Transport, initial: Value) -> Result<V
                 ensure_live(&connection)?;
                 return Ok(
                     json!({"schema_version":1,"kind":"operation_task_run","profile":start.profile,
-                    "result":{"type":value.scalar_type(),"value":encode(&value)},
+                    "result":{"type":wire_type(value.scalar_type())?,"value":encode(&value)},
                     "effects":effects,"fuel_remaining":session.fuel_remaining()}),
                 );
             }
@@ -280,6 +300,35 @@ mod tests {
             assert_eq!(call["operation"], "tally.echo");
             assert_eq!(call["request_id"], i + 1);
             assert_eq!(call["arguments"], json!({"value":u64::MAX.to_string()}));
+        }
+    }
+
+    #[test]
+    fn v4_scalar_labels_roundtrip_from_declarations_through_effects_to_reports() {
+        for (label, value) in [
+            ("integer", json!("18446744073709551615")),
+            ("boolean", json!(false)),
+            ("string", json!("线")),
+            ("none", Value::Null),
+            ("optional_string", Value::Null),
+            ("optional_string", json!("")),
+            ("string_list", json!(["", "线"])),
+        ] {
+            let mut start = start();
+            start["profile"] = json!("lese.operations");
+            start["source"] =
+                json!("fn main() = bind(v: tally.first(), body: tally.echo(value: v))");
+            start["operations"] = json!([
+                {"name":"tally.first","parameters":{},"result":label,"capability":"log.read"},
+                {"name":"tally.echo","parameters":{"value":label},"result":label,"capability":"log.read"}
+            ]);
+            let mut echo = Echo::open();
+            echo.reply_override = Some(value.clone());
+            let report = execute(&mut echo, start).unwrap();
+            assert_eq!(echo.calls.len(), 2);
+            assert_eq!(echo.calls[1]["arguments"], json!({"value":value}));
+            assert_eq!(report["effects"], 2);
+            assert_eq!(report["result"], json!({"type":label,"value":value}));
         }
     }
 

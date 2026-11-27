@@ -73,8 +73,10 @@ For application-declared scalar operations, `createNodeOperationHost` selects
 worker v4. Its start frame carries operation signatures and the host's grant
 snapshot. The worker registers them with the Rust embedding API, compiles the
 entry, and sends each authorized Effect to the application. The success report
-uses the `javascript.operations` profile. The application owns discovery and
-verification. See the [JS/TS application operations guide](../../docs/application-operations.md).
+echoes the selected profile. New host languages can select `lese.operations`;
+Node also supports its historical `javascript.operations` identity. The
+application owns discovery and verification. See the
+[scalar application host contract](../../docs/operations-host-protocol.md).
 
 ## Ownership And Compatibility
 
@@ -86,7 +88,7 @@ verification. See the [JS/TS application operations guide](../../docs/applicatio
 | `src/gateway.rs` | Bounded registered-object transport, observations and lifecycle checks |
 | `src/host.rs` | Local object authority, metering, dispatch and reply acceptance |
 | `src/task.rs` | Prepared scalar task admission and fixed registered report identity |
-| `src/worker.rs`, `src/worker/json_lines.rs` | One-task stdio process and strict private framing |
+| `src/worker.rs`, `src/worker/json_lines.rs` | One-task stdio process and bounded JSON Lines framing |
 | `src/worker/operations.rs` | Worker v4 declaration admission, scalar encoding and explicit VM driving |
 | `src/bin/leselang-agent-worker.rs` | Standalone CLI entry |
 | `tests/boundary.rs`, `tests/consumer/` | Resolved dependency isolation and independent Rust usage |

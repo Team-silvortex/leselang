@@ -286,6 +286,31 @@
           "kind": "integration-test",
           "path": "hosts/registered/tests/named_inputs.rs",
           "anchor": "fn generated_two_field_fixture_is_admitted_by_the_actual_registered_host()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "hosts/registered/tests/local_gui_session.rs",
+          "anchor": "fn the_original_grant_target_and_observation_are_rechecked_at_dispatch_and_pump()"
+        },
+        {
+          "kind": "integration-test",
+          "path": "hosts/registered/tests/registered_gui_workflow.rs",
+          "anchor": "fn publication_verification_reads_the_two_controls_again_after_the_last_effect()"
+        },
+        {
+          "kind": "compatibility-fixture",
+          "path": "fixtures/registered-gui/publication.json",
+          "anchor": "\"id\": \"cancel-after-edit\""
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/registered-gui.test.mjs",
+          "anchor": "the Node GUI Consumer verifies the shared publication cases"
+        },
+        {
+          "kind": "benchmark",
+          "path": "benchmarks/registered-gui.mjs",
+          "anchor": "const timings = readTimings(stdout, cases.map((c) => c.id), consumer, suiteNs);"
         }
       ],
       "next_action": "The independent registered-host Consumer builds and exercises task execution without a desktop framework.",
@@ -333,6 +358,60 @@
       "expected_artifact": "hosts/tauri/tests/registered_compatibility.rs",
       "acceptance_criteria": [
         "Legacy and registered entry points accept the same prepared task and resolve identical Rust types."
+      ]
+    },
+    {
+      "id": "embedding/compatibility/scalar-operations-profile",
+      "architecture": "embedding",
+      "module": "compatibility",
+      "function": "scalar-operations-profile",
+      "lifecycle": "current",
+      "status": "stable",
+      "progress": 100,
+      "priority": "maintenance",
+      "confidence": "high",
+      "contract": "An application declares bounded scalar operations, supplies grants, serves Effects and verifies typed results against its own state. A shared data fixture specifies the meter result, Effect count and remaining Fuel. The lese.operations v4 binding carries this contract to a separately supplied evaluator.",
+      "dependencies": [],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/operations-host-protocol.md",
+          "anchor": "# Scalar application host contract"
+        },
+        {
+          "kind": "compatibility-fixture",
+          "path": "fixtures/application-operations/two-effects.json",
+          "anchor": "\"name\":\"meter.add\""
+        },
+        {
+          "kind": "consumer-test",
+          "path": "consumer/javascript/agent/operations-wire.test.mjs",
+          "anchor": "a host can run the neutral two-Effect fixture against an external worker"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "including the exact final integer, two Effects and 9,994 Fuel remaining.",
+          "date": "2026-11-27",
+          "version": "two-effects.json shared meter, lese.operations worker v4",
+          "platform": "macOS arm64, embedded Rust and independent Node/.NET worker applications"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "scalar host with an externally supplied evaluator",
+          "date": "2026-11-27",
+          "version": "lese.operations v4 reference worker, two-effects.json fixture",
+          "platform": "macOS 27.0.1 arm64, detached Node 24.6.0 host using only the standard library"
+        }
+      ],
+      "next_action": "Rerun the external-worker check and the independent Consumers when declaration fields, scalar encoding, scoped replies or report admission change.",
+      "validation_command": "sh scripts/check.sh node-consumer && sh scripts/check.sh dotnet-consumer && sh scripts/check.sh consumer",
+      "expected_artifact": "docs/operations-host-protocol.md",
+      "acceptance_criteria": [
+        "A host using the shared fixture and an externally supplied executable handles meter.add and meter.read in order through the documented v4 messages.",
+        "The host observes one committed increment and accepts a clean run with integer 9007199254740993, two Effects and 9994 remaining Fuel."
       ]
     },
     {

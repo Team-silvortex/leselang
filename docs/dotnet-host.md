@@ -2,9 +2,10 @@
 
 A .NET application owns its commands, grants and state. It can expose those
 commands through the same `lese.operations` catalog as a Node application.
-One standalone Rust worker compiles and runs each submitted Lese program. The
-handlers execute in the application process so they can call the application's
-own services.
+The application supplies the worker executable that compiles and runs each
+submitted Lese program. Handlers execute in the application process so they
+can call its own services. The Rust reference worker implements the
+[v4 stdio binding](operations-host-protocol.md#optional-stdio-binding-worker-v4).
 
 ## Run the independent Consumer
 
@@ -25,6 +26,12 @@ Effect count, remaining Fuel and failure-path checks. The C# library
 uses only the .NET base class library. Restore uses a local package source,
 and managed build outputs go under `target/dotnet/`. The C# project is available
 as a [project reference](../packages/dotnet/LeseLang.Operations.csproj).
+
+The same Consumer has a registered GUI example. It accepts
+`--registered-gui WORKER FIXTURE`, serves a two-control editor over the v3
+worker binding and reads its own saved state in fresh sessions.
+The `dotnet-consumer` command exercises this entry point as well.
+[Shared GUI fixture](../fixtures/registered-gui/README.md)
 
 ## Declare and call an operation
 

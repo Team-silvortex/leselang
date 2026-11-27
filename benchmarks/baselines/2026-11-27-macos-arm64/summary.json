@@ -1,0 +1,699 @@
+{
+  "schema_version": 1,
+  "suite": "registered-gui-publication",
+  "method_version": 1,
+  "started_utc": "2026-11-27T13:10:27.516Z",
+  "revision": "1880bb060c94519dae2100aba92782345242f85c",
+  "dirty_worktree": true,
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "kernel": "27.0.0",
+    "cpu": "Apple M2",
+    "logical_cpus": 8,
+    "memory_bytes": 17179869184,
+    "node": "v24.6.0",
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "dotnet_sdk": "10.0.201",
+    "dotnet_runtimes": [
+      "Microsoft.NETCore.App 10.0.5"
+    ]
+  },
+  "inputs_sha256": {
+    "fixtures/registered-gui/publication.json": "be5846eca548d97e95f8ca8f5c455984307867bff75d05c4c16aac28a8bf72ae",
+    "fixtures/host-semantics/javascript-publish-article.lese": "d77002de20f45c14362417dd00d36023a056d11abb44c5c09df73bc197961ec1",
+    "fixtures/host-semantics/javascript-read-draft.lese": "7891150e3d2e29911c4ac3032ef9c5c2a115a0759e47f88c9b7026ef00be3d19",
+    "fixtures/host-semantics/javascript-read-publication.lese": "9bbbb2f8c93fc7c544e31cc243423f94a391ffae2e624d302d996c3cf64a34cc"
+  },
+  "artifacts_sha256": {
+    "target/release/leselang-registered-host-consumer": "31682ccd85a790717c48eed8c68b317314777d6859972ac4b378970e6ff969a3",
+    "target/release/leselang-agent-worker": "b6cb488f8224e56f3c9f6b3e8fafae058aaa49540fb508bd23381a76fc63164b",
+    "consumer/javascript/agent/registered-gui.mjs": "b1a78481298420f47672d477d1071225d43760043fcb4be865f2e4376d81e2c9",
+    "target/dotnet/bin/LeseLang.Consumer/release/LeseLang.Consumer.dll": "5f9809f61942845ebbddbfcb4e3e79ed8b04e960949aa775a49d90316d2c7724",
+    "packages/javascript/dist (*.js)": "908bf69266bf0e67ab2602c41fb17312eba8418977368ef07dd789f0bba25378"
+  },
+  "configuration": {
+    "warmup": 3,
+    "samples": 30,
+    "rust_profile": "release",
+    "dotnet_configuration": "Release",
+    "order": "cyclic-hosts-and-cases"
+  },
+  "samples_sha256": "4f10f1fc513cda54221ed918e2d00e69e5516b93b0683974c70c5d9de2385ad2",
+  "results": {
+    "rust": {
+      "suite_process_ns": {
+        "p50": 8622583.5,
+        "p95": 9015500
+      },
+      "cases": {
+        "publish": {
+          "primary_ns": {
+            "p50": 311958,
+            "p95": 481750
+          },
+          "request_span_ns": {
+            "p50": 171729.5,
+            "p95": 227041
+          },
+          "readback_ns": {
+            "p50": 136687,
+            "p95": 179625
+          }
+        },
+        "ack-without-edit": {
+          "primary_ns": {
+            "p50": 245854,
+            "p95": 418416
+          },
+          "request_span_ns": {
+            "p50": 106979,
+            "p95": 156208
+          },
+          "readback_ns": {
+            "p50": 130583.5,
+            "p95": 165875
+          }
+        },
+        "wrong-publish-target": {
+          "primary_ns": {
+            "p50": 242958,
+            "p95": 411167
+          },
+          "request_span_ns": {
+            "p50": 105500,
+            "p95": 163667
+          },
+          "readback_ns": {
+            "p50": 137083,
+            "p95": 168500
+          }
+        },
+        "changed-draft-with-old-revision": {
+          "primary_ns": {
+            "p50": 227979.5,
+            "p95": 384250
+          },
+          "request_span_ns": {
+            "p50": 87875,
+            "p95": 132042
+          },
+          "readback_ns": {
+            "p50": 135978.5,
+            "p95": 163958
+          }
+        },
+        "click-rejected": {
+          "primary_ns": {
+            "p50": 271541.5,
+            "p95": 458083
+          },
+          "request_span_ns": {
+            "p50": 135604,
+            "p95": 206500
+          },
+          "readback_ns": {
+            "p50": 138250.5,
+            "p95": 166000
+          }
+        },
+        "click-committed-without-ack": {
+          "primary_ns": {
+            "p50": 278604,
+            "p95": 457541
+          },
+          "request_span_ns": {
+            "p50": 141333,
+            "p95": 211333
+          },
+          "readback_ns": {
+            "p50": 141167,
+            "p95": 161292
+          }
+        },
+        "invalid-final-read": {
+          "primary_ns": {
+            "p50": 306958.5,
+            "p95": 486667
+          },
+          "request_span_ns": {
+            "p50": 164354,
+            "p95": 214459
+          },
+          "readback_ns": {
+            "p50": 140478.5,
+            "p95": 153500
+          }
+        },
+        "publication-superseded": {
+          "primary_ns": {
+            "p50": 317062.5,
+            "p95": 493834
+          },
+          "request_span_ns": {
+            "p50": 169459,
+            "p95": 235041
+          },
+          "readback_ns": {
+            "p50": 139041.5,
+            "p95": 174250
+          }
+        },
+        "disabled-draft": {
+          "primary_ns": {
+            "p50": 220187.5,
+            "p95": 372875
+          },
+          "request_span_ns": {
+            "p50": 73062.5,
+            "p95": 123208
+          },
+          "readback_ns": {
+            "p50": 135145.5,
+            "p95": 165583
+          }
+        },
+        "readonly-draft": {
+          "primary_ns": {
+            "p50": 216187.5,
+            "p95": 367125
+          },
+          "request_span_ns": {
+            "p50": 73062.5,
+            "p95": 108083
+          },
+          "readback_ns": {
+            "p50": 132416.5,
+            "p95": 154667
+          }
+        },
+        "cancel-before-edit": {
+          "primary_ns": {
+            "p50": 211812.5,
+            "p95": 380333
+          },
+          "request_span_ns": {
+            "p50": 73146,
+            "p95": 121292
+          },
+          "readback_ns": {
+            "p50": 135542,
+            "p95": 168500
+          }
+        },
+        "cancel-after-edit": {
+          "primary_ns": {
+            "p50": 208292,
+            "p95": 370958
+          },
+          "request_span_ns": {
+            "p50": 72458.5,
+            "p95": 115584
+          },
+          "readback_ns": {
+            "p50": 137041.5,
+            "p95": 161708
+          }
+        },
+        "replaced-draft-at-write": {
+          "primary_ns": {
+            "p50": 210208.5,
+            "p95": 363791
+          },
+          "request_span_ns": {
+            "p50": 72729,
+            "p95": 116500
+          },
+          "readback_ns": {
+            "p50": 134916.5,
+            "p95": 154291
+          }
+        },
+        "external-edit-at-write": {
+          "primary_ns": {
+            "p50": 209083.5,
+            "p95": 370667
+          },
+          "request_span_ns": {
+            "p50": 71937.5,
+            "p95": 110584
+          },
+          "readback_ns": {
+            "p50": 136937.5,
+            "p95": 157875
+          }
+        },
+        "write-grant-revoked": {
+          "primary_ns": {
+            "p50": 210646,
+            "p95": 375583
+          },
+          "request_span_ns": {
+            "p50": 73145.5,
+            "p95": 122708
+          },
+          "readback_ns": {
+            "p50": 136396,
+            "p95": 160916
+          }
+        }
+      }
+    },
+    "node": {
+      "suite_process_ns": {
+        "p50": 203681187.5,
+        "p95": 214867042
+      },
+      "cases": {
+        "publish": {
+          "primary_ns": {
+            "p50": 4208771,
+            "p95": 9664250
+          },
+          "request_span_ns": {
+            "p50": 1679458.5,
+            "p95": 3962417
+          },
+          "readback_ns": {
+            "p50": 6285729.5,
+            "p95": 7273417
+          }
+        },
+        "ack-without-edit": {
+          "primary_ns": {
+            "p50": 3677063,
+            "p95": 8948834
+          },
+          "request_span_ns": {
+            "p50": 1134417,
+            "p95": 3270916
+          },
+          "readback_ns": {
+            "p50": 6243083,
+            "p95": 7392083
+          }
+        },
+        "wrong-publish-target": {
+          "primary_ns": {
+            "p50": 3597250.5,
+            "p95": 9017666
+          },
+          "request_span_ns": {
+            "p50": 1069937.5,
+            "p95": 3258875
+          },
+          "readback_ns": {
+            "p50": 6227979,
+            "p95": 7154834
+          }
+        },
+        "changed-draft-with-old-revision": {
+          "primary_ns": {
+            "p50": 3524187.5,
+            "p95": 8861667
+          },
+          "request_span_ns": {
+            "p50": 976833.5,
+            "p95": 3032583
+          },
+          "readback_ns": {
+            "p50": 6366937.5,
+            "p95": 7510458
+          }
+        },
+        "click-rejected": {
+          "primary_ns": {
+            "p50": 3759938,
+            "p95": 9129875
+          },
+          "request_span_ns": {
+            "p50": 1276708.5,
+            "p95": 3498583
+          },
+          "readback_ns": {
+            "p50": 6290041,
+            "p95": 7053250
+          }
+        },
+        "click-committed-without-ack": {
+          "primary_ns": {
+            "p50": 3991041.5,
+            "p95": 9333959
+          },
+          "request_span_ns": {
+            "p50": 1348854,
+            "p95": 3533083
+          },
+          "readback_ns": {
+            "p50": 6416750,
+            "p95": 7624541
+          }
+        },
+        "invalid-final-read": {
+          "primary_ns": {
+            "p50": 4070437.5,
+            "p95": 9452917
+          },
+          "request_span_ns": {
+            "p50": 1499333,
+            "p95": 3789417
+          },
+          "readback_ns": {
+            "p50": 6378479,
+            "p95": 7476667
+          }
+        },
+        "publication-superseded": {
+          "primary_ns": {
+            "p50": 4158979.5,
+            "p95": 9794333
+          },
+          "request_span_ns": {
+            "p50": 1593291.5,
+            "p95": 4064459
+          },
+          "readback_ns": {
+            "p50": 6331729,
+            "p95": 7499750
+          }
+        },
+        "disabled-draft": {
+          "primary_ns": {
+            "p50": 3483812.5,
+            "p95": 8453166
+          },
+          "request_span_ns": {
+            "p50": 940104.5,
+            "p95": 2726709
+          },
+          "readback_ns": {
+            "p50": 6318021,
+            "p95": 7360583
+          }
+        },
+        "readonly-draft": {
+          "primary_ns": {
+            "p50": 3443854,
+            "p95": 8159292
+          },
+          "request_span_ns": {
+            "p50": 899708,
+            "p95": 2570000
+          },
+          "readback_ns": {
+            "p50": 6328750,
+            "p95": 7452125
+          }
+        },
+        "cancel-before-edit": {
+          "primary_ns": {
+            "p50": 3612271,
+            "p95": 8199083
+          },
+          "request_span_ns": {
+            "p50": 846042,
+            "p95": 2482750
+          },
+          "readback_ns": {
+            "p50": 6229771,
+            "p95": 7699375
+          }
+        },
+        "cancel-after-edit": {
+          "primary_ns": {
+            "p50": 3449354.5,
+            "p95": 8604875
+          },
+          "request_span_ns": {
+            "p50": 876812.5,
+            "p95": 2584459
+          },
+          "readback_ns": {
+            "p50": 6332375,
+            "p95": 7645541
+          }
+        },
+        "replaced-draft-at-write": {
+          "primary_ns": {
+            "p50": 3547833,
+            "p95": 8724833
+          },
+          "request_span_ns": {
+            "p50": 850895.5,
+            "p95": 2551583
+          },
+          "readback_ns": {
+            "p50": 6289208.5,
+            "p95": 7729667
+          }
+        },
+        "external-edit-at-write": {
+          "primary_ns": {
+            "p50": 3391604.5,
+            "p95": 8674666
+          },
+          "request_span_ns": {
+            "p50": 848500,
+            "p95": 2634125
+          },
+          "readback_ns": {
+            "p50": 6281625,
+            "p95": 7938375
+          }
+        },
+        "write-grant-revoked": {
+          "primary_ns": {
+            "p50": 3359750,
+            "p95": 8805834
+          },
+          "request_span_ns": {
+            "p50": 843729,
+            "p95": 2715583
+          },
+          "readback_ns": {
+            "p50": 6293041.5,
+            "p95": 7472416
+          }
+        }
+      }
+    },
+    "dotnet": {
+      "suite_process_ns": {
+        "p50": 908054437.5,
+        "p95": 1081151834
+      },
+      "cases": {
+        "publish": {
+          "primary_ns": {
+            "p50": 20486271,
+            "p95": 44677375
+          },
+          "request_span_ns": {
+            "p50": 2698937.5,
+            "p95": 9550583
+          },
+          "readback_ns": {
+            "p50": 34730292,
+            "p95": 42234125
+          }
+        },
+        "ack-without-edit": {
+          "primary_ns": {
+            "p50": 17617291.5,
+            "p95": 55083500
+          },
+          "request_span_ns": {
+            "p50": 1418312.5,
+            "p95": 8255708
+          },
+          "readback_ns": {
+            "p50": 33316604.5,
+            "p95": 43007583
+          }
+        },
+        "wrong-publish-target": {
+          "primary_ns": {
+            "p50": 18586145.5,
+            "p95": 42887791
+          },
+          "request_span_ns": {
+            "p50": 1303125,
+            "p95": 8532208
+          },
+          "readback_ns": {
+            "p50": 34572458.5,
+            "p95": 40878625
+          }
+        },
+        "changed-draft-with-old-revision": {
+          "primary_ns": {
+            "p50": 17920125,
+            "p95": 48854250
+          },
+          "request_span_ns": {
+            "p50": 1154458.5,
+            "p95": 7984125
+          },
+          "readback_ns": {
+            "p50": 33603250,
+            "p95": 42574208
+          }
+        },
+        "click-rejected": {
+          "primary_ns": {
+            "p50": 18004354.5,
+            "p95": 52168791
+          },
+          "request_span_ns": {
+            "p50": 1576541.5,
+            "p95": 8636958
+          },
+          "readback_ns": {
+            "p50": 35117895.5,
+            "p95": 42104084
+          }
+        },
+        "click-committed-without-ack": {
+          "primary_ns": {
+            "p50": 18453958,
+            "p95": 52474959
+          },
+          "request_span_ns": {
+            "p50": 1603562.5,
+            "p95": 8947125
+          },
+          "readback_ns": {
+            "p50": 35115062.5,
+            "p95": 42655708
+          }
+        },
+        "invalid-final-read": {
+          "primary_ns": {
+            "p50": 18199021,
+            "p95": 51222083
+          },
+          "request_span_ns": {
+            "p50": 1867604.5,
+            "p95": 9000750
+          },
+          "readback_ns": {
+            "p50": 34306937.5,
+            "p95": 44205584
+          }
+        },
+        "publication-superseded": {
+          "primary_ns": {
+            "p50": 19862687.5,
+            "p95": 45015208
+          },
+          "request_span_ns": {
+            "p50": 1992208.5,
+            "p95": 9531041
+          },
+          "readback_ns": {
+            "p50": 35032812.5,
+            "p95": 44123209
+          }
+        },
+        "disabled-draft": {
+          "primary_ns": {
+            "p50": 18698208.5,
+            "p95": 52356792
+          },
+          "request_span_ns": {
+            "p50": 1190187.5,
+            "p95": 7739042
+          },
+          "readback_ns": {
+            "p50": 35487979,
+            "p95": 41439416
+          }
+        },
+        "readonly-draft": {
+          "primary_ns": {
+            "p50": 17850792,
+            "p95": 52262500
+          },
+          "request_span_ns": {
+            "p50": 1158062.5,
+            "p95": 7593834
+          },
+          "readback_ns": {
+            "p50": 34828312.5,
+            "p95": 43238667
+          }
+        },
+        "cancel-before-edit": {
+          "primary_ns": {
+            "p50": 35321958,
+            "p95": 65636667
+          },
+          "request_span_ns": {
+            "p50": 1034479,
+            "p95": 7582875
+          },
+          "readback_ns": {
+            "p50": 35944104.5,
+            "p95": 44573417
+          }
+        },
+        "cancel-after-edit": {
+          "primary_ns": {
+            "p50": 32403541.5,
+            "p95": 60455291
+          },
+          "request_span_ns": {
+            "p50": 1073875,
+            "p95": 7576666
+          },
+          "readback_ns": {
+            "p50": 36083125,
+            "p95": 44032875
+          }
+        },
+        "replaced-draft-at-write": {
+          "primary_ns": {
+            "p50": 17762041.5,
+            "p95": 50605208
+          },
+          "request_span_ns": {
+            "p50": 1030729.5,
+            "p95": 7560708
+          },
+          "readback_ns": {
+            "p50": 33648834,
+            "p95": 42879209
+          }
+        },
+        "external-edit-at-write": {
+          "primary_ns": {
+            "p50": 17491437.5,
+            "p95": 48833500
+          },
+          "request_span_ns": {
+            "p50": 1023604,
+            "p95": 7837167
+          },
+          "readback_ns": {
+            "p50": 34936062.5,
+            "p95": 43660875
+          }
+        },
+        "write-grant-revoked": {
+          "primary_ns": {
+            "p50": 17944958.5,
+            "p95": 45431416
+          },
+          "request_span_ns": {
+            "p50": 1044645.5,
+            "p95": 8226459
+          },
+          "readback_ns": {
+            "p50": 35118354.5,
+            "p95": 43683250
+          }
+        }
+      }
+    }
+  }
+}

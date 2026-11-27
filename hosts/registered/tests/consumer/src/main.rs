@@ -1,10 +1,14 @@
 //! An independent Cargo workspace consumes only the registered host's public API.
+mod article;
+mod publication;
+
 use leselang_registered_host::{
     Error, ExecutionFailure, ExecutionFailureCode, PreparedTask, Scope, Transport,
     describe_registered, prepare_task, run_prepared_registered_task,
     run_prepared_registered_task_detailed,
 };
 use serde_json::{Value, json};
+use std::{collections::HashSet, path::Path};
 
 const TWO_EFFECTS: &str = "fn main() = bind(first: gui.list(), body: gui.list())";
 
@@ -38,7 +42,39 @@ fn scope() -> Scope {
     }
 }
 
+fn check_publications(path: &Path, measure: bool) {
+    let fixture = publication::Fixture::load(path);
+    let mut ids = HashSet::new();
+    assert!(!fixture.cases.is_empty(), "empty publication fixture");
+    for case in &fixture.cases {
+        let id = case["id"].as_str().unwrap();
+        assert!(ids.insert(id), "duplicate publication case {id}");
+        let (observed, _, timing) = fixture.check(case, measure);
+        println!("LESE_GUI {}", json!({"id":id, "observed":observed}));
+        if let Some(timing) = timing {
+            println!("LESE_GUI_TIMING {timing}");
+        }
+    }
+}
+
 fn main() {
+    let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+    match arguments.as_slice() {
+        [] => check_publications(
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../../fixtures/registered-gui/publication.json"),
+            false,
+        ),
+        [option, path]
+            if option == "--registered-gui" || option == "--benchmark-registered-gui" =>
+        {
+            check_publications(Path::new(path), option == "--benchmark-registered-gui");
+            return;
+        }
+        _ => panic!(
+            "usage: leselang-registered-host-consumer [--registered-gui FIXTURE | --benchmark-registered-gui FIXTURE]"
+        ),
+    }
     let catalog: Value = serde_json::from_str(&describe_registered().unwrap()).unwrap();
     assert_eq!(catalog["profile"], "javascript.registered");
     assert_eq!(catalog["operations"].as_array().unwrap().len(), 5);

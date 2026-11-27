@@ -85,13 +85,15 @@
       "progress": 100,
       "priority": "maintenance",
       "confidence": "high",
-      "contract": "The optional Node transport owns one worker child per task, preserves raw typed report bytes and pins protocol, scope and challenge on each reply. Verified completion requires clean child exit.",
-      "dependencies": [
-        "embedding/registered/object-runtime",
-        "hosts/javascript/registered-sdk"
-      ],
+      "contract": "The shared Node transport starts the host-selected executable and fixed arguments for each task. It admits the selected mode's operation names, pins version, scope and challenge, preserves raw report bytes, and requires clean exit.",
+      "dependencies": [],
       "blockers": [],
       "evidence": [
+        {
+          "kind": "source",
+          "path": "packages/javascript/src/node/transport.ts",
+          "anchor": "export function createWorkerTransport("
+        },
         {
           "kind": "source",
           "path": "packages/javascript/src/node/transport.ts",
@@ -128,10 +130,10 @@
       "progress": 100,
       "priority": "maintenance",
       "confidence": "high",
-      "contract": "Applications declare 1–32 typed operations and retain ownership of commits and grants. The Node v4 worker supports the original javascript.operations profile and opt-in neutral lese.operations identity.",
+      "contract": "Applications declare 1–32 typed operations and retain ownership of commits and grants. The Node operation host supports the original javascript.operations identity and explicit lese.operations profile over worker v4.",
       "dependencies": [
         "hosts/node/worker-transport",
-        "embedding/rust/native-embedding"
+        "embedding/compatibility/scalar-operations-profile"
       ],
       "blockers": [],
       "evidence": [
@@ -484,9 +486,9 @@
       "progress": 100,
       "priority": "maintenance",
       "confidence": "high",
-      "contract": "The .NET 10 operation host uses lese.operations, one Rust worker per run, six bounded scalar types, live commit checks and typed completion. A project reference is the supported packaging shown here.",
+      "contract": "The .NET 10 operation host uses lese.operations, launches the supplied executable for each run, handles six bounded scalar types, checks live grants and verifies typed completion. A project reference is the supported packaging shown here.",
       "dependencies": [
-        "embedding/rust/native-embedding"
+        "embedding/compatibility/scalar-operations-profile"
       ],
       "blockers": [],
       "evidence": [
@@ -572,6 +574,37 @@
       "expected_artifact": "consumer/dotnet/Program.cs",
       "acceptance_criteria": [
         "Run on Windows x64, verify fresh challenges, stale reply rejection, the exact two-Effect result and retained post-write failure effects."
+      ]
+    },
+    {
+      "id": "hosts/nuis/scalar-operations",
+      "architecture": "hosts",
+      "module": "nuis",
+      "function": "scalar-operations",
+      "lifecycle": "target",
+      "status": "early",
+      "progress": 0,
+      "priority": "active",
+      "confidence": "high",
+      "contract": "An independent Nuis application serves its own declared operations and checks the resulting application state through the language-neutral lese.operations profile.",
+      "dependencies": [
+        "embedding/compatibility/scalar-operations-profile"
+      ],
+      "blockers": [],
+      "evidence": [
+        {
+          "kind": "documentation-contract",
+          "path": "docs/architecture.md",
+          "anchor": "Nuis is the primary future host"
+        }
+      ],
+      "next_action": "Build a Nuis Consumer with Nuis-owned meter handlers. Run it against the shared two-Effect and failure fixtures and record a reproducible invocation with the toolchain, peer revision and platform.",
+      "validation_command": "sh scripts/check.sh tensor",
+      "expected_artifact": "Independent Nuis Consumer sources and a dated receipt from running the shared operation fixtures.",
+      "acceptance_criteria": [
+        "The Nuis application declares meter.add and meter.read, observes one increment and one read, and verifies the shared fixture's exact integer result, Effect count and remaining Fuel.",
+        "Missing write authority prevents the first write. A wrong-typed result after a commit preserves that write and stops the subsequent read.",
+        "A dated record identifies the Nuis source, reproducible command, Nuis toolchain, Lese peer revision, platform and observed side effects."
       ]
     },
     {

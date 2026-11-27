@@ -1420,3 +1420,93 @@ The application and its receipt store stayed alive between submissions.
 These sequential runs exercise a settled first attempt. Reproduce with
 `sh scripts/check.sh consumer`, `sh scripts/check.sh node-consumer` and
 `sh scripts/check.sh dotnet-consumer`.
+
+## 2026-11-27 — scalar host with an externally supplied evaluator
+
+On macOS 27.0.1 arm64, Node 24.6.0 ran the
+[wire probe](../../consumer/javascript/agent/operations-wire.test.mjs) in a
+temporary directory containing the probe, a copy of the
+[meter fixture](../../fixtures/application-operations/two-effects.json) and
+the v4 reference worker renamed to `evaluator`. Node was invoked by absolute
+path. The child environment set `PATH` to that directory and supplied the two
+file paths. Both checks ran using the Node standard library.
+
+The application observed its meter increment to `9007199254740993` and
+accepted the report after two Effects, with 9,994 Fuel remaining and a clean
+process exit. With only the read grant, the worker returned an error and
+exited unsuccessfully with zero callbacks and the original meter balance.
+This run exercises the stdio binding between an independent host and the
+reference evaluator. The planned Nuis host has a separate acceptance target.
+
+## 2026-11-27 — registered GUI host and gateway
+
+The [publication tests](../../hosts/registered/tests/registered_gui_workflow.rs)
+ran the existing article program against a stateful in-memory application through
+the public registered gateway and the VM. Nine Effects found the draft, observed
+and edited it, found the publish button, clicked it and observed the result. The
+host then read both controls again. The application verified the published text
+and counted one edit and one click. An acknowledged edit that left the text
+unchanged stopped the program before the click. A concurrent edit after the
+program returned true caused the final publication check to fail.
+
+The failure cases checked the last request and the application's actual writes.
+A rejected click left the draft edited. A click that committed and then lost
+its acknowledgement published exactly once. A write on the last permitted wire
+request survived the inability to verify it. The
+[local session tests](../../hosts/registered/tests/local_gui_session.rs)
+also exercised revocation, object replacement, stale observations, disabled and
+read-only controls, cancellation and late replies across dispatch and pump.
+Two tests reproduced a defect in explicit replacement. The host now validates
+the replacement snapshot against the slot's original identifier and metadata
+rules. A failed replacement retires only the affected slot.
+
+The table reports covered production lines divided by instrumented production
+lines on macOS arm64 with Rust 1.98. Each column pair uses the same test
+selection on both source snapshots. The first pair includes the registered
+crate, the independent Rust Consumer, the Node wire probe and the C# Consumer.
+The second pair also includes the existing 23 portable Tauri gateway tests.
+Counts are deduplicated by source path and line within each snapshot and
+exclude test code. Sharing the snapshot check reduced the host denominator by
+two lines.
+
+| Production source | Registered before | Registered after | With Tauri before | With Tauri after |
+| --- | ---: | ---: | ---: | ---: |
+| `host.rs` | 296/685 (43.21%) | 585/683 (85.65%) | 543/685 (79.27%) | 591/683 (86.53%) |
+| `gateway.rs` | 163/320 (50.94%) | 291/320 (90.94%) | 304/320 (95.00%) | 307/320 (95.94%) |
+| All of `hosts/registered/src` | 1300/1972 (65.92%) | 1724/1970 (87.51%) | 1734/1972 (87.93%) | 1788/1970 (90.76%) |
+
+Run `sh scripts/check.sh registered` for both new suites and the independent
+Rust Consumer. The `tauri-portable`, `node-consumer` and `dotnet-consumer`
+groups also passed. All checks in this record run without a desktop window.
+
+## 2026-11-27 — registered GUI publication across Rust, Node and C#
+
+On macOS 27.0.1 arm64, the three independent Consumers executed the same
+15 cases with Rust 1.98.0, Node 24.6.0 and .NET SDK 10.0.201.
+Rust used the embedded registered host. Node and C# each owned an in-memory
+article and served GUI requests from a separate v3 worker. For every case
+each Consumer ran the publication once and read both controls using two new
+read-only Lese sessions. All 45 primary observations and 90 readback sessions
+matched the fixture. The three per-language records matched field for field
+including the ordered primary request trace.
+[Fixture and fault definitions](../../fixtures/registered-gui/README.md)
+
+| Primary run | Result | Program commits (edits, clicks) | Subsequent readback |
+| --- | --- | ---: | --- |
+| Successful publication | True, verified, 9 Effects | 1, 1 | Draft and publication contain the supplied text |
+| Edit acknowledged without changing the value | False, 5 Effects | 0, 0 | Both empty |
+| Draft disabled or read-only | False, 3 Effects | 0, 0 | Both empty |
+| Wrong publish target, old revision on an edited draft, or click rejected | Execution failed | 1, 0 | Draft contains the supplied text, publication empty |
+| Committed click with false acknowledgement, or invalid final observation | Execution failed | 1, 1 | Both contain the supplied text |
+| Publication superseded after the program inspected it | True, verification failed, 9 Effects | 1, 1 | Draft contains the supplied text, publication contains the outside edit |
+| Cancel before or after committing the edit | Cancelled at the same write request | 0, 0 or 1, 0 | Publication empty in both cases, draft retains only the committed edit |
+| Draft replaced or write permission withdrawn at the edit | Execution failed | 0, 0 | Both empty |
+| Outside edit during the pending write | Execution failed | 0, 0 | Draft contains the outside edit, publication empty |
+
+All 15 cases matched again with different Unicode input and replacement text.
+As a negative control, setting the successful case's expected click count to
+two made each Consumer fail that case before emitting its observation record.
+
+Run `sh scripts/check.sh registered-gui` to regenerate the three observation
+files. The `registered`, `node-consumer` and `dotnet-consumer` groups also
+exercise the fixture through their existing independent entry points.

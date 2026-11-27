@@ -105,30 +105,26 @@ impl<'g> TrackedGui<'g> {
         }
         Ok(())
     }
+    fn checked_snapshot(&self, slot: usize) -> Result<WidgetSnapshot, Error> {
+        let snapshot = self.gui.snapshot(slot)?;
+        validate_snapshot(&snapshot)?;
+        if self.previous.borrow()[slot].identifier != snapshot.identifier {
+            return Err(Error::Native(
+                "registered object slot changed its identifier",
+            ));
+        }
+        Ok(snapshot)
+    }
     fn refresh(&self, slot: usize) -> Result<WidgetSnapshot, Error> {
         self.require_open()?;
         let owner = self
             .owners
             .get(slot)
             .ok_or(Error::Native("unknown widget slot"))?;
-        let snapshot = match self.gui.snapshot(slot) {
-            Ok(value) => value,
-            Err(error) => {
-                owner.retire();
-                return Err(error);
-            }
-        };
-        if let Err(error) = validate_snapshot(&snapshot) {
+        let snapshot = self.checked_snapshot(slot).inspect_err(|_| {
             owner.retire();
-            return Err(error);
-        }
+        })?;
         let mut previous = self.previous.borrow_mut();
-        if previous[slot].identifier != snapshot.identifier {
-            owner.retire();
-            return Err(Error::Native(
-                "registered object slot changed its identifier",
-            ));
-        }
         let tracking = if previous[slot].identity != snapshot.identity {
             owner.replace()
         } else if previous[slot] != snapshot {
@@ -168,7 +164,7 @@ impl<'g> TrackedGui<'g> {
         let result = self
             .gui
             .replace(slot)
-            .and_then(|()| self.gui.snapshot(slot));
+            .and_then(|()| self.checked_snapshot(slot));
         match result {
             Ok(snapshot) => {
                 self.previous.borrow_mut()[slot] = snapshot;

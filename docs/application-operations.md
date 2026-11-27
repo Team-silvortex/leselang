@@ -4,6 +4,8 @@ A Node application can expose its own commands to an `AgentSession`. The
 application declares each operation's Lese name, named parameters, result type,
 required capability and JavaScript handler. The agent sees the signatures. The
 application chooses the grants, executes the handlers and verifies the outcome.
+The [scalar application host contract](operations-host-protocol.md) describes
+the same roles and data for other host languages.
 
 ## Run the independent example
 

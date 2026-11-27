@@ -179,7 +179,8 @@
           "id": "compatibility",
           "owner": "Host protocol fixtures and runtime contract maintainers",
           "functions": [
-            "local-protocol"
+            "local-protocol",
+            "scalar-operations-profile"
           ]
         },
         {
@@ -212,7 +213,7 @@
         },
         {
           "id": "node",
-          "owner": "packages/javascript Node transport and hosts/registered worker",
+          "owner": "packages/javascript Node process transport",
           "functions": [
             "worker-transport"
           ]
@@ -254,6 +255,13 @@
           "functions": [
             "scalar-operations",
             "windows-worker"
+          ]
+        },
+        {
+          "id": "nuis",
+          "owner": "Nuis host integration and independent Consumer",
+          "functions": [
+            "scalar-operations"
           ]
         },
         {

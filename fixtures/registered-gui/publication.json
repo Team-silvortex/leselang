@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "program": "../host-semantics/javascript-publish-article.lese",
+  "read_draft": "../host-semantics/javascript-read-draft.lese",
+  "read_publication": "../host-semantics/javascript-read-publication.lese",
+  "arguments": {"text": "审阅 \"draft\" ✓\nready"},
+  "superseding_text": "another edit",
+  "cases": [
+    {
+      "id": "publish", "fault": "none",
+      "expected": {
+        "outcome": "reported", "result": true, "effects": 9, "verified": true,
+        "report_after": {"draft": "审阅 \"draft\" ✓\nready", "published": "审阅 \"draft\" ✓\nready", "clicks": 1},
+        "readback": {"draft": "审阅 \"draft\" ✓\nready", "published": "审阅 \"draft\" ✓\nready"},
+        "commits": {"edits": 1, "clicks": 1},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft", "observe:draft", "find:publish", "observe:publish", "click:publish", "observe:publish", "observe:draft", "observe:publish"]
+      }
+    },
+    {
+      "id": "ack-without-edit", "fault": "acknowledge_without_edit",
+      "expected": {
+        "outcome": "reported", "result": false, "effects": 5, "verified": false,
+        "report_after": {"draft": "", "published": "", "clicks": 0},
+        "readback": {"draft": "", "published": ""},
+        "commits": {"edits": 0, "clicks": 0},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft", "observe:draft", "observe:draft", "observe:publish"]
+      }
+    },
+    {
+      "id": "wrong-publish-target", "fault": "wrong_publish_target",
+      "expected": {
+        "outcome": "execution_failed", "result": null, "effects": null, "verified": false,
+        "report_after": null,
+        "readback": {"draft": "审阅 \"draft\" ✓\nready", "published": ""},
+        "commits": {"edits": 1, "clicks": 0},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft", "observe:draft", "find:publish"]
+      }
+    },
+    {
+      "id": "changed-draft-with-old-revision", "fault": "unversioned_edit",
+      "expected": {
+        "outcome": "execution_failed", "result": null, "effects": null, "verified": false,
+        "report_after": null,
+        "readback": {"draft": "审阅 \"draft\" ✓\nready", "published": ""},
+        "commits": {"edits": 1, "clicks": 0},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft", "observe:draft"]
+      }
+    },
+    {
+      "id": "click-rejected", "fault": "reject_click",
+      "expected": {
+        "outcome": "execution_failed", "result": null, "effects": null, "verified": false,
+        "report_after": null,
+        "readback": {"draft": "审阅 \"draft\" ✓\nready", "published": ""},
+        "commits": {"edits": 1, "clicks": 0},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft", "observe:draft", "find:publish", "observe:publish", "click:publish"]
+      }
+    },
+    {
+      "id": "click-committed-without-ack", "fault": "unacknowledged_click",
+      "expected": {
+        "outcome": "execution_failed", "result": null, "effects": null, "verified": false,
+        "report_after": null,
+        "readback": {"draft": "审阅 \"draft\" ✓\nready", "published": "审阅 \"draft\" ✓\nready"},
+        "commits": {"edits": 1, "clicks": 1},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft", "observe:draft", "find:publish", "observe:publish", "click:publish"]
+      }
+    },
+    {
+      "id": "invalid-final-read", "fault": "final_read_invalid",
+      "expected": {
+        "outcome": "execution_failed", "result": null, "effects": null, "verified": false,
+        "report_after": null,
+        "readback": {"draft": "审阅 \"draft\" ✓\nready", "published": "审阅 \"draft\" ✓\nready"},
+        "commits": {"edits": 1, "clicks": 1},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft", "observe:draft", "find:publish", "observe:publish", "click:publish", "observe:publish", "observe:draft"]
+      }
+    },
+    {
+      "id": "publication-superseded", "fault": "publication_superseded",
+      "expected": {
+        "outcome": "reported", "result": true, "effects": 9, "verified": false,
+        "report_after": {"draft": "审阅 \"draft\" ✓\nready", "published": "another edit", "clicks": 1},
+        "readback": {"draft": "审阅 \"draft\" ✓\nready", "published": "another edit"},
+        "commits": {"edits": 1, "clicks": 1},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft", "observe:draft", "find:publish", "observe:publish", "click:publish", "observe:publish", "observe:draft", "observe:publish"]
+      }
+    },
+    {
+      "id": "disabled-draft", "fault": "disabled_draft",
+      "expected": {
+        "outcome": "reported", "result": false, "effects": 3, "verified": false,
+        "report_after": {"draft": "", "published": "", "clicks": 0},
+        "readback": {"draft": "", "published": ""},
+        "commits": {"edits": 0, "clicks": 0},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "observe:draft", "observe:publish"]
+      }
+    },
+    {
+      "id": "readonly-draft", "fault": "readonly_draft",
+      "expected": {
+        "outcome": "reported", "result": false, "effects": 3, "verified": false,
+        "report_after": {"draft": "", "published": "", "clicks": 0},
+        "readback": {"draft": "", "published": ""},
+        "commits": {"edits": 0, "clicks": 0},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "observe:draft", "observe:publish"]
+      }
+    },
+    {
+      "id": "cancel-before-edit", "fault": "cancel_before_edit",
+      "expected": {
+        "outcome": "cancelled", "result": null, "effects": null, "verified": false,
+        "report_after": null,
+        "readback": {"draft": "", "published": ""},
+        "commits": {"edits": 0, "clicks": 0},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft"]
+      }
+    },
+    {
+      "id": "cancel-after-edit", "fault": "cancel_after_edit",
+      "expected": {
+        "outcome": "cancelled", "result": null, "effects": null, "verified": false,
+        "report_after": null,
+        "readback": {"draft": "审阅 \"draft\" ✓\nready", "published": ""},
+        "commits": {"edits": 1, "clicks": 0},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft"]
+      }
+    },
+    {
+      "id": "replaced-draft-at-write", "fault": "replaced_draft_at_write",
+      "expected": {
+        "outcome": "execution_failed", "result": null, "effects": null, "verified": false,
+        "report_after": null,
+        "readback": {"draft": "", "published": ""},
+        "commits": {"edits": 0, "clicks": 0},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft"]
+      }
+    },
+    {
+      "id": "external-edit-at-write", "fault": "external_edit_at_write",
+      "expected": {
+        "outcome": "execution_failed", "result": null, "effects": null, "verified": false,
+        "report_after": null,
+        "readback": {"draft": "another edit", "published": ""},
+        "commits": {"edits": 0, "clicks": 0},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft"]
+      }
+    },
+    {
+      "id": "write-grant-revoked", "fault": "write_grant_revoked",
+      "expected": {
+        "outcome": "execution_failed", "result": null, "effects": null, "verified": false,
+        "report_after": null,
+        "readback": {"draft": "", "published": ""},
+        "commits": {"edits": 0, "clicks": 0},
+        "trace": ["list", "find:draft", "observe:draft", "find:publish", "observe:publish",
+          "list", "find:draft", "observe:draft", "set_text:draft"]
+      }
+    }
+  ]
+}

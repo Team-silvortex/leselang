@@ -21,6 +21,7 @@ installs dependencies. Cargo checks use the repository's pinned toolchain,
 `--locked --offline --profile lean` and an explicit shared `target/` directory.
 This prevents environment target overrides from creating a second cache or
 causing offline plan checks to run a different executable.
+The optional registered GUI benchmark builds its native artifacts with `--release`.
 
 | Group | Coverage / prerequisite |
 | --- | --- |
@@ -29,6 +30,8 @@ causing offline plan checks to run a different executable.
 | `consumer` | Independent Rust suite, catalog-agent example tests and Clippy |
 | `dotnet-consumer` | Worker challenge and reply checks, native .NET 10 Consumer, shared two-Effect fixture and failure paths. Windows uses Git Bash, MSVC and native `.exe` files. Restore uses the installed .NET reference packs and a local source. |
 | `registered` | Standalone Rust host/worker, dependency boundary, strict Clippy and a separate Rust Consumer |
+| `registered-gui` | Compare Rust, Node and C# on the [shared registered GUI fixture](../fixtures/registered-gui/README.md). Requires the SDK and Node Consumer npm dependencies, pinned Cargo dependencies and .NET 10. Writes each Consumer's observations under `target/verification/gui-consumers.*`. |
+| `benchmark-registered-gui` | Opt-in Release timing of the same three Consumers, including successful, failed and cancelled tasks. Accepts `--warmup N --samples N`. Run separately from `all`. [Method and baselines](../benchmarks/README.md) |
 | `javascript` | SDK, Node transport failure fixtures, packed JS/TS Consumer, browser isolation and Tauri frontend; install SDK and host npm dependencies |
 | `node-consumer` | Both portable Rust carriers, checked application declarations, real Node application, packed external Consumer with real VM, and an offline Tauri agent plan; requires SDK build/development tools and Node Consumer npm dependencies |
 | `appkit` | Formatting, non-interactive package tests, Clippy and host executable |

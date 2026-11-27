@@ -23,6 +23,15 @@ profile changes. The C# check requires a .NET 10 SDK with its installed referenc
 packs on Windows, macOS or Linux. The Windows job runs the native Consumer and
 worker executables from Git Bash. See the [host guide](dotnet-host.md).
 
+For registered GUI workflows, run `sh scripts/check.sh registered-gui`.
+This compares the three Consumers' primary results, request sequences,
+committed edits and clicks, and state read back in fresh sessions. The
+protocol, fault timing and expected values are in the
+[publication fixture](../fixtures/registered-gui/README.md).
+
+The opt-in [registered GUI benchmark](../benchmarks/README.md) times the same
+verified cases in Release builds and saves per-case samples for later comparison.
+
 ## Commands And Scope
 
 Fetch the pinned dependencies once, then validate the language and consumer

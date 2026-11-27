@@ -10,12 +10,20 @@ meaning of submission or completion. See the
 [local host protocol draft](host-protocol.md) for the current contract and its
 acceptance gates.
 
-Rust, JS/TS and C# are the three core host ecosystems. Rust embeds the compiler
-and VM through `HostBuilder`. Node and .NET call the same VM through a bounded
-worker protocol. Their common operation profile is `lese.operations`. Each
-application declares its own capabilities, implements commands in its own
-runtime and verifies observed state. A [three-host conformance example](dotnet-host.md#compare-the-three-hosts)
-checks one program and its exact result, Effect count and Fuel in all three.
+Nuis is the primary future host for LeseLang. A Nuis application can own its
+catalog, handlers, live permissions and verification while a separate evaluator
+executes Lese programs. The versioned [scalar application host contract](operations-host-protocol.md)
+defines the shared data and observable behavior. A host binding depends on
+that contract. Language-specific types, build tools and application state
+stay on their respective sides of the binding.
+
+Rust, JS/TS and C# are the currently tested host implementations. Rust can
+embed the reference evaluator through `HostBuilder`. Node and .NET can start
+a worker executable supplied by the application and use the v4 stdio binding.
+The [three-host conformance example](dotnet-host.md#compare-the-three-hosts)
+checks the same program, result, Effect count and Fuel. Acceptance of the Nuis
+host requires running the shared cases with a Nuis application owning the
+handlers and observing its own state.
 
 ## Dependency Direction
 

@@ -13,6 +13,7 @@ Use [project status](../STATUS.md) for current capability state, the
 | Goal | Recommended route |
 | --- | --- |
 | Write and run LeseLang | [Language and CLI](language.md) → [examples](../examples) |
+| Implement a scalar host, including the planned Nuis host | [Language-independent contract and optional stdio binding](operations-host-protocol.md) |
 | Embed the compiler and VM in Rust | [Rust embedding](embedding.md) → [host protocol](host-protocol.md) for native objects |
 | Expose a JS/TS application's objects | [JavaScript SDK](javascript-sdk.md) → [independent Node consumer](../consumer/README.md) or [Tauri host](typescript-host.md) |
 | Give an agent typed application commands and verify their effects | [JS/TS application operations](application-operations.md) → [stock Consumer](../consumer/javascript/agent/operations.mjs) |
