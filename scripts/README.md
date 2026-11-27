@@ -28,6 +28,7 @@ The optional registered GUI benchmark builds its native artifacts with `--releas
 | `tensor` | Standalone Rust development tool, checked catalog and evidence identities, hierarchy and task selection |
 | `language` | Main workspace formatting, all-feature tests and strict Clippy |
 | `consumer` | Independent Rust suite, catalog-agent example tests and Clippy |
+| `scalar-consumers` | Python, C11 and C++17 meter hosts against the real worker, covering success and two failure vectors. Requires Python 3.8+, C and C++ compilers, pkg-config and cJSON development files. [Setup and scope](../docs/operations-host-protocol.md#python-c-and-c-consumers) |
 | `dotnet-consumer` | Worker challenge and reply checks, native .NET 10 Consumer, shared two-Effect fixture and failure paths. Windows uses Git Bash, MSVC and native `.exe` files. Restore uses the installed .NET reference packs and a local source. |
 | `registered` | Standalone Rust host/worker, dependency boundary, strict Clippy and a separate Rust Consumer |
 | `registered-gui` | Compare Rust, Node and C# on the [shared registered GUI fixture](../fixtures/registered-gui/README.md). Requires the SDK and Node Consumer npm dependencies, pinned Cargo dependencies and .NET 10. Writes each Consumer's observations under `target/verification/gui-consumers.*`. |

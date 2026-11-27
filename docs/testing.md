@@ -12,14 +12,15 @@ passing portable suite does not establish native desktop behavior; desktop
 procedures are explicit and their dated results belong in
 [the acceptance archive](acceptance/README.md).
 
-The Rust, Node and .NET Consumers exercise the same meter program on success
+The Rust, Node, .NET, Python, C and C++ Consumers exercise the same meter program on success
 and failure. The success fixture checks its returned value, accepted Effects
 and Fuel. The failure fixture checks the terminal outcome, write and read
 callback counts, committed writes and final balance against each application's
 own state. [Success fixture](../fixtures/application-operations/two-effects.json)
 · [Failure vectors](../fixtures/application-operations/failure-vectors.json)
-Run `consumer`, `node-consumer` and `dotnet-consumer` when the neutral operation
-profile changes. The C# check requires a .NET 10 SDK with its installed reference
+Run `consumer`, `node-consumer`, `dotnet-consumer` and `scalar-consumers` when
+the neutral operation profile changes. The [Python and native meter checks](operations-host-protocol.md#python-c-and-c-consumers)
+use the same worker and compare application-owned state. The C# check requires a .NET 10 SDK with its installed reference
 packs on Windows, macOS or Linux. The Windows job runs the native Consumer and
 worker executables from Git Bash. See the [host guide](dotnet-host.md).
 

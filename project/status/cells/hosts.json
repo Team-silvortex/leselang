@@ -720,7 +720,7 @@
       "progress": 100,
       "priority": "maintenance",
       "confidence": "high",
-      "contract": "Rust, Node and C# run the same meter program with a missing write grant or a wrong-typed reply after a commit. Each verifies failure, callback counts, committed writes and the final integer balance.",
+      "contract": "Rust, Node, C#, Python, C and C++ run the same meter program with a missing write grant or a wrong-typed result after a commit. Each verifies failure, callback counts, committed writes and the final integer balance.",
       "dependencies": [
         "hosts/conformance/shared-programs"
       ],
@@ -747,19 +747,32 @@
           "anchor": "async Task CheckSharedFailureVectors()"
         },
         {
+          "kind": "integration-test",
+          "path": "scripts/check-scalar-consumers.py",
+          "anchor": "def run_native_case("
+        },
+        {
           "kind": "native-acceptance",
           "path": "docs/acceptance/agents.md",
           "anchor": "All three observations matched each other and the fixture field for field.",
           "date": "2026-11-27",
           "version": "failure-vectors.json SHA-256 4c52d3fa08075c329e9466e55f2ff5b928e6d98b5e224f2b97f732f33e7278d4, worker v4",
           "platform": "macOS 27.0.1 arm64, Rust 1.98.0, Node 24.6.0, .NET 10.0.5"
+        },
+        {
+          "kind": "native-acceptance",
+          "path": "docs/acceptance/agents.md",
+          "anchor": "scalar hosts in Python, C and C++",
+          "date": "2026-11-27",
+          "version": "failure-vectors.json SHA-256 4c52d3fa08075c329e9466e55f2ff5b928e6d98b5e224f2b97f732f33e7278d4, worker v4",
+          "platform": "macOS 27.0.1 arm64, Python 3.14.3, Apple Clang 21.0.0, cJSON 1.7.18"
         }
       ],
-      "next_action": "Rerun all three Consumers when changing grants, reply validation or commit handling. Compare the observed failure rows with the shared fixture.",
-      "validation_command": "sh scripts/check.sh consumer && sh scripts/check.sh node-consumer && sh scripts/check.sh dotnet-consumer",
+      "next_action": "Rerun all six Consumers when changing grants, result validation or commit handling. Compare the observed failure rows with the shared fixture.",
+      "validation_command": "sh scripts/check.sh consumer && sh scripts/check.sh node-consumer && sh scripts/check.sh dotnet-consumer && sh scripts/check.sh scalar-consumers",
       "expected_artifact": "fixtures/application-operations/failure-vectors.json",
       "acceptance_criteria": [
-        "All three Consumers load the same named source, missing-grant case and post-write-invalid-result case from one checked-in fixture.",
+        "All six Consumers load the same source, missing-grant case and post-write-invalid-result case from one checked-in fixture.",
         "On missing authority, each harness records zero callbacks, zero writes and no successful completion.",
         "On an invalid result after the write, each harness records exactly one committed write, no later read and no successful completion; check state without parsing host-specific error prose."
       ]

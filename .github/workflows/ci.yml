@@ -24,6 +24,15 @@ jobs:
         run: sh scripts/check.sh language
       - name: Check independent Rust Consumer and catalog agent
         run: sh scripts/check.sh consumer
+      - name: Install cJSON development files on Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libcjson-dev pkg-config
+      - name: Install cJSON development files on macOS
+        if: runner.os == 'macOS'
+        run: brew install cjson pkgconf
+      - run: cargo +1.98.0 fetch --manifest-path hosts/registered/Cargo.toml --locked
+      - name: Compare Python, C and C++ scalar Consumers
+        run: sh scripts/check.sh scalar-consumers
       - name: Check AppKit host without opening a GUI
         run: sh scripts/check.sh appkit
       - name: Check Accessibility contracts and native boundaries

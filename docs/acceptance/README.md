@@ -13,6 +13,10 @@ Current setup and contract instructions remain in the linked guides.
 | [JavaScript and Tauri](javascript.md) | 2026-11-13 independent Node Consumer and real Tauri form execution |
 | [Agents](agents.md) | 2026-11-13 Rust catalog agent, semantic planning and conversation entry; 2026-11-20 workflows, observed results, conditions, two TypeScript GUIs, public registered/Node interfaces, installed Consumers, standalone Rust worker and typed semantic authoring. The 2026-11-27 records cover application-declared operations, the Windows worker, conditional selection, [shared operation failures](agents.md#2026-11-27--shared-operation-failure-vectors), [lost write replies](agents.md#2026-11-27--losing-a-write-request-or-its-successful-reply) and [same-key retry](agents.md#2026-11-27--same-key-retry-after-an-interrupted-write) across Rust, Node and C# Consumers. |
 
+The [Python, C and C++ scalar run](agents.md#2026-11-27--scalar-hosts-in-python-c-and-c)
+records the two granted Effects, refusal before a write and invalid handler
+result after a write on macOS arm64.
+
 Each record distinguishes real GUI execution, an independent application
 observation, deterministic test coverage and local model-protocol fixtures.
 Predetermined planning replies do not establish online model inference or

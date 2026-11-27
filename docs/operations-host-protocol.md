@@ -10,9 +10,9 @@ can share a process or exchange messages.
 
 Nuis is the intended primary application host. A Nuis application can implement
 the host role using its own types, state and event loop and run the existing
-evaluator as a separate executable. Rust embedding, Node and C# currently
-exercise the shared semantics. Each new host can use the same fixtures without
-importing another host's SDK. The [local object protocol](host-protocol.md)
+evaluator as a separate executable. Rust embedding and the Node, C#, Python,
+C and C++ Consumers exercise the shared meter fixtures. A new host can use
+the same fixtures with its own SDK. The [local object protocol](host-protocol.md)
 covers live GUI references, generations and leases separately.
 
 ### Discover and run a scalar operation
@@ -149,3 +149,37 @@ copy `operations-wire.test.mjs` and `two-effects.json` there, point
 `LESE_OPERATIONS_FIXTURE` at that JSON file and supply the evaluator in
 `LESE_WORKER`. It checks the granted two-Effect exchange and verifies that
 a read-only grant stops the program before either meter callback.
+
+### Python, C and C++ Consumers
+
+Run all three against the reference worker from the repository root.
+The check requires Python 3.8+, a C11 compiler, a C++17 compiler and
+`pkg-config --cflags --libs libcjson`. On macOS the Homebrew packages are
+`cjson` and `pkgconf`. On Debian or Ubuntu use `libcjson-dev` and `pkg-config`.
+
+```sh
+sh scripts/check.sh scalar-consumers
+```
+
+The [Python application](../consumer/python/meter.py) uses only the standard
+library. It takes a worker executable and a fixture directory.
+
+```sh
+python3 consumer/python/meter.py /absolute/path/to/leselang-agent-worker fixtures/application-operations
+```
+
+The [C application](../consumer/native/meter_c.c) and
+[C++ application](../consumer/native/meter_cpp.cpp) each own their integer
+balance, handlers and commit counter. They share a [C implementation of the
+meter protocol](../consumer/native/meter_wire.c). The runner connects each
+native executable's standard streams directly to a fresh worker. Python
+supervises those processes and collects observations on a separate channel.
+The native programs link cJSON for parsing and talk to Lese through worker v4.
+
+The [comparison](../scripts/check-scalar-consumers.py) checks all three hosts
+against the fixture. The successful run verifies the typed integer, two
+accepted Effects and remaining Fuel against the host's own balance. Missing
+write authority must leave both handlers untouched. When a write commits and
+its handler returns a string, each host must retain the increment and record
+zero subsequent reads. Each run saves the observed rows under a fresh
+`target/verification/scalar-consumers.*` directory.

@@ -14,6 +14,7 @@ Groups:
   tensor          Development tensor validation, query tests and strict Clippy
   language        Language workspace: format, all-feature tests, strict Clippy
   consumer        Independent Rust Consumer and catalog agent
+  scalar-consumers  Compare Python, C11 and C++17 hosts against the real worker (requires libcjson)
   javascript      SDK (including packed Consumer) and Tauri frontend tests
   registered      Standalone registered-object host, worker and Rust Consumer
   registered-gui  Compare registered GUI observations from Rust, Node and C# Consumers
@@ -113,6 +114,11 @@ check_group() {
             cargo_checked test --manifest-path consumer/Cargo.toml
             cargo_checked test --manifest-path consumer/Cargo.toml --example catalog_agent
             cargo_checked clippy --manifest-path consumer/Cargo.toml --all-targets -- -D warnings
+            ;;
+        scalar-consumers)
+            cargo_checked build --manifest-path hosts/registered/Cargo.toml --bin leselang-agent-worker
+            run python3 -B -m unittest discover -s consumer/python
+            run python3 scripts/check-scalar-consumers.py "$repo_dir/target/lean/leselang-agent-worker"
             ;;
         javascript)
             run npm test --prefix packages/javascript
@@ -233,6 +239,9 @@ check_group() {
             for group in tensor language consumer appkit macos-ax javascript registered tauri-portable node-consumer dotnet-consumer; do
                 check_group "$group"
             done
+            case "$(uname -s)" in
+                Darwin|Linux) check_group scalar-consumers ;;
+            esac
             run node scripts/compare-registered-gui.mjs
             if [ "$(uname -s)" = Darwin ]; then
                 check_group tauri-desktop

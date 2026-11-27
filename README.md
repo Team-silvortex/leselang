@@ -12,8 +12,10 @@ live permissions and event processing. Execution keeps the explicit
 `poll → authorize → dispatch → accept` boundary. There is no implicit scheduler,
 automatic action retry or rollback of committed effects.
 
-Nuis is the planned primary application host. Today's Rust, JS/TS and C#
-hosts exercise the [shared scalar operation contract](docs/operations-host-protocol.md).
+Nuis is the planned primary application host. Rust, JS/TS and C# hosts
+exercise the [shared scalar operation contract](docs/operations-host-protocol.md).
+Independent Python, C and C++ examples run the same meter program against a
+separate evaluator. [Run the three Consumers](docs/operations-host-protocol.md#python-c-and-c-consumers)
 
 ## Choose A Starting Point
 

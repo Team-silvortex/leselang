@@ -1510,3 +1510,29 @@ two made each Consumer fail that case before emitting its observation record.
 Run `sh scripts/check.sh registered-gui` to regenerate the three observation
 files. The `registered`, `node-consumer` and `dotnet-consumer` groups also
 exercise the fixture through their existing independent entry points.
+
+## 2026-11-27 — scalar hosts in Python, C and C++
+
+On macOS 27.0.1 arm64, `sh scripts/check.sh scalar-consumers` ran three
+cases in each of three applications against the reference worker v4.
+Python 3.14.3 used its standard library. The C11 and C++17 applications used
+Apple Clang 21.0.0, cJSON 1.7.18 and the same native stdio peer. Each
+executable linked its own meter handlers and held its own balance. The
+runner compared nine observations with the shared fixtures.
+[Two Effects](../../fixtures/application-operations/two-effects.json) ·
+[Failure vectors](../../fixtures/application-operations/failure-vectors.json)
+
+| Case | Worker outcome | Add / read callbacks | Committed writes | Balance observed by the application |
+| --- | --- | ---: | ---: | ---: |
+| Two Effects with both grants | Integer `9007199254740993`, 2 Effects, 9994 Fuel remaining | 1 / 1 | 1 | 9007199254740993 |
+| Missing write grant | Failed | 0 / 0 | 0 | 9007199254740992 |
+| Invalid result after commit | Failed | 1 / 0 | 1 | 9007199254740993 |
+
+All three applications also reached the maximum unsigned 64-bit value
+(`18446744073709551615`) with a temporary fixture starting one below it.
+Changing the post-write fixture to expect zero commits made each Consumer
+fail the case.
+
+The local observations are in `target/verification/scalar-consumers.ia3ukd72/`
+as `python.json`, `c.json` and `cpp.json`. A rerun creates a new directory
+with the same three files. [Conformance runner](../../scripts/check-scalar-consumers.py)

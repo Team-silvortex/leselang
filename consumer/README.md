@@ -14,6 +14,7 @@ all workspaces still share the repository's ignored `target/` cache.
 | Keep a JS application alive across agent tasks and launch Rust workers | [`javascript/agent.mjs`](javascript/agent.mjs) and the [Node-owned agent guide](../docs/node-agent-host.md) |
 | Discover application-declared operations and verify two Effects | [Stock Consumer](javascript/agent/operations.mjs) and the [JS/TS application operations guide](../docs/application-operations.md) |
 | Check the same program across Rust, Node and C# | [.NET Consumer](dotnet/Program.cs) and the [three-host contract](../docs/dotnet-host.md#compare-the-three-hosts) |
+| Handle real worker Effects in Python, C or C++ | [Independent scalar Consumers](../docs/operations-host-protocol.md#python-c-and-c-consumers) |
 
 The Rust catalog agent makes no model call and invokes a selected host as a
 subprocess. It is distinct from the JavaScript SDK's

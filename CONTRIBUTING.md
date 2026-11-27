@@ -46,7 +46,8 @@ sh scripts/check.sh language
 | Development catalog, evidence identity, mainline goals or planning CLI | `tensor` and the cell's validation command when its capability changes |
 | Language, runtime contracts or Rust public APIs | `language`, `consumer`; also `smoke` after its AppKit/AX build prerequisites, and affected hosts when contracts change |
 | Independent Rust catalog agent | `consumer`; include its affected host groups |
-| Shared operation signatures, scalar encoding or worker operation profile | `consumer`, `registered`, `javascript`, `node-consumer`, `dotnet-consumer` |
+| Shared operation signatures, scalar encoding or worker operation profile | `consumer`, `registered`, `javascript`, `node-consumer`, `dotnet-consumer`, `scalar-consumers` |
+| Python, C or C++ meter Consumers | `scalar-consumers` on macOS or Linux |
 | C# operation library or Consumer | `dotnet-consumer` on Windows (Git Bash/MSVC), macOS or Linux using the .NET 10 SDK |
 | Registered-object Rust core or standalone worker | `registered`, `consumer`, `node-consumer`, `tauri-portable`; include `tauri-desktop` on macOS for shared execution changes |
 | JavaScript SDK or Tauri frontend | `javascript`, `node-consumer`; include `tauri-portable` when the transport or task contract changes |
